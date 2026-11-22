@@ -37,6 +37,26 @@ for attempt in $(seq 1 40); do
 	sleep 30
 done
 
+# supervisorctl status exits non-zero when any program is stopped, so read it once.
+PROGRAMS="$(sudo supervisorctl status || true)"
+WORKERS=""
+for g in "$NAME-workers" "$NAME-bpmn-workers"; do
+	if grep -q "^$g:" <<<"$PROGRAMS"; then WORKERS="$WORKERS $g:"; fi
+done
+restart_on_error() {
+	status=$?
+	if [ $status -ne 0 ]; then
+		sudo supervisorctl start $WORKERS || true
+		sudo supervisorctl restart "$NAME-web:" || true
+	fi
+}
+trap restart_on_error EXIT
+
+# Workers stop before the pull: a job on old code fails against the new files, and migrate needs them stopped.
+sudo supervisorctl stop $WORKERS
+# A scheduler orphaned by an earlier stop holds the lock supervisor's scheduler needs; [s] keeps pkill off this script.
+pkill -f "$BENCH/env/bin/python -m frappe.utils.bench_helper frappe [s]chedule" || true
+
 APP_DIR="$BENCH/apps/processa"
 [ -d "$APP_DIR" ] || APP_DIR="$BENCH/apps/one_bpmn"
 # The frontend build rewrites this tracked file, and a pull refuses to overwrite it.
@@ -74,7 +94,9 @@ else
 		sed -i 's/^one_bpmn$/processa/' sites/apps.txt
 	fi
 	# Ignored build output left under the old package folder.
-	if [ -d "$APP_DIR/one_bpmn" ] && [ -z "$(git -C "$APP_DIR" ls-files one_bpmn)" ]; then rm -rf "$APP_DIR/one_bpmn"; fi
+	for old in one_bpmn spiff; do
+		if [ -d "$APP_DIR/$old" ] && [ -z "$(git -C "$APP_DIR" ls-files "$old")" ]; then rm -rf "${APP_DIR:?}/$old"; fi
+	done
 	if env/bin/pip show one_bpmn >/dev/null 2>&1; then env/bin/pip uninstall -y one_bpmn; fi
 	env/bin/pip install -q -e "$APP_DIR"
 	cd "$APP_DIR/frontend"
@@ -85,25 +107,6 @@ else
 	cd "$BENCH"
 fi
 
-# supervisorctl status exits non-zero when any program is stopped, so read it once.
-PROGRAMS="$(sudo supervisorctl status || true)"
-WORKERS=""
-for g in "$NAME-workers" "$NAME-bpmn-workers"; do
-	if grep -q "^$g:" <<<"$PROGRAMS"; then WORKERS="$WORKERS $g:"; fi
-done
-restart_on_error() {
-	status=$?
-	if [ $status -ne 0 ]; then
-		sudo supervisorctl start $WORKERS || true
-		sudo supervisorctl restart "$NAME-web:" || true
-	fi
-}
-trap restart_on_error EXIT
-
-# Workers and the scheduler write Scheduled Job Log while migrate deletes from it.
-sudo supervisorctl stop $WORKERS
-# A scheduler orphaned by an earlier stop holds the lock supervisor's scheduler needs; [s] keeps pkill off this script.
-pkill -f "$BENCH/env/bin/python -m frappe.utils.bench_helper frappe [s]chedule" || true
 
 if [ "$APP" = processa ]; then
 	(cd sites && ../env/bin/python -c "from processa.cutover import run; run()")
@@ -127,7 +130,8 @@ if queue not in workers:
 	print(f"Added the {queue} queue to common_site_config.json")
 EOF
 	PROGRAM="$NAME-frappe-bpmn-prosally-worker"
-	if ! grep -qE "$PROSALLY_QUEUE|$PROGRAM" <<<"$PROGRAMS"; then
+	# supervisorctl lists every bench on the server, so only this bench's programs count.
+	if ! grep -qE "^$NAME-[^ ]*prosally" <<<"$PROGRAMS"; then
 		CONF="$(readlink -f "/etc/supervisor/conf.d/$NAME.conf")"
 		GROUP="$NAME-bpmn-workers"
 		grep -q "^\[group:$GROUP\]" "$CONF" || GROUP="$NAME-workers"
