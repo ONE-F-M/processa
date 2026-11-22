@@ -404,3 +404,4 @@ processa.patches.v1_0.logix_reviewer_keeps_calls_needing_approval #21-11-2026 Lo
 processa.patches.v1_0.logix_writer_sees_library_scripts #22-11-2026 Logix Build Context keeps the map's library scripts in the turn and the script writer's prompt lists them
 processa.patches.v1_0.logix_skills_name_import_script_and_flagged_http #22-11-2026 Logix's script task contract names import_script and _, and the outbound HTTP skill treats requests as needing approval
 processa.patches.v1_0.logix_white_screen_case_follows_the_debug_path #22-11-2026 the white-screen Logix case expects classify_intent then debug_script and checks the reply, not a finalize artifact
+processa.patches.v1_0.logix_clarifier_names_the_doc_status #22-11-2026 Logix's clarifier gets the trigger DocType's workflow states and names the doc status of a requested state
