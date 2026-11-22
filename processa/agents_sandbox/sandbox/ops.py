@@ -994,7 +994,7 @@ def _dispatch_single_action(params: dict, ctx: dict, action: str) -> dict | None
 
 
 def dispatch_action(params: dict, ctx: dict) -> dict | None:
-	"""One generic handler serving every minutes-scale sandbox action —
+	"""One generic handler serving every minutes-scale sandbox action -
 	currently "run_tests" and "open_pull_request" - as distinct connector
 	operations that all point here. Which action to forward is read from
 	ctx["operation"] (the operation this Service Task was configured as, set
