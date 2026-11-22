@@ -39,10 +39,8 @@ done
 
 # supervisorctl status exits non-zero when any program is stopped, so read it once.
 PROGRAMS="$(sudo supervisorctl status || true)"
-WORKERS=""
-for g in "$NAME-workers" "$NAME-bpmn-workers"; do
-	if grep -q "^$g:" <<<"$PROGRAMS"; then WORKERS="$WORKERS $g:"; fi
-done
+# Every worker group of this bench: the main one, the AI agent one and the ProsAlly one.
+WORKERS="$(grep -oE "^$NAME-[a-z_-]*workers:" <<<"$PROGRAMS" | sort -u | tr '\n' ' ' || true)"
 restart_on_error() {
 	status=$?
 	if [ $status -ne 0 ]; then
@@ -133,10 +131,11 @@ EOF
 	# supervisorctl lists every bench on the server, so only this bench's programs count.
 	if ! grep -qE "^$NAME-[^ ]*prosally" <<<"$PROGRAMS"; then
 		CONF="$(readlink -f "/etc/supervisor/conf.d/$NAME.conf")"
-		GROUP="$NAME-bpmn-workers"
-		grep -q "^\[group:$GROUP\]" "$CONF" || GROUP="$NAME-workers"
+		# A new group of its own, so adding it does not restart the running worker groups.
+		GROUP="$NAME-bpmn-prosally-workers"
+		# Programs on a bench that sets their environment get the same one, or bench is not found.
+		ENVIRONMENT="$(grep -m1 '^environment=' "$CONF" || true)"
 		cp "$CONF" "$CONF.$(date +%Y%m%d%H%M%S).bak"
-		sed -i "/^\[group:$GROUP\]/,/^programs=/ s/^programs=.*/&,$PROGRAM/" "$CONF"
 		cat >>"$CONF" <<EOF
 
 [program:$PROGRAM]
@@ -153,10 +152,14 @@ killasgroup=true
 numprocs=1
 process_name=%(program_name)s-%(process_num)d
 startretries=10
+$ENVIRONMENT
+
+[group:$GROUP]
+programs=$PROGRAM
 EOF
 		sudo supervisorctl reread
 		sudo supervisorctl update "$GROUP"
-		case " $WORKERS " in *" $GROUP: "*) ;; *) WORKERS="$WORKERS $GROUP:" ;; esac
+		WORKERS="$WORKERS $GROUP:"
 	fi
 fi
 
