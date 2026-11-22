@@ -31,6 +31,29 @@ class TestLogixTriesDrafts(FrappeTestCase):
 		with patch.object(trial, "_process_model", return_value=MODEL):
 			return trial.dry_run(code, TURN)
 
+	def test_the_map_open_in_the_editor_is_found_by_its_name(self):
+		model = frappe.new_doc("BPMN Process Model")
+		model.update(
+			{"name": "Trial Map - v1", "title": "Trial Map - v1", "process_id": "trial_map", "version": 1}
+		)
+		model.trigger_doctype = "Note"
+		model.bpmn_xml = (
+			'<?xml version="1.0" encoding="UTF-8"?>'
+			'<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">'
+			'<bpmn:process id="trial_map" name="Trial Map" isExecutable="true" /></bpmn:definitions>'
+		)
+		model.insert()
+		turn = {
+			"process_context": {
+				"process_name": "Trial Map",
+				"process_model": "Trial Map - v1",
+				"element_id": "t",
+			}
+		}
+		outcome = trial.dry_run('result["title"] = doc.title\n', turn)
+		self.assertTrue(outcome["ran"], outcome)
+		self.assertEqual(trial._process_model({"process_name": "trial_map"}).name, "Trial Map - v1")
+
 	def test_a_failing_draft_returns_its_traceback_and_failing_line(self):
 		outcome = self._try('x = 1\nresult["date"] = doc.appointment_date.year\n')
 		self.assertEqual(

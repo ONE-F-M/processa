@@ -2,10 +2,12 @@
 import { inject, toRef } from "vue";
 import { Icon } from "@iconify/vue";
 import FormattingToolbar from "@/components/Editor/FormattingToolbar/FormattingToolbar.vue";
+import CommentToolButton from "@/components/Editor/CommentToolButton/CommentToolButton.vue";
 import { EDITOR_KEY } from "@/composables/Editor/useEditorState";
 
 const ed = inject(EDITOR_KEY);
 const readonly = toRef(ed.props, "readonly");
+const commentsAllowed = toRef(ed.props, "commentsAllowed");
 const saveStatusColor = toRef(ed.props, "saveStatusColor");
 const saveStatusText = toRef(ed.props, "saveStatusText");
 const {
@@ -93,18 +95,7 @@ const {
 				<div class="w-px h-5 bg-gray-200 mx-1 shrink-0"></div>
 
 				<!-- Comment Tool button -->
-				<button
-					title="Comment Tool"
-					:class="[
-						'p-1.5 flex items-center justify-center rounded transition-colors',
-						isCommentMode
-							? 'bg-blue-100 text-blue-700 shadow-sm'
-							: 'hover:bg-gray-100 text-gray-700',
-					]"
-					@click="toggleCommentMode"
-				>
-					<Icon icon="lucide:message-square" class="w-4 h-4" />
-				</button>
+				<CommentToolButton :active="isCommentMode" @click="toggleCommentMode" />
 
 				<div class="w-px h-5 bg-gray-200 mx-1 shrink-0"></div>
 
@@ -131,11 +122,17 @@ const {
 			</button>
 		</template>
 
-		<!-- Read-only indicator -->
-		<div v-if="readonly" class="flex items-center gap-1.5 text-gray-400 text-sm">
-			<Icon icon="lucide:lock" class="w-4 h-4" />
-			<span>View Only</span>
-		</div>
+		<!-- Read-only indicator, with the Comment Tool beside it when commenting is allowed -->
+		<template v-if="readonly">
+			<template v-if="commentsAllowed">
+				<CommentToolButton :active="isCommentMode" @click="toggleCommentMode" />
+				<div class="w-px h-5 bg-gray-200 mx-1 shrink-0"></div>
+			</template>
+			<div class="flex items-center gap-1.5 text-gray-400 text-sm">
+				<Icon icon="lucide:lock" class="w-4 h-4" />
+				<span>View Only</span>
+			</div>
+		</template>
 
 		<div class="flex-1 flex items-center justify-end gap-2 px-3">
 			<div

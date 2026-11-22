@@ -6,7 +6,7 @@
 			<!-- BPMN Canvas -->
 			<div
 				ref="container"
-				:class="['bpmn-canvas flex-1 min-w-0', { 'bpmn-canvas--readonly': readonly, 'comment-mode-active': isCommentMode }]"
+				:class="['bpmn-canvas flex-1 min-w-0', { 'bpmn-canvas--readonly': readonly, 'bpmn-canvas--comments': commentsAllowed, 'comment-mode-active': isCommentMode }]"
 				@contextmenu.prevent
 			></div>
 
@@ -115,6 +115,11 @@ const props = defineProps({
 	readonly: {
 		type: Boolean,
 		default: false
+	},
+	// Commenting is exempt from the read-only lock; off while browsing a historical version
+	commentsAllowed: {
+		type: Boolean,
+		default: true
 	},
 	// "Release Property Panel" mode - while readonly, re-enables the properties
 	// panel for flow objects, minus script tasks, AI Agent tasks and the
