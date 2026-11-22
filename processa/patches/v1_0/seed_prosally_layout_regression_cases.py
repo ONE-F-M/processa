@@ -37,7 +37,8 @@ PROMPTS = (
 )
 
 ASSERTIONS = [
-	{"assertion_type": "regex", "value": r'(?i)"intent"\s*:\s*"RELAYOUT"'},
+	# The reply text is what the run records, and a RELAYOUT confirmation offers to lay the diagram out again.
+	{"assertion_type": "regex", "value": r"(?i)\blay(?:ing)? (?:the diagram|it) out again\b"},
 	{"assertion_type": "no_tool_call", "value": "modify_process, generate_process"},
 ]
 TRACE = [{"call_order": 1, "tool_name": "classify_intent"}]
