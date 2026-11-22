@@ -10,6 +10,7 @@ from frappe.utils.safe_exec import SERVER_SCRIPT_FILE_PREFIX
 CODE_FENCE = re.compile(r"```[a-zA-Z]*\s*\n(.*?)```", re.DOTALL)
 TRACEBACK = "Traceback (most recent call last)"
 ERROR_CHARS = 3000
+LIBRARY_CODE_CHARS = 3000
 ENGINE_ERROR_TITLE = 'BPMN ScriptTask: "{}" execution failed'
 CHECK_ERROR_TITLE = 'Logix check: "{}" failed'
 BPMN_NS = "{http://www.omg.org/spec/BPMN/20100524/MODEL}"
@@ -56,7 +57,7 @@ def _logged_error(script_name: str) -> str:
 
 
 def library_scripts(process_model: str | None) -> list[dict]:
-	"""The library scripts on a map that the user can read, each with its function signatures.
+	"""The library scripts on a map that the user can read, each with its function signatures and code.
 
 	A library is a script task with no incoming or outgoing flow whose script only defines functions.
 	"""
@@ -71,9 +72,10 @@ def library_scripts(process_model: str | None) -> list[dict]:
 			continue
 		if not frappe.has_permission("Server Script", "read", doc=name):
 			continue
-		functions = function_signatures(frappe.db.get_value("Server Script", name, "script") or "")
+		code = frappe.db.get_value("Server Script", name, "script") or ""
+		functions = function_signatures(code)
 		if functions is not None:
-			libraries.append({"name": name, "functions": functions})
+			libraries.append({"name": name, "functions": functions, "code": code[:LIBRARY_CODE_CHARS]})
 	return libraries
 
 
