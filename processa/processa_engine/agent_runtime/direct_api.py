@@ -397,6 +397,9 @@ class DirectApiExecutor(Executor):
 			)
 		except LLMRefusedError as exc:
 			return ExecutorResult(error_code=ErrorCode.MODEL_REFUSED, error_message=str(exc))
+		except (ImportError, AttributeError) as exc:
+			# A code fault such as a half-updated worker, not a provider failure; the run keeps the message.
+			return ExecutorResult(error_code=ErrorCode.UNEXPECTED_ERROR, error_message=str(exc))
 		except Exception as exc:
 			return ExecutorResult(
 				error_code=ErrorCode.FAILED_MODEL_CALL,

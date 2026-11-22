@@ -179,6 +179,22 @@ class TestExecutorToolBridge(FrappeTestCase):
 		self.assertEqual(result.error_code, ErrorCode.MODEL_REFUSED)
 		self.assertEqual(result.error_message, "declined")
 
+	def test_a_code_error_in_the_loop_is_an_unexpected_error_not_a_model_failure(self):
+		config = ExecutorConfig(
+			provider_name=self.openai_provider,
+			model="test-model",
+			system_prompt="sys",
+			user_prompt="usr",
+			tools=[_tool()],
+		)
+		broken = _FakeAdapter([])
+		broken.step = AsyncMock(side_effect=ImportError("cannot import name 'X'"))
+		with patch(
+			"processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter", return_value=broken
+		):
+			result = DirectApiExecutor().run(config, ExecutorContext())
+		self.assertEqual(result.error_code, ErrorCode.UNEXPECTED_ERROR)
+
 	# ── Scenario 6: no adapter for provider type → explicit error ──
 
 	def test_unsupported_provider_type_errors(self):
