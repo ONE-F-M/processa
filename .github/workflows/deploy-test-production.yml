@@ -29,46 +29,11 @@ jobs:
           port: 22
           command_timeout: 60m
           script: |
-            set -eo pipefail
-            export PATH="/home/frappe/.local/bin:$PATH"
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-            command -v bench
-            bench --version
-            node -v
-
+            set -e
             BENCH=/home/frappe/test-production
-            WORKERS="$(basename "$BENCH")-workers:"
-            # One deploy at a time per bench, across one_fm, processa and frappe_agile.
-            exec 9>"$BENCH/config/deploy.lock"
-            flock -w 1500 9
-
-            # Transition: a bench still on the one_bpmn folder name moves to processa on its first deploy.
-            if [ -d "$BENCH/apps/one_bpmn" ] && [ ! -e "$BENCH/apps/processa" ]; then
-              mv "$BENCH/apps/one_bpmn" "$BENCH/apps/processa"
-              sed -i 's/^one_bpmn$/processa/' "$BENCH/sites/apps.txt"
-            fi
-            cd $BENCH/apps/processa
-            git pull upstream test-production
-            cd $BENCH
-            if env/bin/pip show one_bpmn >/dev/null 2>&1; then env/bin/pip uninstall -y one_bpmn; fi
-            rm -rf env/lib/python*/site-packages/processa-*.dist-info
-            bench setup requirements processa
-            cd $BENCH/apps/processa/frontend
-            yarn install
-            export NODE_OPTIONS="--max-old-space-size=4096"
-            # Remove old build output that would shadow www/processa.html
-            rm -rf ../processa/public/processa ../processa/www/processa
-            yarn build
-            cd $BENCH
-
-            trap 'status=$?; if [ $status -ne 0 ]; then sudo supervisorctl start "$WORKERS"; fi' EXIT
-            # Workers and the scheduler write Scheduled Job Log while migrate deletes from it.
-            sudo supervisorctl stop "$WORKERS"
-            # A scheduler orphaned by an earlier stop holds the lock supervisor's scheduler needs; [s] keeps pkill off this script.
-            pkill -f "$BENCH/env/bin/python -m frappe.utils.bench_helper frappe [s]chedule" || true
-            (cd sites && ../env/bin/python -c "from processa.cutover import run; run()")
-            bench --site test-production.one-fm.com migrate
-            bench --site test-production.one-fm.com build --app processa
-            bench --site test-production.one-fm.com clear-cache
-            bench restart
+            APP_DIR="$BENCH/apps/processa"
+            [ -d "$APP_DIR" ] || APP_DIR="$BENCH/apps/one_bpmn"
+            # The deploy steps live in the repo, fetched from the branch being deployed.
+            git -C "$APP_DIR" fetch upstream test-production
+            git -C "$APP_DIR" show FETCH_HEAD:scripts/deploy.sh > "$BENCH/config/deploy.sh"
+            NODE_OPTIONS="--max-old-space-size=4096" bash "$BENCH/config/deploy.sh" "$BENCH" test-production
