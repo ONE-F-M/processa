@@ -31,23 +31,31 @@ It contains 1 page(s).
     ◇ Approved?
     ◇ Accepted?"""
 
-VISA_SUMMARY = """I've successfully read the Lucidchart document "Visa Process".
+CHECK_SUMMARY = """I've successfully read the Lucidchart document "Pre-Employment Check".
 It contains 1 page(s).
 
-### Page: Visa Request
+### Page: Pre-Employment Check
   Shapes: 10  |  Connections: 11
-  Swimlanes/Roles: Employee, GRD Operator, PRO
-  Start/End events: Visa requested, Visa issued, Visa request cancelled
+  Swimlanes/Roles: Recruiter, Medical Officer, PRO
+  Start/End events: Check requested, Candidate cleared, Check cancelled
   Process steps (5):
-    • Employee submits the visa request
-    • GRD Operator books the medical appointment
+    • Recruiter opens the pre-employment check
+    • Medical Officer books the medical examination
     • PRO prepares the visa documents
-    • GRD Operator records the medical result
+    • Medical Officer records the medical result
     • PRO submits the documents to the ministry
   Decision points (1):
     ◇ Medical result fit?
   Text annotations / instructions (1):
-    ✎ Document preparation runs at the same time as the medical check. The moment the medical result is Unfit, the PRO stops preparing the documents and the request is cancelled."""
+    ✎ Document preparation runs at the same time as the medical examination. The moment the medical result is Unfit, the PRO stops preparing the documents and the check is cancelled."""
+
+
+# A signal throw and a signal catch or boundary in the drafted blocks, and no ScriptTask line that carries the signal.
+SIGNAL_DRAWN = (
+	r"(?is)^(?=.*IntermediateThrowEvent[^\\]{0,120}signal)"
+	r"(?=.*(?:IntermediateCatchEvent|Boundary\w*)[^\\]{0,120}signal)"
+	r"(?!.*ScriptTask[^\\]{0,120}signal)"
+)
 
 
 def _context(user_text: str, bot_text: str, state: dict, summary: str) -> dict:
@@ -99,17 +107,18 @@ def _approve_accept_case() -> dict:
 def _signal_case() -> dict:
 	state = _state(
 		"MIGRATION_TASKS_CONFIRMED",
-		document={"document_id": LUCID_DOC_ID, "title": "Visa Process", "page_count": 1},
-		codebase_scan={"apps_scanned": ["one_fm"], "matched_doctypes": ["Visa"]},
-		topology={"total_processes": 1, "processes": [{"process_name": "Request Visa"}]},
+		confirmed_process={"name": "Pre Employment Check", "process_name": "Pre Employment Check"},
+		document={"document_id": LUCID_DOC_ID, "title": "Pre-Employment Check", "page_count": 1},
+		codebase_scan={"apps_scanned": ["one_fm"], "matched_doctypes": ["Pre Employment Check"]},
+		topology={"total_processes": 1, "processes": [{"process_name": "Run Pre-Employment Check"}]},
 		migration_tasks={
 			"processes": [
 				{
-					"process_name": "Request Visa",
+					"process_name": "Run Pre-Employment Check",
 					"tasks": [
 						{
 							"category": "PROCESS MAP",
-							"task": "Build the Request Visa map",
+							"task": "Build the Run Pre-Employment Check map",
 							"references": ["code"],
 						}
 					],
@@ -118,24 +127,15 @@ def _signal_case() -> dict:
 		},
 	)
 	context = _context(
-		"approved", "Migration tasks confirmed. Next I can write the ProsAlly prompts.", state, VISA_SUMMARY
+		"approved", "Migration tasks confirmed. Next I can write the ProsAlly prompts.", state, CHECK_SUMMARY
 	)
 	return {
 		"title": "A stop sent from the medical path to the document path is a signal event, not a script task",
 		"skill": PROSALLY_SKILL,
 		"prompt": "now write the ProsAlly prompts",
 		"context": context,
-		"calls": READ_THEN_DRAFT,
-		"assertions": [
-			IN_ORDER,
-			NO_REFETCH,
-			_judge(
-				"In the Request Visa prompt block, the Unfit medical result stops the document preparation "
-				"path through a signal: an IntermediateThrowEvent (Signal) on the medical path and an "
-				"IntermediateCatchEvent (Signal), or a signal boundary event, with the same signal name on "
-				"the document preparation path. No ScriptTask stands in for that signal."
-			),
-		],
+		"calls": [*READ_THEN_DRAFT, _call(2, "finalize", "prosally_prompts", "regex", SIGNAL_DRAWN)],
+		"assertions": [IN_ORDER],
 	}
 
 

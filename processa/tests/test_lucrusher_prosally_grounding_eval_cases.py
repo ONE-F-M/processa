@@ -62,8 +62,13 @@ class TestWorkflowModellingEvalCases(FrappeTestCase):
 		self.assertIn(
 			"Approve and Accept are NOT proposed as separate processes", topology["assertions"][-1]["value"]
 		)
-		self.assertEqual(signal["calls"][-1]["expected_value"], "PROSALLY_PROMPT_DRAFT")
-		self.assertIn("No ScriptTask stands in for that signal", signal["assertions"][-1]["value"])
+		finalize = [c for c in signal["calls"] if c["tool_name"] == "finalize"]
+		self.assertEqual({c["call_order"] for c in finalize}, {2})
+		pattern = next(c["expected_value"] for c in finalize if c["argument"] == "prosally_prompts")
+		drawn = "C:\\n4. IntermediateThrowEvent | Unfit (signal medical_unfit)\\n7. BoundaryEvent | signal medical_unfit\\nD:"
+		scripted = "C:\\n4. ScriptTask | Broadcast unfit signal\\n5. IntermediateThrowEvent | x signal\\n6. IntermediateCatchEvent | x signal"
+		self.assertRegex(drawn, pattern)
+		self.assertNotRegex(scripted, pattern)
 
 	def test_seeding_twice_adds_each_case_once(self):
 		frappe.set_user("Administrator")
