@@ -87,7 +87,13 @@
 					</details>
 				</div>
 				<!-- Every stamped entry shows when it happened -->
-				<div v-if="showsTime(transcriptItems, i, formatTime)" class="acp-time" :class="{ 'acp-time--user': item.kind === 'user' }">{{ formatTime(item.ts) }}</div>
+				<div
+					v-if="timeShown[i]"
+					class="acp-time"
+					:class="{ 'acp-time--user': item.kind === 'user' }"
+				>
+					{{ formatTime(item.ts) }}
+				</div>
 			</template>
 
 			<div
@@ -426,6 +432,8 @@ const trayItem = computed(() => {
 
 // The transcript in document/form mode replaces the routed item with a
 // small marker, keeping chronology readable without rendering it twice.
+const timeShown = computed(() => transcriptItems.value.map((_item, i) => showsTime(transcriptItems.value, i, formatTime)));
+
 const transcriptItems = computed(() => {
 	if (layoutMode.value === "conversation") return items.value;
 	return items.value.map((item) => {

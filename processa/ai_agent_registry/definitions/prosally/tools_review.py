@@ -132,7 +132,7 @@ def move_drawing(xml: str, compiled: dict) -> str | None:
 		_attribute(m[1], "id"): (_attribute(m[1], "sourceRef"), _attribute(m[1], "targetRef"))
 		for m in re.finditer(r"<bpmn:sequenceFlow\b([^>]*)>", compiled["xml"])
 	}
-	inferred = {n["id"] for n in (compiled.get("normalizedIR") or {}).get("nodes") or [] if n.get("inferred")}
+	inferred = {n["id"] for n in compiled["normalizedIR"]["nodes"] if n.get("inferred")}
 	pools = set(re.findall(r'<bpmn:participant\b[^>]*?\bid="([^"]+)"', xml))
 	unplaced = []
 
@@ -451,7 +451,7 @@ LAYOUT_ASKS = (
 
 def layout_asks(text: str) -> list[str]:
 	"""Which layout asks text makes: spacing, alignment, crossings, convergence."""
-	return [ask for ask, pattern in LAYOUT_ASKS if pattern.search(text or "")]
+	return [ask for ask, pattern in LAYOUT_ASKS if pattern.search(text)]
 
 
 def unsupported_kinds(xml: str) -> list[str]:
