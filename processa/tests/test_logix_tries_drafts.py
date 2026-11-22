@@ -177,3 +177,7 @@ class TestLogixChecksFields(FrappeTestCase):
 		self.assertEqual(out["doc_doctype"], "ToDo")
 		self.assertEqual(set(out["doctype_fields"]), {"ToDo", "Note"})
 		self.assertEqual([f["name"] for f in field_findings("doc.due_on = 1\n", out)], ["due_on"])
+
+	def test_a_filter_row_with_a_computed_field_is_skipped_not_a_crash(self):
+		code = 'field = "status"\nrows = frappe.get_all("ToDo", filters=[["ToDo", field, "=", "Open"], ["priority", "=", 1]])\n'
+		self.assertEqual(field_findings(code, {}), [])

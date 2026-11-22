@@ -140,10 +140,11 @@ def field_findings(code: str, turn: dict) -> list[dict]:
 	lines = code.splitlines()
 	bound = {"doc": turn.get("doc_doctype")} if turn.get("doc_doctype") else {}
 	for node in ast.walk(tree):
-		if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-			doctype = _loaded_doctype(node.value)
-			if doctype:
-				bound[node.targets[0].id] = doctype
+		if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+			continue
+		doctype = _loaded_doctype(node.value)
+		if doctype and isinstance(node.targets[0], ast.Name):
+			bound[node.targets[0].id] = doctype
 
 	findings, seen = [], set()
 	for node in ast.walk(tree):
@@ -153,8 +154,7 @@ def field_findings(code: str, turn: dict) -> list[dict]:
 			seen.add((doctype, field))
 			finding = _field_finding(doctype, field)
 			if finding:
-				line = getattr(node, "lineno", 0)
-				findings.append(dict(finding, line=line, code=lines[line - 1].strip() if line else ""))
+				findings.append(dict(finding, line=node.lineno, code=lines[node.lineno - 1].strip()))
 	return findings
 
 
@@ -229,10 +229,6 @@ def _trigger_doctype(process_context: dict) -> str | None:
 	)
 
 
-def _is_doctype(name: str) -> bool:
-	return bool(name) and bool(frappe.db.exists("DocType", name))
-
-
 def _loaded_doctype(value) -> str | None:
 	"""The DocType of frappe.get_doc("X", ...), frappe.new_doc("X") or frappe.get_doc({"doctype": "X", ...})."""
 	if not (
@@ -247,18 +243,12 @@ def _loaded_doctype(value) -> str | None:
 	return first.value if isinstance(first, ast.Constant) and isinstance(first.value, str) else None
 
 
-def _dict_doctype(node: ast.Dict) -> str | None:
-	for key, value in zip(node.keys, node.values, strict=True):
-		if isinstance(key, ast.Constant) and key.value == "doctype" and isinstance(value, ast.Constant):
-			return value.value
-	return None
-
-
 def _used_fields(node, bound: dict):
 	"""(DocType, field) pairs a node reads or writes."""
-	if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in bound:
+	owner = node.value.id if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) else None
+	if owner in bound:
 		if not hasattr(Document, node.attr):
-			yield bound[node.value.id], node.attr
+			yield bound[owner], node.attr
 	elif isinstance(node, ast.Dict) and _dict_doctype(node):
 		doctype = _dict_doctype(node)
 		for key in node.keys:
@@ -281,9 +271,9 @@ def _called_fields(node: ast.Call, bound: dict):
 	if func.attr in DOC_LOADERS and node.args and isinstance(node.args[0], ast.Constant):
 		yield node.args[0].value, None
 		return
-	if func.attr not in FIELD_QUERIES or not node.args or not isinstance(node.args[0], ast.Constant):
+	if func.attr not in FIELD_QUERIES or not node.args:
 		return
-	doctype = node.args[0].value
+	doctype = node.args[0].value if isinstance(node.args[0], ast.Constant) else None
 	if not isinstance(doctype, str):
 		return
 	yield doctype, None
@@ -308,14 +298,13 @@ def _field_names(node) -> list[str]:
 	if isinstance(node, (ast.List, ast.Tuple)):
 		names = []
 		for item in node.elts:
-			if (
-				isinstance(item, (ast.List, ast.Tuple))
-				and item.elts
-				and isinstance(item.elts[0], ast.Constant)
-			):
-				names.append(item.elts[1 if len(item.elts) == 4 else 0].value)
-			else:
+			if not isinstance(item, (ast.List, ast.Tuple)):
 				names.extend(_field_names(item))
+				continue
+			# A filter row is [field, op, value] or [doctype, field, op, value].
+			entry = item.elts[1 if len(item.elts) == 4 else 0] if item.elts else None
+			if isinstance(entry, ast.Constant) and isinstance(entry.value, str):
+				names.append(entry.value)
 		return names
 	return []
 
@@ -329,13 +318,25 @@ def _field_finding(doctype: str, field: str | None) -> dict | None:
 			"rule": f"{doctype} is not a DocType on this site. Do not guess one; ask which DocType the person means.",
 		}
 	field = (field or "").split(" as ")[0].strip()
-	if not field or any(c in field for c in "(*`.") or field in STANDARD_FIELDS:
+	if not field or field in STANDARD_FIELDS:
 		return None
-	data = field_list(doctype)
-	if field in data["fields"] or field in data["child_tables"]:
+	if any(c in field for c in "(*`."):
+		return None
+	if frappe.get_meta(doctype).has_field(field):
 		return None
 	return {
 		"category": "Field check",
 		"name": field,
 		"rule": f"{field} is not a field of {doctype}. Use one of its fields, or ask which field the person means.",
 	}
+
+
+def _is_doctype(name: str) -> bool:
+	return bool(name) and bool(frappe.db.exists("DocType", name))
+
+
+def _dict_doctype(node: ast.Dict) -> str | None:
+	for key, value in zip(node.keys, node.values, strict=True):
+		if isinstance(key, ast.Constant) and key.value == "doctype" and isinstance(value, ast.Constant):
+			return value.value
+	return None
