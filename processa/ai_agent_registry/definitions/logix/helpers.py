@@ -20,6 +20,8 @@ SERVER_SCRIPT_ATTR = "{http://spiffworkflow.org/bpmn/schema/1.0/core}serverScrip
 MAX_DOCTYPES = 3
 # "the Employee DocType", "Leave Application records": a name followed by a word that marks it as a DocType.
 NAMED_DOCTYPE = re.compile(r"((?:[A-Z][\w-]*\s+){0,3}[A-Z][\w-]*)\s+((?i:doctype|record|records|form))\b")
+# "this Medical Appointment", "each Leave Application": a capitalised name after a word that points at records.
+REFERRED_DOCTYPE = re.compile(r"\b(this|the|each|every|an?|for)\s+((?:[A-Z][\w-]*\s+){0,3}[A-Z][\w-]*)")
 STANDARD_FIELDS = frozenset(default_fields + child_table_fields + optional_fields)
 DOC_LOADERS = ("get_doc", "new_doc", "get_cached_doc", "get_last_doc")
 FIELD_QUERIES = {
@@ -125,7 +127,7 @@ def doctype_inputs(user_text: str, process_context: dict | None, current_script:
 	return {
 		"doctype_fields": {name: field_list(name) for name in names},
 		"missing_doctypes": missing,
-		"trigger_doctype": _trigger_doctype(process_context or {}),
+		"doc_doctype": _trigger_doctype(process_context or {}) or _this_doctype(user_text or ""),
 	}
 
 
@@ -136,7 +138,7 @@ def field_findings(code: str, turn: dict) -> list[dict]:
 	except SyntaxError:
 		return []
 	lines = code.splitlines()
-	bound = {"doc": turn.get("trigger_doctype")} if turn.get("trigger_doctype") else {}
+	bound = {"doc": turn.get("doc_doctype")} if turn.get("doc_doctype") else {}
 	for node in ast.walk(tree):
 		if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
 			doctype = _loaded_doctype(node.value)
@@ -190,6 +192,8 @@ def _turn_doctypes(user_text: str, process_context: dict, current_script: str) -
 			candidates.append(found)
 		elif match.group(2).lower() == "doctype":
 			missing.append(match.group(1))
+	for match in REFERRED_DOCTYPE.finditer(user_text):
+		candidates.append(_leading_doctype(match.group(2).split()))
 	names = []
 	for name in candidates:
 		if not name or name in names:
@@ -199,6 +203,23 @@ def _turn_doctypes(user_text: str, process_context: dict, current_script: str) -
 		elif name not in missing:
 			missing.append(name)
 	return names[:MAX_DOCTYPES], missing
+
+
+def _this_doctype(user_text: str) -> str | None:
+	"""The DocType the request calls "this X": the record the script task runs on."""
+	for match in REFERRED_DOCTYPE.finditer(user_text):
+		if match.group(1).lower() == "this":
+			found = _leading_doctype(match.group(2).split())
+			if found:
+				return found
+	return None
+
+
+def _leading_doctype(words: list[str]) -> str | None:
+	"""The longest run of leading words that names a DocType."""
+	return next(
+		(" ".join(words[:i]) for i in range(len(words), 0, -1) if _is_doctype(" ".join(words[:i]))), None
+	)
 
 
 def _trigger_doctype(process_context: dict) -> str | None:

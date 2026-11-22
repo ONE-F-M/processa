@@ -130,7 +130,7 @@ class TestLogixReadsTheNewestError(FrappeTestCase):
 
 class TestLogixChecksFields(FrappeTestCase):
 	def _names(self, code, trigger="Note"):
-		return [f["name"] for f in field_findings(code, {"trigger_doctype": trigger})]
+		return [f["name"] for f in field_findings(code, {"doc_doctype": trigger})]
 
 	def test_a_field_the_doctype_lacks_is_found_wherever_the_script_uses_it(self):
 		code = (
@@ -145,7 +145,7 @@ class TestLogixChecksFields(FrappeTestCase):
 			self._names(code),
 			["arrival_date", "departure", "priority_level", "due", "closing_note", "reviewer"],
 		)
-		self.assertIn("is not a field of Note", field_findings(code, {"trigger_doctype": "Note"})[0]["rule"])
+		self.assertIn("is not a field of Note", field_findings(code, {"doc_doctype": "Note"})[0]["rule"])
 
 	def test_real_fields_methods_and_standard_fields_pass(self):
 		code = (
@@ -156,7 +156,7 @@ class TestLogixChecksFields(FrappeTestCase):
 			'result["d"] = frappe.db.get_value("ToDo", names[0], ["allocated_to", "modified"])\n'
 			'frappe.get_doc({"doctype": "ToDo", "description": "x", "allocated_to": "Administrator"}).insert()\n'
 		)
-		self.assertEqual(field_findings(code, {"trigger_doctype": "Note"}), [])
+		self.assertEqual(field_findings(code, {"doc_doctype": "Note"}), [])
 
 	def test_a_doctype_that_does_not_exist_is_found_and_not_guessed(self):
 		findings = field_findings('x = frappe.get_doc("Arrival Register", "A-1")\n', {})
@@ -171,3 +171,9 @@ class TestLogixChecksFields(FrappeTestCase):
 		user = doctype_inputs("Update the User record", {}, "")["doctype_fields"]["User"]
 		self.assertEqual(user["child_tables"]["roles"]["doctype"], "Has Role")
 		self.assertIn("role", user["child_tables"]["roles"]["fields"])
+
+	def test_this_record_named_in_the_request_is_the_doc_the_script_reads(self):
+		out = doctype_inputs("Close this ToDo and set its due date from the Note title", {}, "")
+		self.assertEqual(out["doc_doctype"], "ToDo")
+		self.assertEqual(set(out["doctype_fields"]), {"ToDo", "Note"})
+		self.assertEqual([f["name"] for f in field_findings("doc.due_on = 1\n", out)], ["due_on"])
