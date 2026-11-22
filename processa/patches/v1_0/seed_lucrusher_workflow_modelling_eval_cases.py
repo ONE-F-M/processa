@@ -23,13 +23,13 @@ It contains 1 page(s).
   Swimlanes/Roles: Operations Supervisor, Project Manager, Operations Manager
   Start/End events: Event requested, Event active, Event rejected
   Process steps (4):
-    • Operations Supervisor creates the Client Event
-    • Project Manager approves the Client Event
-    • Operations Manager accepts the Client Event
-    • Event schedules are generated
+    \u2022 Operations Supervisor creates the Client Event
+    \u2022 Project Manager approves the Client Event
+    \u2022 Operations Manager accepts the Client Event
+    \u2022 Event schedules are generated
   Decision points (2):
-    ◇ Approved?
-    ◇ Accepted?"""
+    \u25c7 Approved?
+    \u25c7 Accepted?"""
 
 CHECK_SUMMARY = """I've successfully read the Lucidchart document "Pre-Employment Check".
 It contains 1 page(s).
@@ -39,15 +39,15 @@ It contains 1 page(s).
   Swimlanes/Roles: Recruiter, Medical Officer, PRO
   Start/End events: Check requested, Candidate cleared, Check cancelled
   Process steps (5):
-    • Recruiter opens the pre-employment check
-    • Medical Officer books the medical examination
-    • PRO prepares the visa documents
-    • Medical Officer records the medical result
-    • PRO submits the documents to the ministry
+    \u2022 Recruiter opens the pre-employment check
+    \u2022 Medical Officer books the medical examination
+    \u2022 PRO prepares the visa documents
+    \u2022 Medical Officer records the medical result
+    \u2022 PRO submits the documents to the ministry
   Decision points (1):
-    ◇ Medical result fit?
+    \u25c7 Medical result fit?
   Text annotations / instructions (1):
-    ✎ Document preparation runs at the same time as the medical examination. The moment the medical result is Unfit, the PRO stops preparing the documents and the check is cancelled."""
+    \u270e Document preparation runs at the same time as the medical examination. The moment the medical result is Unfit, the PRO stops preparing the documents and the check is cancelled."""
 
 
 # A signal throw and a signal catch or boundary in the drafted blocks, and no ScriptTask line that carries the signal.

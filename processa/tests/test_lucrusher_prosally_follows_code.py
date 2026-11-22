@@ -218,7 +218,7 @@ GOOD_PROCESS = {"type": "User Task Driven", "reason": "R1", "shapes": ["s"], "so
 
 def _review(task_data, turn=None):
 	"""Run the site's Finalize script the way the engine does, in one namespace; (output, raised message)."""
-	script = frappe.db.get_value("Server Script", "LuCrusher \u2013 Tool Finalize", "script") or ""
+	script = frappe.db.get_value("Server Script", "LuCrusher \u2013 Tool Finalize", "script")
 	stored = {}
 	scope = {"frappe": frappe, "task_data": task_data, "context_docname": "x", "result": {}}
 	with (
