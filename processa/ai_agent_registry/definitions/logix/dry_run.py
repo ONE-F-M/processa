@@ -35,7 +35,7 @@ def dry_run(code: str, turn: dict) -> dict:
 	The run is inside a savepoint that is rolled back, as the person who asked, with email and HTTP calls stubbed.
 	"""
 	context = turn.get("process_context") or {}
-	model = _process_model(context.get("process_name"))
+	model = _process_model(context)
 	doctype = model and model.trigger_doctype
 	names = frappe.get_all(doctype, pluck="name", order_by="creation desc", limit=1) if doctype else []
 	if not names:
@@ -95,12 +95,14 @@ def _namespace(model, context: dict, doc, result: dict) -> dict:
 	}
 
 
-def _process_model(process_id: str | None):
-	if not process_id:
-		return None
-	name = frappe.db.get_value(
-		"BPMN Process Model", {"process_id": process_id}, "name", order_by="modified desc"
-	)
+def _process_model(context: dict):
+	"""The map open in the editor, or the newest map whose process id is the given process name."""
+	name = context.get("process_model")
+	if not (name and frappe.db.exists("BPMN Process Model", name)):
+		process_id = context.get("process_name")
+		name = process_id and frappe.db.get_value(
+			"BPMN Process Model", {"process_id": process_id}, "name", order_by="modified desc"
+		)
 	return name and frappe.db.get_value(
 		"BPMN Process Model", name, ["name", "trigger_doctype", "bpmn_xml"], as_dict=True
 	)
