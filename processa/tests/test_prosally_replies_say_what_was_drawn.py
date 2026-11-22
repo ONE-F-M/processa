@@ -201,8 +201,48 @@ class TestRelayout(FrappeTestCase):
 		self.assertEqual(tools_pipeline.element_names(new_xml).keys(), tools_pipeline.element_names(messy).keys())
 		self.assertNotIn('x="9999"', new_xml)
 
-	def test_a_diagram_without_lanes_is_left_to_the_editor(self):
-		self.assertEqual(tools_review.relayout('<bpmn:process id="p"><bpmn:startEvent id="s" /></bpmn:process>')[1], "lane-less")
+	def test_a_layout_changes_only_coordinates_with_and_without_lanes(self):
+		lane_less = tools_pipeline.compile_ir(
+			{
+				"name": "Leave",
+				"lanes": [],
+				"nodes": [
+					{"id": "s", "type": "startEvent", "name": "Asked"},
+					{"id": "g", "type": "exclusiveGateway", "name": "Approved?"},
+					{"id": "w", "type": "intermediateCatchEvent", "name": "Wait a day"},
+					{"id": "e", "type": "endEvent", "name": "Done"},
+				],
+				"flows": [
+					{"id": "f1", "from": "s", "to": "g"},
+					{"id": "f2", "from": "g", "to": "w", "name": "Yes", "condition": "approved == True"},
+					{"id": "f3", "from": "g", "to": "e", "default": True},
+					{"id": "f4", "from": "w", "to": "e"},
+				],
+			}
+		)["xml"]
+		lane_less = lane_less.replace(
+			'<bpmn:intermediateCatchEvent id="w" name="Wait a day" />',
+			'<bpmn:intermediateCatchEvent id="w" name="Wait a day"><bpmn:timerEventDefinition id="t">'
+			"<bpmn:timeDuration>P1D</bpmn:timeDuration></bpmn:timerEventDefinition></bpmn:intermediateCatchEvent>",
+		)
+		for xml, step in ((self.xml, self.ir["nodes"][1]["id"]), (lane_less, "w")):
+			messy = re.sub(
+				rf'(<bpmndi:BPMNShape id="[^"]*" bpmnElement="{step}">\s*<dc:Bounds x=")[\d.]+', r"\g<1>9999", xml
+			)
+			new_xml, reason = tools_review.relayout(messy)
+			self.assertEqual(reason, "")
+			self.assertNotIn('x="9999"', new_xml)
+			cut = messy.index("<bpmndi:BPMNDiagram")
+			self.assertEqual(new_xml[:cut], messy[:cut])
+			drawn = re.compile(r'bpmndi:BPMN(?:Shape|Edge) id="[^"]+" bpmnElement="[^"]+"')
+			self.assertEqual(drawn.findall(new_xml), drawn.findall(messy))
+		self.assertIn("<bpmn:timeDuration>P1D</bpmn:timeDuration>", new_xml)
+		self.assertIn("approved == True", new_xml)
+
+	def test_a_diagram_with_an_element_the_layout_cannot_place_is_refused_by_name(self):
+		xml = self.xml.replace("</bpmn:process>", '<bpmn:textAnnotation id="note" /></bpmn:process>')
+		self.assertEqual(tools_review.relayout(xml), (None, "unsupported"))
+		self.assertEqual(tools_review.unsupported_kinds(xml), ["text annotation"])
 
 	def _classify(self, turn, llm_reply="{}"):
 		script = frappe.db.get_value("Server Script", {"api_method": "prosally_tool_classify_intent"}, "script")
@@ -230,7 +270,7 @@ class TestRelayout(FrappeTestCase):
 		result, output = self._classify({"confirmed_action": "RELAYOUT", "current_xml": self.xml})
 		self.assertFalse(result["modified"])
 		self.assertNotIn("bpmn_xml", output)
-		self.assertIn("already the best", output["response"])
+		self.assertIn("came out where it already is", output["response"])
 		self.assertNotIn("I've updated", output["response"])
 
 	def test_a_layout_complaint_asks_before_laying_out_again(self):

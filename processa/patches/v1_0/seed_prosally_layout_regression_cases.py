@@ -1,4 +1,4 @@
-"""Seeds three layout-instruction cases into ProsAlly Regressions, each expecting RELAYOUT and no drawing tool.
+"""Seeds five layout-instruction cases into ProsAlly Regressions, each expecting RELAYOUT and no drawing tool.
 
 Idempotent by suite and case title.
 """
@@ -28,6 +28,11 @@ PROMPTS = (
 		"A layout-only routing request is a relayout",
 		'Clean up the visual routing of the three Cancel edges into the "Cancelled" gateway. This is a '
 		"layout-only change. Do not alter any source, target or condition.",
+	),
+	("An alignment request is a relayout", "The steps are not aligned, line them up"),
+	(
+		"A convergence request is a relayout",
+		"Make the lines into Cancelled converge instead of each taking its own route",
 	),
 )
 

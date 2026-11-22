@@ -973,7 +973,7 @@ export function buildManualLaneDI(ir, opts = {}) {
     const pts = edgePts[i];
     if (!pts) continue;
     const f = plans[i].f;
-    const flowId = "flow_" + f.from + "_" + f.to + "_" + i;
+    const flowId = f.id || "flow_" + f.from + "_" + f.to + "_" + i;
     edgeLines.push(
       '      <bpmndi:BPMNEdge id="' +
         flowId +

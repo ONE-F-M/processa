@@ -20,11 +20,12 @@ from processa.ai_agent_registry.definitions.prosally.helpers import (
 	register_namespaces,
 )
 from processa.ai_agent_registry.definitions.prosally.tools_pipeline import (
+	audit_layout,
+	check_topology,
 	compile_ir,
-	element_names,
+	flow_pairs_from_xml,
 	has_lanes,
 )
-from processa.ai_agent_registry.definitions.prosally.tools_properties import transfer_properties
 from processa.ai_agent_registry.definitions.shared.helpers import extract_json
 
 DIAGNOSE_ERROR_CHARS = 3000
@@ -93,34 +94,127 @@ def xml_to_ir(xml: str) -> dict | None:
 	return {"name": process.get("name") or "", "lanes": lanes, **kind, **body}
 
 
-def diagram_geometry(xml: str) -> list:
-	"""Every drawn shape and arrow of xml with its position, in a stable order."""
-	bpmndi, dc, di = ("{" + NS[prefix] + "}" for prefix in ("bpmndi", "dc", "di"))
-	drawn = []
-	for elem in ET.fromstring(xml).iter():
-		if elem.tag in (bpmndi + "BPMNShape", bpmndi + "BPMNEdge"):
-			points = [(b.get("x"), b.get("y"), b.get("width"), b.get("height")) for b in elem.iter(dc + "Bounds")]
-			points += [(p.get("x"), p.get("y")) for p in elem.iter(di + "waypoint")]
-			drawn.append((elem.get("bpmnElement"), tuple(points)))
-	return sorted(drawn)
-
-
 def relayout(xml: str) -> tuple[str | None, str]:
-	"""(new xml, "") with the diagram drawn again and every id and setting kept; (None, reason) when it cannot be."""
-	if not has_lanes(xml):
-		return None, "lane-less"
+	"""(xml with every shape and line moved to a fresh layout, "") or (None, why not); only coordinates change."""
 	ir = xml_to_ir(xml)
 	if ir is None:
 		return None, "unsupported"
 	compiled = compile_ir(ir)
 	if not compiled.get("ok") or not compiled.get("xml"):
 		return None, "failed"
-	merged, _removed = transfer_properties(xml, compiled["xml"])
-	if element_names(merged).keys() != element_names(xml).keys():
-		return None, "ids-changed"
-	if diagram_geometry(merged) == diagram_geometry(xml):
+	moved = move_drawing(xml, compiled)
+	if moved is None:
+		return None, "unplaced"
+	if _coordinates(moved) == _coordinates(xml):
 		return None, "same"
-	return merged, ""
+	return moved, ""
+
+
+DI_ELEMENT = re.compile(
+	r'(?P<open><(?P<tag>bpmndi:BPMN(?:Shape|Edge))\b[^>]*?\bbpmnElement="(?P<id>[^"]+)"[^>]*>)(?P<body>.*?)(?P<close></(?P=tag)>)',
+	re.S,
+)
+WAYPOINT = re.compile(r'<di:waypoint\s+x="(-?[\d.]+)"\s+y="(-?[\d.]+)"\s*/>')
+BOUNDS = re.compile(
+	r'<dc:Bounds\s+x="(-?[\d.]+)"\s+y="(-?[\d.]+)"\s+width="(-?[\d.]+)"\s+height="(-?[\d.]+)"'
+)
+LABEL = re.compile(r"<bpmndi:BPMNLabel\b.*?</bpmndi:BPMNLabel>", re.S)
+COMPILED_POOL = "Participant_1"
+
+
+def move_drawing(xml: str, compiled: dict) -> str | None:
+	"""xml with each shape and line placed where the compiled drawing has it and every other byte kept, or None."""
+	if any(f'xmlns:{prefix}="{NS[prefix]}"' not in xml for prefix in ("bpmndi", "dc", "di")):
+		return None
+	drawn = {m["id"]: m["body"] for m in DI_ELEMENT.finditer(compiled["xml"])}
+	flows = {
+		_attribute(m[1], "id"): (_attribute(m[1], "sourceRef"), _attribute(m[1], "targetRef"))
+		for m in re.finditer(r"<bpmn:sequenceFlow\b([^>]*)>", compiled["xml"])
+	}
+	inferred = {n["id"] for n in (compiled.get("normalizedIR") or {}).get("nodes") or [] if n.get("inferred")}
+	pools = set(re.findall(r'<bpmn:participant\b[^>]*?\bid="([^"]+)"', xml))
+	unplaced = []
+
+	def place(m):
+		key = COMPILED_POOL if m["id"] in pools else m["id"]
+		body = drawn.get(key)
+		if body is not None and m["tag"].endswith("Edge") and set(flows.get(key, ())) & inferred:
+			points = _route(key, flows, drawn, inferred)
+			label = LABEL.search(body)
+			body = (
+				None
+				if points is None
+				else "".join(f'<di:waypoint x="{x}" y="{y}" />' for x, y in points)
+				+ (label[0] if label else "")
+			)
+		if body is None:
+			unplaced.append(m["id"])
+			return m[0]
+		return m["open"] + body + m["close"]
+
+	moved = DI_ELEMENT.sub(place, xml)
+	every = len(re.findall(r"<\w*:?BPMN(?:Shape|Edge)\b", xml))
+	if unplaced or every != len(DI_ELEMENT.findall(xml)):
+		return None
+	return moved
+
+
+def _route(flow_id: str, flows: dict, drawn: dict, inferred: set) -> list | None:
+	"""The points of a flow, run through any gateway the compiler added, which meet at that gateway's centre."""
+	source, target = flows[flow_id]
+	points = WAYPOINT.findall(drawn[flow_id])
+	while source in inferred:
+		into = [f for f, ends in flows.items() if ends[1] == source]
+		if len(into) != 1 or into[0] not in drawn:
+			return None
+		points = [*WAYPOINT.findall(drawn[into[0]])[:-1], _centre(drawn[source]), *points[1:]]
+		source = flows[into[0]][0]
+	while target in inferred:
+		out = [f for f, ends in flows.items() if ends[0] == target]
+		if len(out) != 1 or out[0] not in drawn:
+			return None
+		points = [*points[:-1], _centre(drawn[target]), *WAYPOINT.findall(drawn[out[0]])[1:]]
+		target = flows[out[0]][1]
+	return points
+
+
+def _coordinates(xml: str) -> list[float]:
+	return [
+		float(v)
+		for v in re.findall(r'\b(?:x|y|width|height)="(-?[\d.]+)"', xml[xml.find("<bpmndi:BPMNDiagram") :])
+	]
+
+
+def _centre(body: str) -> tuple[str, str]:
+	x, y, width, height = (float(v) for v in BOUNDS.search(body).groups())
+	return f"{x + width / 2:g}", f"{y + height / 2:g}"
+
+
+def _attribute(attrs: str, name: str) -> str | None:
+	found = re.search(r"\b" + name + r'="([^"]*)"', attrs)
+	return found[1] if found else None
+
+
+LAYOUT_ASKS = (
+	(
+		"spacing",
+		re.compile(r"\b(?:spac(?:e|ed|ing)|spread|cramped|crowded|squashed|too close|apart|gaps?)\b", re.I),
+	),
+	(
+		"alignment",
+		re.compile(r"\b(?:align\w*|misaligned|line[sd]? (?:them )?up|lined up|straighten\w*)\b", re.I),
+	),
+	(
+		"crossings",
+		re.compile(r"\b(?:cross(?:ing|es|ed)?|criss-?cross\w*|tangl\w*|untangle|overlap\w*)\b", re.I),
+	),
+	("convergence", re.compile(r"\b(?:converg\w*|come together|meet at)\b", re.I)),
+)
+
+
+def layout_asks(text: str) -> list[str]:
+	"""Which layout asks text makes: spacing, alignment, crossings, convergence."""
+	return [ask for ask, pattern in LAYOUT_ASKS if pattern.search(text or "")]
 
 
 LIST_ITEM = re.compile(r"^\s*(?:[-*\u2022]|\d+[.)]|[a-z][.)])\s+(.+?)\s*$", re.I)
@@ -255,26 +349,126 @@ def diagnose_fallback_reply() -> str:
 	)
 
 
-def relayout_output(xml: str) -> dict:
-	"""The reply to a confirmed re-layout: the diagram drawn again, or why nothing changed, and what the person can do."""
+def relayout_output(xml: str, text: str = "") -> dict:
+	"""The reply to a layout request: the diagram laid out again with only positions changed, or what was tried and why not."""
+	asks = layout_asks(text)
 	new_xml, reason = relayout(xml)
 	if new_xml:
+		before, after = audit_layout(xml), audit_layout(new_xml)
+		if after["crossings"] > before["crossings"]:
+			say = _(
+				"I drew the diagram again, but it came out with {0} crossing line(s) where yours has {1}, so I kept your layout."
+			).format(after["crossings"], before["crossings"])
+			return {"intent": "CLARIFY", "response": say + " " + layout_is_automatic()}
 		return {
 			"intent": "BPMN_MODIFIED",
 			"action_intent": "RELAYOUT",
 			"bpmn_xml": new_xml,
-			"response": _("I laid the diagram out again. Every step, arrow and setting is kept. Review it on the canvas.")
+			"response": _(
+				"I laid the diagram out again and moved only shapes and lines. Every id, name, condition and timer is unchanged."
+			)
+			+ layout_change_summary(before, after, asks)
+			+ " "
+			+ _("Review it on the canvas.")
 			+ " "
 			+ layout_is_automatic(),
 			"options": [],
 		}
 	if reason == "same":
-		say = _("The layout is already the best I can make, so I changed nothing.")
-	elif reason == "lane-less":
-		say = _("This diagram has no lanes, so the editor lays it out itself. I changed nothing.")
+		say = _(
+			"I drew the diagram again and every shape and line came out where it already is, so I changed nothing."
+		)
+		say += layout_limits(xml, audit_layout(xml), asks)
+	elif reason == "unsupported":
+		kinds = unsupported_kinds(xml)
+		say = _(
+			"This diagram has {0}, which the layout cannot place, so I changed nothing to keep them safe."
+		).format(", ".join(kinds) if kinds else _("elements"))
+	elif reason == "unplaced":
+		say = _(
+			"Some shapes or lines, such as notes, message lines or a second pool, have no place in the new layout, so I changed nothing."
+		)
 	else:
 		say = _("I could not lay the diagram out again without risking your steps, so I changed nothing.")
 	return {"intent": "CLARIFY", "response": say + " " + layout_is_automatic()}
+
+
+def layout_note(old_xml: str, new_xml: str, text: str) -> str:
+	"""What a change did for the layout asks in text, measured on both drawings; "" when text makes none."""
+	asks = layout_asks(text)
+	return layout_change_summary(audit_layout(old_xml), audit_layout(new_xml), asks) if asks else ""
+
+
+def layout_change_summary(before: dict, after: dict, asks: list[str]) -> str:
+	"""The measured change for each layout ask, each sentence led by a space."""
+	said = ""
+	if "crossings" in asks or before["crossings"] != after["crossings"]:
+		said += " " + _("Crossing lines: {0} before, {1} now.").format(
+			before["crossings"], after["crossings"]
+		)
+	if before["throughShape"] != after["throughShape"]:
+		said += " " + _("Lines through a shape: {0} before, {1} now.").format(
+			before["throughShape"], after["throughShape"]
+		)
+	if before["overlaps"] != after["overlaps"]:
+		said += " " + _("Lines on top of each other: {0} before, {1} now.").format(
+			before["overlaps"], after["overlaps"]
+		)
+	if "spacing" in asks:
+		said += " " + _("The gaps between columns and lanes are sized to the lines they carry.")
+	if "alignment" in asks:
+		said += " " + _("Every step sits on the layout grid of columns and lanes.")
+	if "convergence" in asks:
+		said += " " + _("Lines that join meet at one point before the step they lead to.")
+	return said
+
+
+def layout_limits(xml: str, audit: dict, asks: list[str]) -> str:
+	"""Why a layout that came out the same cannot meet each ask, each sentence led by a space."""
+	said = ""
+	if audit["crossings"]:
+		topology = check_topology(flow_pairs_from_xml(xml))
+		if topology["planar"] is False:
+			names = {
+				e.get("id"): e.get("name") or e.get("id") for e in ET.fromstring(xml).iter() if e.get("id")
+			}
+			who = ", ".join(quoted(names.get(n, n)) for n in topology["obstruction"][:5])
+			said += " " + _(
+				"{0} crossing line(s) stay because the paths through {1} cannot all be laid flat."
+			).format(audit["crossings"], who)
+		else:
+			said += " " + _("I could not draw it with fewer than {0} crossing line(s).").format(
+				audit["crossings"]
+			)
+	elif "crossings" in asks:
+		said += " " + _("No lines cross.")
+	if "spacing" in asks:
+		said += " " + _(
+			"I cannot set a gap of my own: the gaps are sized to the lines each column and lane carries."
+		)
+	if "alignment" in asks:
+		said += " " + _("Every step already sits on the layout grid.")
+	if "convergence" in asks:
+		said += " " + _("Lines that join already meet where they join.")
+	return said
+
+
+def unsupported_kinds(xml: str) -> list[str]:
+	"""The kinds of element in xml that the layout cannot place, in plain words."""
+	bpmn = "{" + NS["bpmn"] + "}"
+	allowed = IR_NODE_TYPES | {
+		"sequenceFlow",
+		"laneSet",
+		"extensionElements",
+		"incoming",
+		"outgoing",
+		"documentation",
+	}
+	kinds = set()
+	for scope in ET.fromstring(xml).iter():
+		if scope.tag in (bpmn + "process", bpmn + "subProcess"):
+			kinds |= {e.tag.rsplit("}", 1)[-1] for e in scope} - allowed
+	return sorted(re.sub(r"(?<!^)(?=[A-Z])", " ", kind).lower() for kind in kinds)
 
 
 def layout_is_automatic() -> str:
