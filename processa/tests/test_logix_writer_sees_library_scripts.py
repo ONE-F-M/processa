@@ -17,7 +17,13 @@ MAP = (
 	'<bpmn:serviceTask id="write_script" aiUserPrompt="Request{% if turn.violations %}x{% endif %}">'
 	"</bpmn:serviceTask>"
 )
-LIBRARIES = [{"name": "Demo: Lib HTTP", "functions": ["post_json(url, body)"]}]
+LIBRARIES = [
+	{
+		"name": "Demo: Lib HTTP",
+		"functions": ["post_json(url, body)"],
+		"code": "def post_json(url, body):\n\treturn requests.post(url, json=body)\n",
+	}
+]
 
 
 class TestLogixWriterSeesLibraryScripts(FrappeTestCase):
@@ -41,4 +47,5 @@ class TestLogixWriterSeesLibraryScripts(FrappeTestCase):
 		)
 		text = Template(block).render(turn={"library_scripts": LIBRARIES})
 		self.assertIn("- Demo: Lib HTTP: post_json(url, body)", text)
+		self.assertIn("```python\ndef post_json(url, body):\n\treturn requests.post(url, json=body)\n", text)
 		self.assertEqual(Template(block).render(turn={}), "")

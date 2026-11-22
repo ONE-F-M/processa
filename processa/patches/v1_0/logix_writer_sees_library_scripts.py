@@ -15,7 +15,7 @@ WRITER_BLOCK = (
 	"{% if turn.library_scripts %}**LIBRARY SCRIPTS ON THIS MAP** (call one with "
 	"lib = import_script(&quot;&lt;library name&gt;&quot;), then lib.&lt;function&gt;(...)):&#10;"
 	"{% for lib in turn.library_scripts %}- {{ lib.name }}: {{ lib.functions | join(&quot;, &quot;) }}&#10;"
-	"{% endfor %}&#10;{% endif %}"
+	"{% if lib.code %}```python&#10;{{ lib.code }}&#10;```&#10;{% endif %}{% endfor %}&#10;{% endif %}"
 )
 
 
