@@ -1,4 +1,4 @@
-"""Seeds five Baseline cases: a brief, ProsAlly's confirmation card, then "Yes, proceed" draws the model.
+"""Seeds Baseline cases: a brief, ProsAlly's confirmation card, then "Yes, proceed" draws the model.
 
 Idempotent by suite and title.
 """
@@ -59,6 +59,13 @@ def execute():
 				*BASE_ASSERTIONS,
 				{"assertion_type": "no_tool_call", "value": "clarify, redirect, confirm"},
 				DRAWN,
+				*[
+					{
+						"assertion_type": "tool_artifact",
+						"value": json.dumps({"tool": "generate_process", **check}),
+					}
+					for check in spec.get("checks") or []
+				],
 			],
 		)
 		case.set("expected_tool_calls", CALLS)

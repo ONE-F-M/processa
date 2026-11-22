@@ -23,5 +23,34 @@
   "title": "A draw-this terminology brief is drawn after Yes, proceed",
   "brief": "Draw this \n\n### Core Terminology\n- PO (Purchase Order): Legally binding document issued to vendors. Internal document for ONE-FM detailing costs and agreed payment terms.\n- Advance Payment: Full or partial payment made to a supplier BEFORE product delivery or service execution.\n- Balance Payment: Remaining payment made to a supplier AFTER product delivery or service execution.\n- Proforma Bill: Preliminary/estimated bill issued by a vendor to request an advance payment prior to delivery.\n- POD (Proof of Delivery): Written evidence confirming delivery/completion compliant with PO terms and receiver expectations.\n- Participating Entities: Product/Services Requester, Procurement & Warehouse Department, Finance Department.\n\n### Process Management Rules\n\n#### 1. Advance Payment Request Process\n- Workflow: Procurement submits PO and Proforma Bill to Finance.\n- Finance Checklist:\n  1. Verify PO approval by the concerned entity.\n  2. Confirm Proforma Bill is attached.\n  3. Ensure requested quantity matches PO and Proforma Bill.\n  4. Ensure Proforma Bill pricing matches approved PO pricing.\n- Accounting & Document Rules:\n  - Is cost realized? NO. Treated as an advance paid to the vendor (debit balance in vendor balance sheet account).\n  - Is POD required? NO. The cost is not realized, and the PO remains OPEN.\n  - Document Handling: Finance retains the original Proforma Bill; Procurement & Warehouse retains the original PO until the POD reaches Finance.\n\n#### 2. Balance Payment Request (Vendors WITHOUT Credit Terms)\n- Workflow: Upon delivery/completion, Procurement submits PO, Original Bill, and POD to Finance.\n- Finance Checklist:\n  1. Ensure requested quantity matches Original Bill.\n  2. Ensure Original Bill pricing matches approved PO.\n  3. Ensure valid POD is attached.\n- Accounting & Document Rules:\n  - Is cost realized? YES. The bill is booked, cost is realized, and any prior advance payments are adjusted against the bill.\n  - Is POD required? YES. Once cost is realized, the PO is marked CLOSED, and the balance payment request is submitted to Management.\n  - Document Handling: Finance retains original Bill, original POD, and original PO.\n\n#### 3. POD Submission & Payment Booking (Vendors WITH Credit Terms)\n- Workflow: Upon delivery/completion, Procurement submits PO, Original Bill, and POD to Finance.\n- Finance Checklist:\n  1. Ensure requested quantity matches Original Bill.\n  2. Ensure Original Bill pricing matches approved PO.\n  3. Ensure valid POD is attached.\n- Accounting & Payment Rules:\n  - Cost Realization: Cost is realized once Original Bill and POD are submitted and the bill is booked.\n  - Credit Term Calculation Rule: Always book the bill on the actual delivery date of goods/services. Payment is due [X] days post the bill BOOKING date (e.g., if credit terms are 30 days, pay 30 days after the bill booking date, regardless of bill issue date).\n\n### Instructions for AI Response:\n1. Always strictly adhere to the rules above.\n2. If a document checklist fails, explicitly point out which document or validation is missing/incorrect.\n3. Keep answers clear, professional, and directly aligned with ONE-FM accounting principles.\nOption 2: Document Q&A Task Prompt\nUse this as a quick single turn prompt to extract answers or run compliance checks against user inputs.\n\nPlaintext\nContext: You are provided with the ONE-FM Finance PO Processing and Cost Realization Standard Operating Procedure (SOP).\n\n--- START SOP ---\n[Insert your text here]\n--- END SOP ---",
   "confirmation": "I'll draw the Vendor Bill Booking and Cost Realisation process for you from scratch, covering: Advance Payment requests (PO and Proforma Bill checks, keeping the PO open since cost isn't realised), Balance Payment for vendors without credit terms (checking the Bill and Proof of Delivery, closing the PO once cost is realised), and Payment Booking for vendors with credit terms (booking the bill on delivery date and calculating payment due dates). I'll also show the roles of the Requester, Procurement & Warehouse, and Finance throughout.\nShall I go ahead?"
+ },
+ {
+  "title": "A Residency brief is drawn as a residency map, never a Leave Request map",
+  "brief": "Create an executable residency renewal process: the employee submits the renewal documents, HR checks them, and the GRD operator files the renewal with the ministry.",
+  "confirmation": "I'll draw the Residency Renewal process for you from scratch as an executable process: the employee submits the renewal documents, HR checks them, and the GRD operator files the renewal with the ministry. Shall I go ahead?",
+  "checks": [
+   {
+    "path": "bpmn_xml",
+    "matcher": "regex",
+    "expected": "(?i)residency"
+   },
+   {
+    "path": "bpmn_xml",
+    "matcher": "regex",
+    "expected": "(?i)^(?![\\s\\S]*leave request)"
+   }
+  ]
+ },
+ {
+  "title": "A brief that names its roles gets no System (Automatic) lane",
+  "brief": "Create an executable residency renewal process: the Employee submits the renewal documents, the HR Officer checks them, and the GRD Operator files the renewal with the ministry. The employee is emailed when it is done.",
+  "confirmation": "I'll draw the Residency Renewal process for you from scratch as an executable process, with the Employee, the HR Officer and the GRD Operator: the Employee submits the documents, the HR Officer checks them, the GRD Operator files the renewal, and the employee is emailed when it is done. Shall I go ahead?",
+  "checks": [
+   {
+    "path": "ir.lanes.name",
+    "matcher": "regex",
+    "expected": "^(?![\\s\\S]*System)"
+   }
+  ]
  }
 ]
