@@ -402,4 +402,5 @@ processa.patches.v1_0.seed_logix_reported_request_cases #22-11-2026 Logix Baseli
 processa.patches.v1_0.logix_instructions_match_the_tool_runner #21-11-2026 Logix's agent tool contract and reviewer describe one namespace, task_data and processa import paths
 processa.patches.v1_0.logix_reviewer_keeps_calls_needing_approval #21-11-2026 Logix's reviewer prompts and safety skill keep a network call that needs approval instead of rewriting it
 processa.patches.v1_0.logix_writer_sees_library_scripts #22-11-2026 Logix Build Context keeps the map's library scripts in the turn and the script writer's prompt lists them
+processa.patches.v1_0.logix_skills_name_import_script_and_flagged_http #22-11-2026 Logix's script task contract names import_script and _, and the outbound HTTP skill treats requests as needing approval
 processa.patches.v1_0.logix_white_screen_case_follows_the_debug_path #22-11-2026 the white-screen Logix case expects classify_intent then debug_script and checks the reply, not a finalize artifact
