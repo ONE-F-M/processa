@@ -97,3 +97,11 @@ class TestSeedLogixReportedRequestCases(FrappeTestCase):
 		)
 		self.assertTrue(re.search(check, "if doc.grand_total < 500:"))
 		self.assertFalse(re.search(check, "if doc.grand_total < 5000:"))
+
+	def test_the_arrival_case_rejects_a_script_that_uses_arrival_date(self):
+		(check,) = _expected(
+			"A field Employee does not have is not used: the arrival date", "modified_script"
+		)
+		self.assertTrue(re.search(check, 'result["arrival"] = doc.date_of_joining'))
+		self.assertTrue(re.search(check, ""))
+		self.assertFalse(re.search(check, 'result["arrival"] = doc.arrival_date'))

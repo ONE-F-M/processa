@@ -1,5 +1,5 @@
 """Seeds Logix Baseline cases from requests people reported: auto-approve under 500, Medical Appointment
-attendance, a white-screen debug request and "explain the script".
+attendance, a white-screen debug request, "explain the script" and an arrival date Employee does not have.
 
 Idempotent by suite and case title; a site without Logix is left alone.
 """
@@ -106,6 +106,19 @@ CASES = [
 		"assertions": [
 			{"assertion_type": "no_tool_call", "value": "write_script, write_agent_tool, clarify"},
 			NO_CODE,
+			NOT_REFUSED,
+		],
+	},
+	{
+		"title": "A field Employee does not have is not used: the arrival date",
+		"prompt": "When an Employee record is created, put their arrival date in result as arrival.",
+		"context": {
+			"element_name": "Record Arrival",
+			"process_context": script_task("task_record_arrival", "Record Arrival", "employee_arrival"),
+		},
+		"calls": CLASSIFY_THEN_FINALIZE,
+		"assertions": [
+			final_output("modified_script", "regex", r"^(?![\s\S]*arrival_date)"),
 			NOT_REFUSED,
 		],
 	},
