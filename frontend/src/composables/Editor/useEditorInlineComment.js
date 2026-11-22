@@ -25,7 +25,7 @@ export function useEditorInlineComment(ed) {
 	} = ed;
 
 	function openInlineComment(element) {
-		if (props.readonly) return;
+		if (!props.commentsAllowed) return;
 
 		activeCommentElement.value = element;
 		inlineCommentElement.value = element;

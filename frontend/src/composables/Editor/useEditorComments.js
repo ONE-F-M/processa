@@ -67,7 +67,7 @@ export function useEditorComments(ed) {
 		viewCommentsFromContextMenu,
 		registerEventListeners: registerContextMenuListeners,
 	} = useBpmnContextMenu({
-		readonly: computed(() => props.readonly),
+		commentsAllowed: computed(() => props.commentsAllowed),
 		comments,
 		selectCommentElement,
 		openViewCommentsDialog: (elementId) => {
