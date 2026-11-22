@@ -26,9 +26,19 @@ def nine_task_map() -> dict:
 		{"id": "r", "name": "Rejected", "type": "endEvent", "lane": "hr"},
 	]
 	pairs = [
-		("s", "t1"), ("t1", "t2"), ("t2", "t3"), ("t3", "g"), ("g", "t4"), ("g", "t5"), ("t5", "r"),
-		("t4", "t6"), ("t6", "t7"), ("t7", "t8"), ("t8", "t9"), ("t9", "e"),
-	]  # fmt: skip
+		("s", "t1"),
+		("t1", "t2"),
+		("t2", "t3"),
+		("t3", "g"),
+		("g", "t4"),
+		("g", "t5"),
+		("t5", "r"),
+		("t4", "t6"),
+		("t6", "t7"),
+		("t7", "t8"),
+		("t8", "t9"),
+		("t9", "e"),
+	]
 	flows = [{"id": f"f_{a}_{b}", "from": a, "to": b} for a, b in pairs]
 	flows[4].update({"name": "Yes", "condition": "approved == True"})
 	flows[5].update({"name": "No", "default": True})

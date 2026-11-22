@@ -34,7 +34,9 @@ def _apply(ir: dict, operation: dict) -> str:
 
 def _add(ir: dict, operation: dict) -> str:
 	kind, new_id = operation.get("type"), operation.get("id")
-	if not new_id or _element(ir, new_id):
+	if not new_id:
+		return _("the new element needs an id that is not used yet")
+	if _element(ir, new_id):
 		return _("the new element needs an id that is not used yet")
 	if kind == "sequenceFlow":
 		ends = _ends_problem(ir, operation.get("from"), operation.get("to"))
@@ -68,7 +70,8 @@ def _remove(ir: dict, operation: dict) -> str:
 		out = [f for f in ir["flows"] if f["from"] == target]
 		ir["nodes"].remove(node)
 		# A step on a single path is taken out of it, and the path closes up behind it.
-		if len(into) == 1 and len(out) == 1 and into[0] is not out[0]:
+		on_one_path = len(into) == 1 and len(out) == 1
+		if on_one_path and into[0] is not out[0]:
 			into[0]["to"] = out[0]["to"]
 			ir["flows"].remove(out[0])
 		else:
