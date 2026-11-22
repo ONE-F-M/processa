@@ -103,6 +103,12 @@ override_doctype_class = {
 	"Server Script": "processa.overrides.server_script.ProcessaServerScript",
 }
 
+# Helpdesk's built ticket page still calls these by their one_bpmn paths until it is rebuilt.
+override_whitelisted_methods = {
+	"one_bpmn.api.instance_api.get_active_bpmn_tasks": "processa.api.instances.get_active_bpmn_tasks",
+	"one_bpmn.api.instance_api.complete_task": "processa.api.instances.complete_task",
+}
+
 # Document Events
 # ---------------
 # Universal BPMN trigger — fires for every DocType.
