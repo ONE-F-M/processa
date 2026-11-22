@@ -181,16 +181,11 @@ def retry_note(error: str) -> str:
 
 
 def read_json_reply(text: str, schema: dict | None, stop_reason: str | None = None) -> Any:
-	"""Parse and check a reply. Raises ReplyRejected; a cut-off or refused reply is never parsed."""
+	"""Parse and check a reply. Raises ReplyRejected; a cut-off reply is never parsed."""
 	if stop_reason in _LENGTH_STOPS:
 		raise ReplyRejected(
 			f"the reply was cut off at the output token limit (stop reason '{stop_reason}') "
 			"before the JSON was complete; raise Max Tokens",
-			retry=False,
-		)
-	if stop_reason in SAFETY_STOPS:
-		raise ReplyRejected(
-			f"the model refused or was blocked (stop reason '{stop_reason}'), so no JSON came back",
 			retry=False,
 		)
 
