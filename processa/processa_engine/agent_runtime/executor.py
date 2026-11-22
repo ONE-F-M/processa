@@ -34,6 +34,8 @@ class ErrorCode(Enum):
 	BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
 	REPEATED_TOOL_ERROR = "REPEATED_TOOL_ERROR"
 	UNEXPECTED_ERROR = "UNEXPECTED_ERROR"
+	# The provider's safety system stopped the reply on every attempt.
+	MODEL_REFUSED = "MODEL_REFUSED"
 	# A chat turn closed without any stage writing a reply; the finalize tool reports it.
 	NO_STAGE_REPLY = "NO_STAGE_REPLY"
 	# Waiting for a person: callers check it before any failure or retry handling.

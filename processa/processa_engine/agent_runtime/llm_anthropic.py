@@ -2,6 +2,7 @@ import re
 
 from processa.processa_engine.agent_runtime.llm_base import BaseLLMAdapter
 from processa.processa_engine.agent_runtime.llm_types import (
+	LLMRefusedError,
 	LLMTruncatedError,
 	StepResult,
 	StepToolCall,
@@ -192,6 +193,8 @@ class AnthropicAdapter(BaseLLMAdapter):
 				"finishing. Raise Max Tokens on the agent configuration (or "
 				"the task shape) and try again."
 			)
+		if response.stop_reason == "refusal":
+			raise LLMRefusedError("The model declined this request (stop reason 'refusal').")
 
 		prompt_tokens, completion_tokens, cache_read, cache_write = _usage_tokens(response)
 		text_parts = [b.text for b in response.content if hasattr(b, "text")]
