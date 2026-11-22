@@ -27,7 +27,7 @@ _SCHEMA_KEYWORDS = frozenset(
 )
 
 _LENGTH_STOPS = frozenset({"max_tokens", "length", "MAX_TOKENS"})
-_SAFETY_STOPS = frozenset(
+SAFETY_STOPS = frozenset(
 	{"refusal", "content_filter", "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT"}
 )
 
@@ -188,7 +188,7 @@ def read_json_reply(text: str, schema: dict | None, stop_reason: str | None = No
 			"before the JSON was complete; raise Max Tokens",
 			retry=False,
 		)
-	if stop_reason in _SAFETY_STOPS:
+	if stop_reason in SAFETY_STOPS:
 		raise ReplyRejected(
 			f"the model refused or was blocked (stop reason '{stop_reason}'), so no JSON came back",
 			retry=False,

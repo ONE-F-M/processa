@@ -151,6 +151,14 @@ class TestTurnFailureMessages(FrappeTestCase):
 		self.assertEqual(result["response"], expected)
 		self.assertEqual(frappe.db.get_value("Chat Message", message_name, "text"), expected)
 
+	def test_a_refused_request_says_the_model_declined_and_what_to_ask_instead(self):
+		text = SSA._stopped_reason(
+			"MODEL_REFUSED", "The model declined this request (stop reason 'refusal')."
+		)
+		self.assertIn("declined this request", text)
+		self.assertIn("instead", text)
+		self.assertNotIn("MODEL_REFUSED", text)
+
 	def test_an_exception_class_name_gives_the_internal_error_sentence_without_the_message(self):
 		text = SSA._stopped_reason(
 			"AttributeError",

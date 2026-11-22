@@ -420,6 +420,11 @@ def _stopped_reason(error_code: str | None, error_message: str | None) -> str:
 		return _("The model timed out before it answered. Please try again.")
 	if error_code == "BUDGET_EXCEEDED":
 		return _("The agent stopped because this request went over its budget. Try a smaller request.")
+	if error_code == "MODEL_REFUSED":
+		return _(
+			"The AI model declined this request. It does this for code that runs whatever text it is given "
+			"or wipes data in bulk. Ask for the result you need without that step instead."
+		)
 	known_codes = {code.value for code in ErrorCode}
 	if error_code and (error_code == "UNEXPECTED_ERROR" or error_code not in known_codes):
 		# The traceback is in the Error Log; the raw exception text is not for the user.

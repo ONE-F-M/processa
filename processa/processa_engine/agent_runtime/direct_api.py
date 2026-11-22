@@ -23,6 +23,7 @@ from processa.processa_engine.agent_runtime.executor import (
 	register_executor,
 )
 from processa.processa_engine.agent_runtime import backoff_seconds, structured_output
+from processa.processa_engine.agent_runtime.llm_types import LLMRefusedError
 
 
 def run_coro_blocking(coro):
@@ -228,6 +229,13 @@ class DirectApiExecutor(Executor):
 						error_message="Provider returned non-JSON response.",
 					)
 
+			stop_reason = self._stop_reason(provider_type, data) if error_result is None else None
+			if stop_reason in structured_output.SAFETY_STOPS:
+				error_result = ExecutorResult(
+					error_code=ErrorCode.MODEL_REFUSED,
+					error_message=f"The model declined this request (stop reason '{stop_reason}').",
+				)
+
 			if error_result is None:
 				content, token_usage, parse_error = parse_fn(data)
 				if parse_error:
@@ -387,6 +395,8 @@ class DirectApiExecutor(Executor):
 					f"after {config.max_retries} retr{'y' if config.max_retries == 1 else 'ies'}."
 				),
 			)
+		except LLMRefusedError as exc:
+			return ExecutorResult(error_code=ErrorCode.MODEL_REFUSED, error_message=str(exc))
 		except Exception as exc:
 			return ExecutorResult(
 				error_code=ErrorCode.FAILED_MODEL_CALL,

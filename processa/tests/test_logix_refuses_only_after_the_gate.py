@@ -177,7 +177,7 @@ class TestRegressionCases(FrappeTestCase):
 		self.assertTrue(any("unable to generate a safe script" in a.value for a in revert.assertions))
 		self.assertEqual(json.loads(revert.input_context)["current_script"], "Activity_0imgq8b")
 
-	def test_debug_questions_and_a_refused_exec_script_are_seeded(self):
+	def test_debug_questions_and_a_refused_script_are_seeded(self):
 		if not frappe.db.get_value("AI Agent Configuration", {"agent_id": seed.AGENT_ID}, "process_model"):
 			self.skipTest("Logix is not on this site")
 
@@ -202,8 +202,8 @@ class TestRegressionCases(FrappeTestCase):
 				"title": "A destructive request is refused with the operation, the rule and what to ask instead"
 			},
 		)
-		self.assertIn("exec(", refused.input_user_prompt)
+		self.assertIn("ignore_permissions=True", refused.input_user_prompt)
 		expected = [
 			json.loads(a.value)["expected"] for a in refused.assertions if a.assertion_type == "tool_artifact"
 		]
-		self.assertIn(r"^(?![\s\S]*\bexec\()", expected)
+		self.assertIn(r"^(?![\s\S]*ignore_permissions)", expected)
