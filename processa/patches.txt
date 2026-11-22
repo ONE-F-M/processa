@@ -406,3 +406,4 @@ processa.patches.v1_0.logix_skills_name_import_script_and_flagged_http #22-11-20
 processa.patches.v1_0.logix_white_screen_case_follows_the_debug_path #22-11-2026 the white-screen Logix case expects classify_intent then debug_script and checks the reply, not a finalize artifact
 processa.patches.v1_0.logix_clarifier_names_the_doc_status #22-11-2026 Logix's clarifier gets the trigger DocType's workflow states and names the doc status of a requested state
 processa.patches.v1_0.logix_clarifier_reads_states_from_the_turn #22-11-2026 Logix's clarify step reads the workflow states from the turn and allows 1024 output tokens
+processa.patches.v1_0.logix_review_trial_reads_no_undefined_name #22-11-2026 Logix's review script stops reading _py_block on a site whose script never assigns it
