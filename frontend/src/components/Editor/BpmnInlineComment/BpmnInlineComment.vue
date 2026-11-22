@@ -5,13 +5,16 @@ import { EDITOR_KEY } from "@/composables/Editor/useEditorState";
 const ed = inject(EDITOR_KEY);
 const {
 	activeMentionContext,
+	activeMentionIndex,
 	closeInlineComment,
+	commentError,
 	handleInlineCommentInput,
 	inlineCommentFormData,
 	inlineCommentOverlayTarget,
 	inlineCommentPopoverEl,
 	inlineMentionedUsers,
 	mentionSuggestions,
+	onMentionKeydown,
 	selectMention,
 	showInlineCommentPopover,
 	showMentionDropdown,
@@ -36,9 +39,11 @@ const {
 					class="inline-comment-textarea w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-400 focus:outline-none min-h-[60px] resize-none overflow-hidden leading-relaxed"
 					:class="{ 'pb-10': inlineMentionedUsers.length > 0 }"
 					@input="handleInlineCommentInput"
+					@keydown="onMentionKeydown"
 					@keydown.enter.meta.prevent="submitInlineComment"
 					@keydown.enter.ctrl.prevent="submitInlineComment"
 				></textarea>
+				<p v-if="commentError" class="mt-1 text-[10px] text-red-600">{{ commentError }}</p>
 
 				<!-- Mentions Dropdown -->
 				<div
@@ -46,9 +51,11 @@ const {
 					class="mentions-container absolute z-[160] w-full max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg py-1 left-0 top-full mt-1"
 				>
 					<div
-						v-for="u in mentionSuggestions"
+						v-for="(u, mIdx) in mentionSuggestions"
 						:key="u.value"
 						class="px-3 py-1.5 text-sm cursor-pointer hover:bg-blue-50 text-gray-900 flex items-center justify-between"
+						:class="mIdx === activeMentionIndex ? 'bg-blue-50 mention-option-active' : ''"
+						@mouseenter="activeMentionIndex = mIdx"
 						@click="selectMention(u)"
 					>
 						<span>{{ u.label }}</span>

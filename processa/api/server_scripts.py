@@ -834,6 +834,9 @@ def build_logix_turn_context(context: dict) -> dict:
 	if libraries:
 		out["library_scripts"] = libraries
 		parts.append(logix_helpers.library_text(libraries))
+	states = out.get("workflow_states") or logix_helpers.workflow_states(process_model)
+	if states:
+		out["workflow_states"] = states
 	existing = out.get("dialog_context") or ""
 	out["dialog_context"] = (existing + "\n\n" + "\n\n".join(parts)).strip()
 	return out

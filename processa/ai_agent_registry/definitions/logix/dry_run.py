@@ -9,6 +9,7 @@ import frappe
 from frappe.model.document import Document
 
 from processa.ai_agent_registry.definitions.logix.helpers import BPMN_NS, ERROR_CHARS, SERVER_SCRIPT_ATTR
+from processa.ai_agent_security.code_checks.script_gate import approved_request_names
 from processa.ai_agent_security.code_checks.script_validator import deep_inspect_script
 from processa.processa_engine.engine.script_engine import make_import_script
 
@@ -40,7 +41,10 @@ def dry_run(code: str, turn: dict) -> dict:
 	names = frappe.get_all(doctype, pluck="name", order_by="creation desc", limit=1) if doctype else []
 	if not names:
 		return {"ran": False, "summary": "I did not run the script: this process has no record to try it on."}
-	if deep_inspect_script(code, allowed=frozenset(OUTBOUND)):
+	approved = approved_request_names(
+		context.get("process") or "", context.get("element_id") or "", turn.get("current_script") or ""
+	)
+	if deep_inspect_script(code, allowed=frozenset(OUTBOUND) | frozenset(approved)):
 		return {"ran": False, "summary": "I did not run the script: it needs approval before it can run."}
 	docname = names[0]
 

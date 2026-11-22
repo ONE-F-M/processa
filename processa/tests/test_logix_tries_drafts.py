@@ -54,6 +54,14 @@ class TestLogixTriesDrafts(FrappeTestCase):
 		self.assertTrue(outcome["ran"], outcome)
 		self.assertEqual(trial._process_model({"process_name": "trial_map"}).name, "Trial Map - v1")
 
+	def test_a_draft_using_an_approved_item_is_tried(self):
+		code = 'import requests\nresult["title"] = doc.title\n'
+		with patch.object(trial, "approved_request_names", return_value={"requests"}):
+			outcome = self._try(code)
+		self.assertTrue(outcome["ran"], outcome)
+		with patch.object(trial, "approved_request_names", return_value=set()):
+			self.assertFalse(self._try(code)["ran"])
+
 	def test_a_failing_draft_returns_its_traceback_and_failing_line(self):
 		outcome = self._try('x = 1\nresult["date"] = doc.appointment_date.year\n')
 		self.assertEqual(

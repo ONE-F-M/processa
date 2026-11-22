@@ -402,6 +402,9 @@ processa.patches.v1_0.seed_logix_reported_request_cases #22-11-2026 Logix Baseli
 processa.patches.v1_0.logix_instructions_match_the_tool_runner #21-11-2026 Logix's agent tool contract and reviewer describe one namespace, task_data and processa import paths
 processa.patches.v1_0.logix_reviewer_keeps_calls_needing_approval #21-11-2026 Logix's reviewer prompts and safety skill keep a network call that needs approval instead of rewriting it
 processa.patches.v1_0.logix_writer_sees_library_scripts #22-11-2026 Logix Build Context keeps the map's library scripts in the turn and the script writer's prompt lists them
+processa.patches.v1_0.logix_skills_name_import_script_and_flagged_http #22-11-2026 Logix's script task contract names import_script and _, and the outbound HTTP skill treats requests as needing approval
 processa.patches.v1_0.logix_white_screen_case_follows_the_debug_path #22-11-2026 the white-screen Logix case expects classify_intent then debug_script and checks the reply, not a finalize artifact
 processa.patches.v1_0.logix_invoice_case_expects_apply_workflow #22-11-2026 the approve-an-invoice-under-500 Logix case expects an Apply Workflow answer with the 500 condition
 processa.patches.v1_0.logix_explain_case_lets_the_writer_answer #22-11-2026 the explain-the-script Logix case expects the writer to answer in words with no code and no diff
+processa.patches.v1_0.logix_clarifier_names_the_doc_status #22-11-2026 Logix's clarifier gets the trigger DocType's workflow states and names the doc status of a requested state
+processa.patches.v1_0.logix_clarifier_reads_states_from_the_turn #22-11-2026 Logix's clarify step reads the workflow states from the turn and allows 1024 output tokens
