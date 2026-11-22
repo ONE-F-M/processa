@@ -137,7 +137,7 @@ def _by_id(items: list, element_id: str | None) -> dict | None:
 
 
 def _missing(element_id: str | None) -> str:
-	return _("there is no step, arrow or lane with the id {0} on the diagram").format(element_id)
+	return _("there is no step, arrow or lane called {0} on the diagram").format(element_id)
 
 
 def _label(operation) -> str:
