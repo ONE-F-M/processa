@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from processa.processa_engine.agent_runtime.tool_bounds import validate_tool_arguments
@@ -209,3 +210,102 @@ class TestBuildContextLine(FrappeTestCase):
 		self.assertIn('" remaining: "', script)
 		compile(script, "build_context", "exec")
 		self.assertEqual(p.apply_edits(script, p.CONTEXT_EDITS, p.CONTEXT_MARKER), script)
+
+
+PAGES = {"session_state": {"lucid_doc:1": {"pages": [{"page_title": "Client Event"}]}}}
+GOOD_PROCESS = {"type": "User Task Driven", "reason": "R1", "shapes": ["s"], "source": "Client Event"}
+
+
+def _review(task_data, turn=None):
+	"""Run the site's Finalize script the way the engine does, in one namespace; (output, raised message)."""
+	script = frappe.db.get_value("Server Script", "LuCrusher \u2013 Tool Finalize", "script") or ""
+	stored = {}
+	scope = {"frappe": frappe, "task_data": task_data, "context_docname": "x", "result": {}}
+	with (
+		patch(
+			"processa.processa_engine.agent_runtime.turn_state.get_turn",
+			return_value={**PAGES, **(turn or {})},
+		),
+		patch(
+			"processa.processa_engine.agent_runtime.turn_state.update_turn",
+			side_effect=lambda _n, **kw: stored.update(kw),
+		),
+	):
+		try:
+			exec(as_deployed(script), scope)
+		except ValueError as raised:
+			return stored, str(raised)
+	return stored["output"], ""
+
+
+class TestFinalizeSelfReview(FrappeTestCase):
+	def setUp(self):
+		script = frappe.db.get_value("Server Script", "LuCrusher \u2013 Tool Finalize", "script") or ""
+		if "_lcr_review_topology" not in script:
+			self.skipTest("the self-reviewing LuCrusher Finalize script is not on this site")
+
+	def _topology(self, *names, **turn):
+		processes = [{"process_name": name, **GOOD_PROCESS} for name in names]
+		return _review(
+			{"intent": "TOPOLOGY_PROPOSAL", "response": "ok", "topology": {"processes": processes}}, turn
+		)
+
+	def test_approve_and_accept_on_one_document_go_back_once_as_one_workflow(self):
+		stored, raised = self._topology("Approve Client Event", "Accept Client Event")
+
+		self.assertIn("act on the same client event", raised)
+		self.assertIn("R7", raised)
+		self.assertTrue(stored["finalize_reviewed"])
+
+	def test_a_problem_left_after_the_second_finalize_is_flagged_in_the_reply(self):
+		output, raised = self._topology("Approve Client Event", "Accept Client Event", finalize_reviewed=True)
+
+		self.assertEqual(raised, "")
+		self.assertIn("Check before you approve", output["response"])
+
+	def test_a_clean_draft_passes_untouched(self):
+		output, raised = self._topology("Manage Client Event", "Generate Event Schedules")
+
+		self.assertEqual(raised, "")
+		self.assertEqual(output["response"], "ok")
+
+	def test_repeats_missing_fields_and_unsourced_processes_are_found(self):
+		processes = [
+			{"process_name": "Manage Client Event", **GOOD_PROCESS},
+			{"process_name": "Manage Client Event", **GOOD_PROCESS},
+			{"process_name": "Invented Step", **GOOD_PROCESS, "source": "Somewhere Else", "reason": ""},
+		]
+		line = "The event is created by the supervisor and approved by the manager."
+		_stored, raised = _review(
+			{
+				"intent": "TOPOLOGY_PROPOSAL",
+				"response": line + "\n" + line,
+				"topology": {"processes": processes},
+			}
+		)
+
+		self.assertIn("listed 2 times", raised)
+		self.assertIn('"Invented Step" has no reason', raised)
+		self.assertIn('source of "Invented Step" is not a page', raised)
+		self.assertIn("The reply says", raised)
+
+	def test_a_script_task_standing_in_for_a_signal_goes_back(self):
+		block = "\n".join(
+			[
+				"A: HEADER",
+				"B: LANES",
+				"C: ELEMENTS",
+				"1. StartEvent | Visa requested | Employee",
+				"2. ScriptTask | Broadcast unfit signal | GRD | src=visa.py:on_update",
+				"3. EndEvent | Visa issued | PRO",
+				"D: SEQUENCE FLOWS",
+				"1. 1 -> 2",
+				"E: ANTI-LINTING",
+			]
+		)
+		prompts = {"processes": [{**_process(), "prompt_block": block, "source": "Client Event"}]}
+		_stored, raised = _review(
+			{"intent": "PROSALLY_PROMPT_DRAFT", "response": "ok", "prosally_prompts": prompts}
+		)
+
+		self.assertIn("uses a ScriptTask for a signal", raised)
