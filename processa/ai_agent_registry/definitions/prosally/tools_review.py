@@ -42,6 +42,7 @@ IR_NODE_TYPES = frozenset(
 		"subProcess", "callActivity",
 	}
 )  # fmt: skip
+IR_SKIPPED_TAGS = frozenset({"laneSet", "extensionElements", "incoming", "outgoing", "documentation"})
 
 
 def xml_to_ir(xml: str) -> dict | None:
@@ -83,7 +84,7 @@ def xml_to_ir(xml: str) -> dict | None:
 				if parent.get("default") == elem.get("id"):
 					flow["default"] = True
 				flows.append(flow)
-			elif tag not in ("laneSet", "extensionElements", "incoming", "outgoing", "documentation"):
+			elif tag not in IR_SKIPPED_TAGS:
 				return None
 		return {"nodes": nodes, "flows": flows}
 
@@ -138,7 +139,8 @@ def move_drawing(xml: str, compiled: dict) -> str | None:
 	def place(m):
 		key = COMPILED_POOL if m["id"] in pools else m["id"]
 		body = drawn.get(key)
-		if body is not None and m["tag"].endswith("Edge") and set(flows.get(key, ())) & inferred:
+		through_added_gateway = bool(set(flows.get(key, ())) & inferred)
+		if body is not None and through_added_gateway:
 			points = _route(key, flows, drawn, inferred)
 			label = LABEL.search(body)
 			body = (
@@ -190,31 +192,8 @@ def _centre(body: str) -> tuple[str, str]:
 	return f"{x + width / 2:g}", f"{y + height / 2:g}"
 
 
-def _attribute(attrs: str, name: str) -> str | None:
-	found = re.search(r"\b" + name + r'="([^"]*)"', attrs)
-	return found[1] if found else None
-
-
-LAYOUT_ASKS = (
-	(
-		"spacing",
-		re.compile(r"\b(?:spac(?:e|ed|ing)|spread|cramped|crowded|squashed|too close|apart|gaps?)\b", re.I),
-	),
-	(
-		"alignment",
-		re.compile(r"\b(?:align\w*|misaligned|line[sd]? (?:them )?up|lined up|straighten\w*)\b", re.I),
-	),
-	(
-		"crossings",
-		re.compile(r"\b(?:cross(?:ing|es|ed)?|criss-?cross\w*|tangl\w*|untangle|overlap\w*)\b", re.I),
-	),
-	("convergence", re.compile(r"\b(?:converg\w*|come together|meet at)\b", re.I)),
-)
-
-
-def layout_asks(text: str) -> list[str]:
-	"""Which layout asks text makes: spacing, alignment, crossings, convergence."""
-	return [ask for ask, pattern in LAYOUT_ASKS if pattern.search(text or "")]
+def _attribute(attrs: str, name: str) -> str:
+	return re.search(r"\b" + name + r'="([^"]*)"', attrs)[1]
 
 
 LIST_ITEM = re.compile(r"^\s*(?:[-*\u2022]|\d+[.)]|[a-z][.)])\s+(.+?)\s*$", re.I)
@@ -453,17 +432,32 @@ def layout_limits(xml: str, audit: dict, asks: list[str]) -> str:
 	return said
 
 
+LAYOUT_ASKS = (
+	(
+		"spacing",
+		re.compile(r"\b(?:spac(?:e|ed|ing)|spread|cramped|crowded|squashed|too close|apart|gaps?)\b", re.I),
+	),
+	(
+		"alignment",
+		re.compile(r"\b(?:align\w*|misaligned|line[sd]? (?:them )?up|lined up|straighten\w*)\b", re.I),
+	),
+	(
+		"crossings",
+		re.compile(r"\b(?:cross(?:ing|es|ed)?|criss-?cross\w*|tangl\w*|untangle|overlap\w*)\b", re.I),
+	),
+	("convergence", re.compile(r"\b(?:converg\w*|come together|meet at)\b", re.I)),
+)
+
+
+def layout_asks(text: str) -> list[str]:
+	"""Which layout asks text makes: spacing, alignment, crossings, convergence."""
+	return [ask for ask, pattern in LAYOUT_ASKS if pattern.search(text or "")]
+
+
 def unsupported_kinds(xml: str) -> list[str]:
 	"""The kinds of element in xml that the layout cannot place, in plain words."""
 	bpmn = "{" + NS["bpmn"] + "}"
-	allowed = IR_NODE_TYPES | {
-		"sequenceFlow",
-		"laneSet",
-		"extensionElements",
-		"incoming",
-		"outgoing",
-		"documentation",
-	}
+	allowed = IR_NODE_TYPES | IR_SKIPPED_TAGS | {"sequenceFlow"}
 	kinds = set()
 	for scope in ET.fromstring(xml).iter():
 		if scope.tag in (bpmn + "process", bpmn + "subProcess"):

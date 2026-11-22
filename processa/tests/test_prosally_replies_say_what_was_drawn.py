@@ -227,7 +227,9 @@ class TestRelayout(FrappeTestCase):
 		)
 		for xml, step in ((self.xml, self.ir["nodes"][1]["id"]), (lane_less, "w")):
 			messy = re.sub(
-				rf'(<bpmndi:BPMNShape id="[^"]*" bpmnElement="{step}">\s*<dc:Bounds x=")[\d.]+', r"\g<1>9999", xml
+				rf'(<bpmndi:BPMNShape id="[^"]*" bpmnElement="{step}">\s*<dc:Bounds x=")[\d.]+',
+				r"\g<1>9999",
+				xml,
 			)
 			new_xml, reason = tools_review.relayout(messy)
 			self.assertEqual(reason, "")
