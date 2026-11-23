@@ -37,7 +37,11 @@
 					<small>{{ itemNote(item) }}</small>
 				</div>
 			</div>
-			<p v-if="!needsApproval.length" class="lsp-empty">
+			<p v-if="blockingError" class="lsp-empty">
+				{{ blockingError.message }}. Fix it first: it cannot be approved, and the other checks
+				run once the script parses.
+			</p>
+			<p v-else-if="!needsApproval.length" class="lsp-empty">
 				Nothing in this script needs approval.
 			</p>
 
@@ -130,7 +134,14 @@ const props = defineProps({
 const emit = defineEmits(["close", "request"]);
 
 const NOT_APPROVABLE = ["Syntax error", "Script import"];
-const THEMES = { "Needs approval": "orange", Rejected: "red", Approved: "green", Clear: "green" };
+const THEMES = {
+	"Needs approval": "orange",
+	Rejected: "red",
+	Approved: "green",
+	Clear: "green",
+	"Syntax error": "red",
+	"Script import": "red",
+};
 
 const askingReason = ref(false);
 const reason = ref("");
@@ -140,7 +151,11 @@ const latestRequest = computed(() => props.lint?.latest_request || null);
 const needsApproval = computed(() =>
 	findings.value.filter((f) => !f.approved && !NOT_APPROVABLE.includes(f.category)),
 );
+const blockingError = computed(() =>
+	findings.value.find((f) => NOT_APPROVABLE.includes(f.category)),
+);
 const headerStatus = computed(() => {
+	if (blockingError.value) return blockingError.value.category;
 	const latest = latestRequest.value;
 	if (needsApproval.value.length && latest && latest.status !== "Approved") return latest.status;
 	if (needsApproval.value.length) return "Needs approval";
@@ -178,6 +193,7 @@ const otherCategories = computed(() =>
 // The requester can refresh the open request from the saved script until the Reviewer acts on it.
 const updatable = computed(() => Boolean(latestRequest.value?.can_update));
 const blockedReason = computed(() => {
+	if (blockingError.value) return "Fix the error first: it cannot be approved.";
 	if (props.dirty || !props.saved)
 		return "Save the script first: the request is made from the saved script.";
 	if (!needsApproval.value.length) return "Nothing in this script needs approval.";

@@ -39,6 +39,14 @@ describe("Logix script security controls", () => {
 		expect(composable).toMatch(/updating \? UPDATE_URL : REQUEST_URL/);
 	});
 
+	it("never offers approval for a syntax error", () => {
+		const panel = read("LogixSecurityPanel/LogixSecurityPanel.vue");
+		expect(panel).toMatch(/if \(blockingError\.value\) return blockingError\.value\.category;/);
+		expect(panel).toMatch(/Fix the error first: it cannot be approved\./);
+		const canvas = read("LogixCanvas/LogixCanvas.vue");
+		expect(canvas).toMatch(/\.includes\(category\) \? `Line \$\{line\}: \$\{message\}\. Fix it: it cannot be approved\.`/);
+	});
+
 	it("tells the author what to use instead in a full sentence", () => {
 		const canvas = read("LogixCanvas/LogixCanvas.vue");
 		expect(canvas).not.toMatch(/Instead: \$\{/);
