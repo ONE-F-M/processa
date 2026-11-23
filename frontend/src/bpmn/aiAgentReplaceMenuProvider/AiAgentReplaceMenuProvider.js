@@ -7,10 +7,9 @@ import { AI_SPARKLE_DATA_URI } from "../shared/aiSparkleIcon";
  * popup menu.
  *
  * Selecting it morphs the element into a bpmn:ServiceTask tagged with
- * spiffworkflow:serviceType="ai_agent" — the same tag the Service Type
- * dropdown in the properties panel sets. The ai* configuration attributes are
- * already declared on the ServiceTaskApplyWorkflowExtension moddle extension
- * (see BpmnEditor.vue), so they round-trip through save/reload.
+ * spiffworkflow:serviceType="ai_agent". The ai* configuration attributes are
+ * declared on the ServiceTaskApplyWorkflowExtension moddle extension
+ * (see utils/editorModdleExtensions.js), so they round-trip through save/reload.
  *
  * Registered with a priority below the stock ReplaceMenuProvider (default
  * 1000) so this runs afterwards and appends to the standard task entries.

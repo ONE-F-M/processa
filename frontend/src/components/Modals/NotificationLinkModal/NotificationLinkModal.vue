@@ -362,7 +362,7 @@
 import { inject } from "vue";
 import { Icon } from "@iconify/vue";
 
-// Inject the composable instance provided by Editor.vue
+// Inject the composable instance provided by useProcessState.js
 const ctx = inject("notifDialog");
 const notification = inject("notification");
 </script>

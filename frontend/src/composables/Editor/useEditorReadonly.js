@@ -44,7 +44,7 @@ export function useEditorReadonly(ed) {
 			};
 
 			ed.commandStack.execute = (command, context) => {
-				// Allow canvas operations (zoom, scroll) but block element mutations
+				// Allow root-element changes (sub-process drill-down) and panel property edits; block other mutations
 				const allowedCommands = ["canvas.updateRootElement"];
 				if (allowedCommands.includes(command)) {
 					return originalExecute(command, context);

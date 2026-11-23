@@ -275,13 +275,7 @@
 					</table>
 				</div>
 
-				<!-- Proof the rules are live. Without it the tab shows intent and
-				     never evidence, and a rule that silently matches nothing looks
-				     exactly like one that is working. -->
-				<!-- A rule that could not be APPLIED is not the same as a rule
-				     firing, and showing them in one list made a broken ceiling
-				     read as a working one. This one goes first because it is
-				     the one that needs somebody. -->
+				<!-- Rules that could not be applied, listed apart from and above Recent blocks. -->
 				<div v-if="policyProblems.length" class="bg-white rounded-lg shadow-sm overflow-hidden border border-amber-200">
 					<div class="px-4 py-3 border-b bg-amber-50">
 						<h3 class="text-sm font-medium text-amber-900">Rules that could not be applied</h3>
@@ -299,6 +293,7 @@
 					</div>
 				</div>
 
+				<!-- Recent blocks: evidence that the rules fire. -->
 				<div class="bg-white rounded-lg shadow-sm overflow-hidden">
 					<div class="px-4 py-3 border-b flex items-center justify-between">
 						<div>
@@ -743,9 +738,7 @@ const loading = reactive({ events: false, patterns: false, locks: false, policie
 const events = ref([])
 const total = ref(0)
 const start = ref(0)
-// Reactive so the toolbar can change it. 200 is the server's own cap on
-// page_length, so the options stop short of it rather than asking for a page
-// the endpoint will silently shrink.
+// Reactive so the toolbar can change it. 200, the largest option, is the server's cap on page_length.
 const pageLength = ref(50)
 const PAGE_SIZES = [
 	{ label: "20", value: 20 },

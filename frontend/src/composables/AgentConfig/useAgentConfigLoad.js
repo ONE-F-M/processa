@@ -137,10 +137,8 @@ export function useAgentConfigLoad(ac) {
 			aiCompactionOnTaskBoundary: get("aiCompactionOnTaskBoundary") === "true",
 			aiLoopCompactionThreshold: 0,
 			aiLoopCompactionKeepTurns: 8,
-			// agent-owned, with no diagram fallback — this assignment
-			// replaces form.value wholesale, so the keys must exist here or
-			// loadLinkedAgent has nothing to fill and the template binds
-			// to undefined.
+			// agent-owned, with no diagram fallback; applyLinkedAgentFields
+			// sets them, and the empty defaults keep the template off undefined.
 			aiExamples: [],
 			aiGuardrails: [],
 			aiAgentRoles: [],

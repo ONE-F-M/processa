@@ -131,7 +131,7 @@ const logixHighlightStyle = HighlightStyle.define([
 	{ tag: tags.function(tags.definition(tags.variableName)),    color: "#795E26", fontWeight: "bold" },
 	{ tag: tags.function(tags.propertyName),                     color: "#795E26" }, // method calls like obj.method()
 
-	// ── Definitions (orange — variable definitions) ───────────────────
+	// ── Definitions (navy, variable definitions) ──────────────────────
 	{ tag: tags.definition(tags.variableName), color: "#001080" },
 
 	// ── Classes and types (teal) ──────────────────────────────────────
@@ -143,7 +143,7 @@ const logixHighlightStyle = HighlightStyle.define([
 	{ tag: tags.propertyName,      color: "#001080" },
 	{ tag: tags.attributeName,     color: "#001080" },
 
-	// ── Variables (dark gray — readable but neutral) ──────────────────
+	// ── Variables (navy) ──────────────────────────────────────────────
 	{ tag: tags.variableName,      color: "#001080" },
 
 	// ── Operators (dark red — visually distinct) ──────────────────────

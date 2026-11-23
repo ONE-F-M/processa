@@ -1,7 +1,7 @@
 import dayjs from "dayjs"
 import { fmtDateRange } from "./formatters.js"
 
-// Pure helpers for the Cost Allocation tab, unit-tested in costAllocation.test.mjs.
+// Pure helpers for the Cost Allocation tab, unit-tested in tests/unit/costAllocation.test.js.
 
 export const OTHER_KEY = "__other__"
 export const OTHER_COLOR = "#9ca3af"

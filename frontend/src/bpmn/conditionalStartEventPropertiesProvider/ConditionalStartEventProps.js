@@ -4,7 +4,7 @@
  * Trigger Configuration entries for Conditional Start Events.
  * Fields:
  *   1. Trigger DocType — searchable autocomplete (Frappe REST API)
- *   2. Trigger Type — "After Insert"
+ *   2. Trigger Type - "After Insert" or "On Cancel"
  *
  * All values are persisted as spiffworkflow: extension attributes on the
  * bpmn:ConditionalEventDefinition element so they survive XML round-trips.
@@ -84,7 +84,6 @@ function TriggerDoctypeAutocompleteComponent(props) {
 	const value = getAttr(condDef, "triggerDoctype");
 
 	const handleChange = (val) => {
-		// Clear dependent fields when doctype changes
 		modeling.updateModdleProperties(element, condDef, {
 			"spiffworkflow:triggerDoctype": val || undefined,
 		});

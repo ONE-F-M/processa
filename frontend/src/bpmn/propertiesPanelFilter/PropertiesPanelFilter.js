@@ -10,6 +10,9 @@ import { is } from "bpmn-js/lib/util/ModelUtil";
  *   - instructions            → "Instructions"
  *   - allow_guest_user        → "Guest options"
  *   - ioProperties            → "Input/Output Management"
+ *   - spiff_script            → Script Task default script
+ *   - business_rule_properties → SpiffWorkflow DMN defaults
+ *   - general                 → Lane name input
  */
 
 const LOWEST_PRIORITY = 100;
@@ -18,7 +21,7 @@ const LOWEST_PRIORITY = 100;
  * Map of BPMN element types → set of group IDs to hide.
  */
 const HIDDEN_GROUPS = {
-	// 1) User Task: hide Pre/Post Scripts, Web Form, Guest Options, I/O Management
+	// 1) User Task: hide Pre/Post Scripts, Web Form, Instructions, Guest Options, I/O Management
 	"bpmn:UserTask": new Set([
 		"spiff_pre_post_scripts",
 		"user_task_properties",
@@ -53,7 +56,7 @@ const HIDDEN_GROUPS = {
 		"spiff_pre_post_scripts",
 	]),
 
-	// 6) Script Task: hide default script textarea, pre/post scripts, I/O Management
+	// 6) Script Task: hide default script textarea, pre/post scripts, Instructions, I/O Management
 	"bpmn:ScriptTask": new Set([
 		"spiff_script",
 		"spiff_pre_post_scripts",
@@ -68,7 +71,7 @@ const HIDDEN_GROUPS = {
 		"ioProperties",
 	]),
 
-	// 8) Business Rule Task: hide SpiffWorkflow DMN defaults, Pre/Post Scripts, I/O
+	// 8) Business Rule Task: hide SpiffWorkflow DMN defaults, Pre/Post Scripts, Instructions, I/O
 	"bpmn:BusinessRuleTask": new Set([
 		"business_rule_properties",
 		"spiff_pre_post_scripts",

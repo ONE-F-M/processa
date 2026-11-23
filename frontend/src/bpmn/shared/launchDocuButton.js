@@ -5,9 +5,8 @@ import { HeaderButton } from "@bpmn-io/properties-panel";
 /**
  * launchDocuButton — shared factory for the "Launch Docu" properties-panel button.
  *
- * Docu is the AI DocType builder. Any shape with a doctype-selection field
- * (Start Event → triggerDoctype, User Task → targetDoctype, Service Task →
- * serviceTargetDoctype, ...) gets one of these buttons next to that field.
+ * Docu is the AI DocType builder. The Start Event, User Task and Service Task
+ * panels put one of these buttons next to most of their doctype-selection fields.
  *
  * `attr` is the spiffworkflow:* attribute (WITHOUT the prefix) that both holds
  * the currently selected DocType and receives the applied DocType name when the

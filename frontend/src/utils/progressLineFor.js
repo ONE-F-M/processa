@@ -2,9 +2,8 @@
 // The progress line for a long drawing.
 //
 // Contract with the backend: a CUSTOM event named `onefm.progress` whose value
-// is { phase: int, total: int, message: string }. The backend does not emit it
-// yet, so this reads it defensively: anything that is not that shape yields ""
-// and the panel simply shows no progress line.
+// is { phase: int, total: int, message: string }. Anything that is not that
+// shape yields "" and the panel shows no progress line.
 
 const MAX_LINE_LENGTH = 300;
 

@@ -14,7 +14,7 @@ export function useAgentConfigAssistant(ac) {
 	} = ac;
 
 	// the modal sends RAW grounding refs; the server-side context
-	// builder (ai_assistant.build_assistant_turn_context) assembles the map's
+	// builder (assistant/helpers.py build_assistant_turn_context) assembles the map's
 	// dialog_context from them — schema/sample reads stay permission-checked
 	// server-side. The builder branches on `mode` to ground a selector turn with the
 	// selector's runtime
@@ -95,7 +95,7 @@ export function useAgentConfigAssistant(ac) {
 	// Close the assistant's Chat Conversation on the backend so its BPMN
 	// orchestration runs the close branch (Cleanup → Conversation Ended) and the
 	// instance completes instead of staying parked at the event-based gateway.
-	// Fire-and-forget — same pattern as LogixChat's endConversation().
+	// Fire-and-forget.
 	function endAssistantConversation() {
 		const convName = assistantConversation.value;
 		if (!convName) return;
@@ -106,8 +106,8 @@ export function useAgentConfigAssistant(ac) {
 		}).catch(() => {});
 	}
 
-	// The modal is v-if mounted per open (BpmnEditor), so unmount fires on every
-	// close path: ✕, Cancel, overlay click, apply-then-close, and parent teardown.
+	// The modal is v-if mounted per element (BpmnEditor.vue), so unmount fires on
+	// Cancel, Save and parent teardown; the close button only hides it.
 	onUnmounted(endAssistantConversation);
 
 	const NUMERIC_FIELDS = ["aiTemperature", "aiTopP", "aiMaxTokens", "aiTimeout", "aiMaxRetries"];

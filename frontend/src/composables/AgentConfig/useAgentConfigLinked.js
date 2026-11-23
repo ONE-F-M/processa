@@ -130,10 +130,6 @@ export function useAgentConfigLinked(ac) {
 		await ac.loadScreening();
 	}
 
-	// Pull the linked configuration's current values into the form (live
-	// link). The resolver returns shape-attribute keys (aiSystemPrompt,
-	// aiProvider, aiModel, aiTemperature, aiMaxTokens) that map directly onto our
-
 	const BOOLEAN_FORM_KEYS = [
 		"aiCompactionEnabled",
 		"aiCompactionOnTaskBoundary",
@@ -162,16 +158,12 @@ export function useAgentConfigLinked(ac) {
 		});
 	}
 
-	// On open, overlay the linked agent's memory settings so the panel shows what
-	// will actually run. Scoped to memory on purpose: the other agent-level fields
-	// keep their existing "shape copy is the editing view" behaviour.
+	// On pick: "__create__" opens the create panel, any other value loads the linked agent.
 	async function onAgentConfigSelect() {
 		const value = form.value.aiAgentConfig;
 		if (value === "__create__") {
-			// open the inline create panel instead of linking. A NEW
-			// agent starts BLANK — carrying the task's prompts into the panel
-			// confused more than it helped. Only the provider carries over
-			// (harmless convenience, freely changeable).
+			// open the inline create panel instead of linking. A new agent
+			// starts blank except for the task's model.
 			form.value.aiAgentConfig = "";
 			newAgent.value = {
 				...emptyNewAgent(),

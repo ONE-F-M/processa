@@ -60,7 +60,6 @@ export default class StickyNoteRenderer extends BaseRenderer {
 		rect.setAttribute('rx', '2');
 		rect.setAttribute('ry', '2');
 		
-		// Add a subtle shadow using SVG filter if possible, or just append it
 		parentNode.appendChild(rect);
 
 		// Render text

@@ -1,4 +1,4 @@
-// Linking a signal event to a BPMN Signal Master record, kept free of the panel's imports so node --test can load it.
+// Linking a signal event to a BPMN Signal Master record, kept free of the panel's imports so unit tests can load it.
 
 // Resolves to the created record's name; the caller passes trimmed, non-blank text.
 export function createBpmnSignalMaster(post, name) {

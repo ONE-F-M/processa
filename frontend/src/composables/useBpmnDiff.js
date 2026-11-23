@@ -7,7 +7,7 @@
 import { diff } from "bpmn-js-differ";
 
 /**
- * Parse XML and compute a semantic diff between two BPMN definitions.
+ * Compute a semantic diff between the definitions of two imported viewers.
  *
  * @param {import('bpmn-js/lib/NavigatedViewer').default} viewerOld  — viewer with old XML already imported
  * @param {import('bpmn-js/lib/NavigatedViewer').default} viewerNew  — viewer with new XML already imported

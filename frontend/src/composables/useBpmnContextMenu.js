@@ -138,7 +138,7 @@ export function useBpmnContextMenu({
 		addCommentFromContextMenu,
 		viewCommentsFromContextMenu,
 
-		// Lifecycle (called from BpmnEditor setup)
+		// Lifecycle (called from useEditorComments)
 		registerEventListeners,
 	};
 }

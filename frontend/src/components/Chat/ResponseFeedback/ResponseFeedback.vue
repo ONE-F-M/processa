@@ -1,5 +1,5 @@
 <template>
-	<!-- One row under an agent reply; the buttons get a background only when hovered, focused or chosen. -->
+	<!-- One row under an agent reply; the buttons get a background only when hovered or chosen, and an outline when focused. -->
 	<div class="arf" :class="{ 'arf--open': panelOpen }">
 		<div class="arf-row" role="group" :aria-label="__('Rate this reply')">
 			<button

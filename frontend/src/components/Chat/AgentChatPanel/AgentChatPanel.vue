@@ -294,7 +294,7 @@ const streamingRole = ref("assistant");
 // doing instead of sitting on "Thinking…". Cleared when the tool ends and
 // again when the turn does, because a stream can close mid-tool.
 const runningTool = ref("");
-// "Still working on your last message…" from a long turn; shown until the turn's next event.
+// "Still working on your last message…" from a long turn; cleared by reply text, a tool call starting or ending, or the turn ending.
 const progressNote = ref("");
 // the latest `onefm.progress` line ("Drawing part 2 of 6"), shown for the rest of the turn.
 const progressLine = ref("");

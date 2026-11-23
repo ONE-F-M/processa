@@ -7,12 +7,12 @@ import { AI_SPARKLE_DATA_URI } from "../shared/aiSparkleIcon";
  *
  * Selecting it tags the subprocess ITSELF with
  * spiffworkflow:serviceType="ai_task_selector" and defaults
- * spiffworkflow:aiToolSources to "both" (diagram inner tasks + AI Agent
- * Tool registry, the merged-pool design). Selecting it again on an
+ * spiffworkflow:aiToolSources to "both" (the backend tool pool ignores it and
+ * always uses the diagram's inner tasks). Selecting it again on an
  * already-tagged subprocess removes the selector configuration.
  *
  * The ai* attributes are declared on the AdhocAiTaskSelectorExtension
- * moddle extension (see BpmnEditor.vue) so they round-trip through
+ * moddle extension (see utils/editorModdleExtensions.js) so they round-trip through
  * save/reload. Compile-time validation (provider required, raw-key lint)
  * lives in processa_engine/compiler/ai_checks.py.
  */

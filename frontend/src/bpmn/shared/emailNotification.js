@@ -1,6 +1,6 @@
 /**
  * The Email Notification service task attributes the editor dialog reads and writes,
- * the Save check, and the panel summary. Pure, so node --test covers it.
+ * the Save check, and the panel summary. Pure, so unit tests cover it.
  */
 export const EMAIL_EDITOR_ATTRS = [
 	"emailAccount",

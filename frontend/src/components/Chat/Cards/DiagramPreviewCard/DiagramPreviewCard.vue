@@ -27,7 +27,7 @@
 	</CardShell>
 </template>
 <script setup>
-// DiagramPreviewCard = CardShell[Heading, DiagramThumb, Actions].
+// DiagramPreviewCard = CardShell[DiagramThumb, Actions].
 // Renders onefm.bpmn_preview — generated / modified / pending_removal in one
 // card; the destructive-change confirm lives HERE, not in loose buttons.
 // Deliberate behavior change: the canvas updates only on apply.

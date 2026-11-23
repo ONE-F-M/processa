@@ -313,8 +313,7 @@ export function useEditorComments(ed) {
 		// Fetch users for assignment
 		fetchUsers();
 
-		// Expose the current model to bpmn-js properties providers that
-		// live outside Vue (Registry Tools applicability).
+		// Expose the current model name; useAgentConfigAssistant reads it.
 		window.__PROCESSA_CURRENT_MODEL__ = props.modelName || "";
 
 		// Initial fetch of comments

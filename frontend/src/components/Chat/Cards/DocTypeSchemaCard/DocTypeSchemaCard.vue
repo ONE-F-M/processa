@@ -20,7 +20,7 @@
 	</CardShell>
 </template>
 <script setup>
-// DocTypeSchemaCard = CardShell[Heading, FieldList, Actions].
+// DocTypeSchemaCard = CardShell[FieldList, Actions].
 // Renders onefm.doctype_schema; the host's loadIr() applies the IR.
 import { computed } from "vue";
 import ActionButton from "../../Primitives/ActionButton/ActionButton.vue";

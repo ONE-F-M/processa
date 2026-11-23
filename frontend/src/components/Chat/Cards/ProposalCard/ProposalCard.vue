@@ -17,7 +17,7 @@
 	</CardShell>
 </template>
 <script setup>
-// ProposalCard = CardShell[Heading, KeyValueTable, Row[Actions]].
+// ProposalCard = CardShell[KeyValueTable, Actions].
 // Renders onefm.proposed_config AND onefm.proposed_update — one card, two
 // payload shapes. It proposes; confirm-create relays the designer's approval
 // into the conversation (the AGENT then calls its create tool), apply-fields

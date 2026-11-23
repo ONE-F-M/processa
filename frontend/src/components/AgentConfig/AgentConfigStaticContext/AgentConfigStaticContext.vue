@@ -3,10 +3,7 @@
 	<!-- Examples and guard rails live on the linked agent, not on this
                diagram, and they are FROZEN: identical on every loop iteration
                of every turn. Editing them here edits the agent.
-               They close out Advanced Settings rather than forming groups of
-               their own — they tune how one agent behaves, the same as the
-               sampling params above, and Memory below is the next real
-               section. -->
+               Screening renders next, then Memory. -->
 	<template v-if="!isSelector && form.aiAgentConfig">
 		<div class="field-row">
 			<label>Examples <span class="hint">(optional)</span></label>

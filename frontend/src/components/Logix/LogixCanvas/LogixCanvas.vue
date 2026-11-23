@@ -554,9 +554,8 @@ async function onLogixCardAction({ name, action, value, payload }) {
 	if (name !== "onefm.script_diff" || action !== "apply-script") return;
 	const code = value.modified_script || "";
 	if (!code) return;
-	// Same editor handoff as the legacy approve_modify / approve_create
-	// handlers: set the canvas, mark dirty, save through the one path that
-	// owns naming, linking and version history.
+	// Set the canvas, mark dirty, and save through the one path that owns
+	// naming, linking and version history.
 	if (value.mode === "CREATE" && value.suggested_name && !canvasScriptName.value) {
 		canvasScriptName.value = value.suggested_name;
 	}

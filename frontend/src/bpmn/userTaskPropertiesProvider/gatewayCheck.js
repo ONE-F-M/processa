@@ -1,6 +1,6 @@
 // Gateway check: pure comparison of a User Task's actions against the
 // conditions on the outgoing flows of the exclusive gateway that tests them.
-// No imports and no DOM, so it runs under `node --test`.
+// No imports and no DOM, so unit tests load it directly.
 
 // action == "Name", spaces optional, either quote. Real maps write action == "Approve".
 const ACTION_CONDITION = /^\s*action\s*==\s*(?:"([^"]*)"|'([^']*)')\s*$/;

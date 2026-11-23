@@ -143,10 +143,8 @@ export function layoutBpmnXml(xmlString) {
 		const diMatch    = xmlString.match(/<bpmndi:BPMNDiagram[\s\S]*<\/bpmndi:BPMNDiagram>/);
 		let   existingDI = diMatch ? diMatch[0] : "";
 
-		// Check if any BPMNEdge elements exist in the DI section.
-		// bpmn-auto-layout sometimes generates shapes but omits edges, causing
-		// no-bpmndi lint errors for every sequence flow. If edges are missing,
-		// generate them from the existing shape positions and inject them.
+		// When the pipeline DI has shapes but no BPMNEdge, generate edges from
+		// the shape positions so sequence flows do not fail no-bpmndi lint.
 		const hasEdges = existingDI.includes("<bpmndi:BPMNEdge");
 		if (!hasEdges && Object.keys(flows).length > 0 && existingDI) {
 			// Parse shape positions from existing DI for edge routing
@@ -160,7 +158,7 @@ export function layoutBpmnXml(xmlString) {
 				};
 			}
 
-			// Build edge XML for each flow using Manhattan routing
+			// Build edge XML per flow: arc above for back-edges, straight when level, else Manhattan
 			const edgeXmlLines = [];
 			for (const [flowId, { source, target }] of Object.entries(flows)) {
 				const sb = shapePositions[source];

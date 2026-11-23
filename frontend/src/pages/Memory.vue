@@ -17,8 +17,7 @@
 		</header>
 
 		<!-- Filters across the top, matching Sessions and Instances. The options
-		     come from the memories that actually exist, not from every value the
-		     schema allows, so an empty choice is never offered. -->
+		     come from the memories that exist; the user filter also always offers "Shared". -->
 		<div class="bg-white px-6 py-3 border-b flex flex-wrap gap-4 items-center">
 			<FormControl type="select" v-model="filters.agent_element" :options="agentOptions" class="w-56" @change="load()" />
 			<FormControl type="select" v-model="filters.user" :options="userOptions" class="w-52" @change="load()" />

@@ -100,8 +100,7 @@ export function useAgentConfigSave(ac) {
 			// Blank rows are the ones the user added and never picked a role for.
 			fields.aiAgentRoles = form.value.aiAgentRoles.filter((r) => r && r.role);
 		}
-		// Screening goes through security_api, which accepts ONLY screening fields —
-		// keeping this endpoint from becoming a general writer for the whole agent.
+		// Screening goes through processa.api.security.save_agent_screening, which accepts only screening fields.
 		await ac.saveScreening();
 		try {
 			await frappeRequest({

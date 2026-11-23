@@ -29,7 +29,7 @@ const {
 </script>
 
 <template>
-	<!-- Toolbar (moved natively to parent Editor.vue's header) -->
+	<!-- Toolbar (moved into ProcessToolbar.vue's #bpmn-editor-toolbar on ready) -->
 	<div
 		v-show="isMounted"
 		ref="toolbarEl"

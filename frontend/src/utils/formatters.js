@@ -1,4 +1,4 @@
-// Pure en-US/USD number formatters; null, undefined and NaN read as 0.
+// Pure en-US/USD number formatters; null, undefined and NaN read as 0, except fmtDelta returns "new" for null and undefined.
 
 const CURRENCY_2 = new Intl.NumberFormat("en-US", {
 	style: "currency",

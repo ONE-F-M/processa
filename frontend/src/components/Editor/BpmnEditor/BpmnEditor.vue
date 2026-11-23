@@ -243,7 +243,7 @@ defineExpose({
 	// Properties Panel API
 	togglePropertiesCollapse,
 	toggleTimeline,
-	// Comment Panel state (readable from Editor.vue)
+	// Comment Panel state (read through the editor ref, e.g. ProcessActions.vue)
 	showTimeline,
 	showPropertiesPanel,
 	propertiesCollapsed,

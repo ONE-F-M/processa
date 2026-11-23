@@ -11,7 +11,7 @@ d.extend(function (_, cls) {
 		return this.format("MMM D, h:mm A")  // Example: "Feb 2, 11:30 AM"
 	}
 	cls.prototype.long = function () {
-		return this.format("LLLL")  // Example: "Sunday, February 2, 2026 11:30 AM"
+		return this.format("LLLL")  // Example: "Monday, February 2, 2026 11:30 AM"
 	}
 })
 

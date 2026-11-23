@@ -414,7 +414,7 @@ const selectedNode = computed(() => {
 // tasks — fetch them from the observability records (AI Agent Run → Step →
 // Tool Call) so the history and diagram can show what the agent did.
 
-// bpmnId → [ [calls of run 1], [calls of run 2], ... ] in run start order,
+// bpmnId -> [ { runName, startedAt, calls }, ... ] in run start order,
 // one entry per run even when a run made no tool calls — the flattener zips
 // this list to the agent task's visits, so slots must line up 1:1.
 const aiCallRunsByBpmnId = ref({})
@@ -510,8 +510,6 @@ async function loadAiToolCalls() {
 	}
 }
 
-// Diagram highlight: toolbox shapes the agent actually called.
-// bpmnId → "Success" | "Error" (an Error anywhere wins for that shape).
 // Shape ids present in the diagram currently on screen. Used to keep a caller's
 // tool calls off a called process's page and vice versa. Derived from the XML
 // rather than checked at fetch time because the XML and the tool calls load

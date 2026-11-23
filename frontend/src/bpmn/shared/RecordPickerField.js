@@ -33,7 +33,7 @@ async function fetchDocTypes(txt) {
 
 /**
  * Properties-panel entry that mounts the Vue RecordPicker.
- * Props: id, label, value, onChange(value, option), fetchApi(txt) or loadOptions(), valueField,
+ * Props: id, label, value, onChange(value), fetchApi(txt) or loadOptions(), valueField,
  * renderOption, multiple, translate, placeholder, createRecord, renderCreate, missingText.
  * Single mode stores the picked name; multiple mode stores a comma-separated string.
  */
