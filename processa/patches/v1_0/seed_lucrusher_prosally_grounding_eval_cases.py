@@ -10,9 +10,9 @@ from processa.patches.v1_0.seed_lucrusher_eval_suite import (
 	LUCID_DOC_ID,
 	PARSED_DOC,
 	SCAN_SUMMARY,
-	_call,
-	_judge,
-	_state,
+	judge_rubric,
+	tool_call,
+	turn_state,
 )
 from processa.patches.v1_0.seed_lucrusher_skill_eval_cases import NO_REFETCH, _turn, seed_cases
 from processa.patches.v1_0.seed_lucrusher_skills import PROSALLY_SKILL
@@ -20,8 +20,8 @@ from processa.patches.v1_0.seed_lucrusher_skills import PROSALLY_SKILL
 PROMPT = "now write the ProsAlly prompts"
 BOT_TEXT = "Migration tasks confirmed. Next I can write the ProsAlly prompts."
 READ_THEN_DRAFT = [
-	_call(1, "read_doctype_logic"),
-	_call(2, "finalize", "intent", "equals", "PROSALLY_PROMPT_DRAFT"),
+	tool_call(1, "read_doctype_logic"),
+	tool_call(2, "finalize", "intent", "equals", "PROSALLY_PROMPT_DRAFT"),
 ]
 
 
@@ -39,7 +39,7 @@ def _case(title, topology_names, rubric, lucid=None):
 			for name in topology_names
 		]
 	}
-	state = _state(
+	state = turn_state(
 		"MIGRATION_TASKS_CONFIRMED",
 		document=DOC_SUMMARY,
 		codebase_scan=SCAN_SUMMARY,
@@ -54,7 +54,7 @@ def _case(title, topology_names, rubric, lucid=None):
 		"prompt": PROMPT,
 		"context": context,
 		"calls": READ_THEN_DRAFT,
-		"assertions": [IN_ORDER, NO_REFETCH, _judge(rubric)],
+		"assertions": [IN_ORDER, NO_REFETCH, judge_rubric(rubric)],
 	}
 
 

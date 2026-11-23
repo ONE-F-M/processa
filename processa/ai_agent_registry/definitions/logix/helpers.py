@@ -110,6 +110,21 @@ def function_signatures(code: str) -> list[str] | None:
 	return [f"{node.name}({ast.unparse(node.args)})" for node in body]
 
 
+def workflow_states(process_model: str | None) -> list[str]:
+	"""Each state of the active Workflow on the map's trigger DocType, as 'State (doc status N)'."""
+	doctype = process_model and frappe.db.get_value("BPMN Process Model", process_model, "trigger_doctype")
+	workflow = doctype and frappe.db.get_value("Workflow", {"document_type": doctype, "is_active": 1}, "name")
+	if not workflow:
+		return []
+	rows = frappe.get_all(
+		"Workflow Document State",
+		filters={"parent": workflow},
+		fields=["state", "doc_status"],
+		order_by="idx asc",
+	)
+	return list(dict.fromkeys(f"{row.state} (doc status {row.doc_status})" for row in rows))
+
+
 def library_text(libraries: list[dict]) -> str:
 	"""The library section of the text Logix reads."""
 	lines = [

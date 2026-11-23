@@ -1,5 +1,6 @@
 """ProsAlly's replies that say what a redraw changed, or why nothing changed."""
 
+import html
 import re
 from collections import Counter
 from xml.etree import ElementTree as ET
@@ -17,7 +18,12 @@ from processa.ai_agent_registry.definitions.prosally.helpers import (
 	prosally_config,
 	quoted,
 )
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import element_names
+from processa.ai_agent_registry.definitions.prosally.tools_pipeline import (
+	audit_layout,
+	check_topology,
+	element_names,
+	flow_pairs_from_xml,
+)
 from processa.ai_agent_registry.definitions.prosally.tools_prompts import dms_answer_output
 from processa.ai_agent_registry.definitions.shared.helpers import extract_json, format_history
 from processa.processa_engine.agent_runtime.turn_state import get_turn, update_turn
@@ -121,7 +127,7 @@ def _settings(xml: str) -> dict:
 	found = {}
 	for attrs in re.findall(r"<bpmn:\w+\s([^>]*?)/?>", xml or ""):
 		values = dict(re.findall(r'([\w.-]+:[\w.-]+)="([^"]*)"', attrs))
-		values = {key: val for key, val in values.items() if not key.startswith("xmlns")}
+		values = {key: html.unescape(val) for key, val in values.items() if not key.startswith("xmlns")}
 		elem_id = re.search(r'\bid="([^"]+)"', attrs)
 		if values and elem_id:
 			found[elem_id.group(1)] = values
@@ -169,6 +175,107 @@ def _moved_arrows(previous_xml: str, xml: str) -> list[str]:
 				_("Moved the arrow from {0} to {1}.").format(quoted(new_names[source] or source), quoted(new_names[target] or target))
 			)
 	return lines
+
+
+# Element kinds a request can rule out ("no script tasks"), and the BPMN tags each one covers.
+NO_ELEMENT_KINDS = {
+	"script task": ("scriptTask",),
+	"service task": ("serviceTask",),
+	"user task": ("userTask",),
+	"gateway": ("exclusiveGateway", "parallelGateway", "inclusiveGateway", "eventBasedGateway"),
+	"decision": ("exclusiveGateway", "inclusiveGateway", "eventBasedGateway"),
+	"lane": ("lane",),
+	"timer": ("timerEventDefinition",),
+	"sub-process": ("subProcess",),
+}
+RULE_OUT = r"\b(?:no|without|avoid|never (?:use|add)|do not (?:use|add)|don'?t (?:use|add))\s+(?:any\s+|new\s+|extra\s+)?"
+ONLY_WHAT_IS_NAMED = re.compile(
+	r"\b(?:do not|don'?t|never)\s+(?:change|touch|modify|move|alter)\s+(?:anything|any other|the rest|other)"
+	r"|\bnothing else\b|\bleave (?:the rest|everything else)\b|\bonly (?:change|edit|update|rename|add|remove)\b",
+	re.I,
+)
+ASKS_FOR_A_GATEWAY = re.compile(
+	r"\b(?:gateway|decision|condition|split|join|merge|parallel|branch|if|whether|either|otherwise)\b", re.I
+)
+
+
+def request_constraints(text: str) -> dict:
+	"""The constraints a request sets: the element kinds it rules out, and whether only what it names may change."""
+	ruled_out = [
+		kind
+		for kind in NO_ELEMENT_KINDS
+		if re.search(RULE_OUT + kind.replace("-", "[- ]?") + r"s?\b", text or "", re.I)
+	]
+	return {"ruled_out": ruled_out, "only_what_is_named": bool(ONLY_WHAT_IS_NAMED.search(text or ""))}
+
+
+def constraint_prompt(constraints: dict) -> str:
+	"""The constraints as lines for the step that draws the change; "" when the request sets none."""
+	lines = [f"Do not add any {kind}." for kind in constraints["ruled_out"]]
+	if constraints["only_what_is_named"]:
+		lines.append(
+			"Change only what the request names. Every other step, arrow, lane and setting stays exactly as it is."
+		)
+	if not lines:
+		return ""
+	return "Constraints from the request; the result is checked against them:\n- " + "\n- ".join(lines)
+
+
+def unrequested_changes(previous_xml: str, xml: str, text: str, constraints: dict) -> list[str]:
+	"""Each way xml breaks a constraint of the request, or adds what the request did not ask for, in plain words."""
+	problems = [
+		_("The request says no {0}, and the change adds one.").format(kind)
+		for kind in constraints["ruled_out"]
+		if sum(_count(xml, tag) for tag in NO_ELEMENT_KINDS[kind])
+		> sum(_count(previous_xml, tag) for tag in NO_ELEMENT_KINDS[kind])
+	]
+	before, after = element_names(previous_xml), element_names(xml)
+	for elem_id, (kind, name) in after.items():
+		if elem_id in before or kind == "sequenceFlow":
+			continue
+		gateway_not_asked = kind.endswith("Gateway") and not ASKS_FOR_A_GATEWAY.search(text or "")
+		element_not_asked = not kind.endswith("Gateway") and bool(name) and not _named_in(name, text)
+		if gateway_not_asked or element_not_asked:
+			problems.append(
+				_("The change adds {0}, which the request did not ask for.").format(
+					_element_label(kind, name)
+				)
+			)
+	if constraints["only_what_is_named"]:
+		problems += _changed_but_not_named(previous_xml, xml, text)
+	return problems
+
+
+def _changed_but_not_named(previous_xml: str, xml: str, text: str) -> list[str]:
+	"""Elements removed, renamed, retyped or reconfigured although the request names none of them."""
+	before, after = element_names(previous_xml), element_names(xml)
+	old_settings, new_settings = _settings(previous_xml), _settings(xml)
+	problems = []
+	for elem_id, (kind, name) in before.items():
+		if kind == "sequenceFlow" or _named_in(name, text):
+			continue
+		changed = elem_id not in after or after[elem_id] != (kind, name)
+		changed = changed or old_settings.get(elem_id) != new_settings.get(elem_id)
+		if changed:
+			problems.append(
+				_("The request says to change nothing else, and the change also alters {0}.").format(
+					_element_label(kind, name)
+				)
+			)
+	return problems
+
+
+def _named_in(name: str, text: str) -> bool:
+	"""True when a significant word of name appears in text, matched on its first five letters."""
+	asked = {word[:5] for word in re.findall(r"[a-z]{4,}", (text or "").lower())}
+	words = [
+		word[:5] for word in re.findall(r"[a-z]{4,}", (name or "").lower()) if word not in REQUEST_STOPWORDS
+	]
+	return bool(words) and any(word in asked for word in words)
+
+
+def _count(xml: str, tag: str) -> int:
+	return len(re.findall(r"<(?:\w+:)?" + tag + r"\b", xml or ""))
 
 
 def similar_steps(xml: str, texts: list, skip: str = "") -> list[str]:
@@ -350,3 +457,93 @@ def no_stage_reply(conversation: str) -> dict:
 		"error_code": NO_STAGE_REPLY,
 		"retryable": False,
 	}
+
+
+def layout_note(old_xml: str, new_xml: str, text: str) -> str:
+	"""What a change did for the layout asks in text, measured on both drawings; "" when text makes none."""
+	asks = layout_asks(text)
+	return layout_change_summary(audit_layout(old_xml), audit_layout(new_xml), asks) if asks else ""
+
+
+def layout_change_summary(before: dict, after: dict, asks: list[str]) -> str:
+	"""The measured change for each layout ask, each sentence led by a space."""
+	said = ""
+	if "crossings" in asks or before["crossings"] != after["crossings"]:
+		said += " " + _("Crossing lines: {0} before, {1} now.").format(
+			before["crossings"], after["crossings"]
+		)
+	if before["throughShape"] != after["throughShape"]:
+		said += " " + _("Lines through a shape: {0} before, {1} now.").format(
+			before["throughShape"], after["throughShape"]
+		)
+	if before["overlaps"] != after["overlaps"]:
+		said += " " + _("Lines on top of each other: {0} before, {1} now.").format(
+			before["overlaps"], after["overlaps"]
+		)
+	if "spacing" in asks:
+		said += " " + _("The gaps between columns and lanes are sized to the lines they carry.")
+	if "alignment" in asks:
+		said += " " + _("Every step sits on the layout grid of columns and lanes.")
+	if "convergence" in asks:
+		said += " " + _("Lines that join meet at one point before the step they lead to.")
+	return said
+
+
+def layout_limits(xml: str, audit: dict, asks: list[str]) -> str:
+	"""Why a layout that came out the same cannot meet each ask, each sentence led by a space."""
+	said = ""
+	if audit["crossings"]:
+		topology = check_topology(flow_pairs_from_xml(xml))
+		if topology["planar"] is False:
+			names = {
+				e.get("id"): e.get("name") or e.get("id") for e in ET.fromstring(xml).iter() if e.get("id")
+			}
+			who = ", ".join(quoted(names.get(n, n)) for n in topology["obstruction"][:5])
+			said += " " + _(
+				"{0} crossing line(s) stay because the paths through {1} cannot all be laid flat."
+			).format(audit["crossings"], who)
+		else:
+			said += " " + _("I could not draw it with fewer than {0} crossing line(s).").format(
+				audit["crossings"]
+			)
+	elif "crossings" in asks:
+		said += " " + _("No lines cross.")
+	if "spacing" in asks:
+		said += " " + _(
+			"I cannot set a gap of my own: the gaps are sized to the lines each column and lane carries."
+		)
+	if "alignment" in asks:
+		said += " " + _("Every step already sits on the layout grid.")
+	if "convergence" in asks:
+		said += " " + _("Lines that join already meet where they join.")
+	return said
+
+
+LAYOUT_ASKS = (
+	(
+		"spacing",
+		re.compile(r"\b(?:spac(?:e|ed|ing)|spread|cramped|crowded|squashed|too close|apart|gaps?)\b", re.I),
+	),
+	(
+		"alignment",
+		re.compile(r"\b(?:align\w*|misaligned|line[sd]? (?:them )?up|lined up|straighten\w*)\b", re.I),
+	),
+	(
+		"crossings",
+		re.compile(r"\b(?:cross(?:ing|es|ed)?|criss-?cross\w*|tangl\w*|untangle|overlap\w*)\b", re.I),
+	),
+	("convergence", re.compile(r"\b(?:converg\w*|come together|meet at)\b", re.I)),
+)
+
+
+def layout_asks(text: str) -> list[str]:
+	"""Which layout asks text makes: spacing, alignment, crossings, convergence."""
+	return [ask for ask, pattern in LAYOUT_ASKS if pattern.search(text)]
+
+
+def layout_is_automatic() -> str:
+	"""What a person can do about the layout, since no single arrow, label or colour is placed by hand."""
+	return _(
+		"Layout is computed automatically, so I cannot place one arrow, label or colour by hand. "
+		"You can drag shapes on the canvas, or change the flow structure and I will lay it out again."
+	)

@@ -86,8 +86,8 @@
 						<pre>{{ JSON.stringify(item.value, null, 2) }}</pre>
 					</details>
 				</div>
-				<!-- Every stamped entry shows when it happened -->
-				<div v-if="item.ts" class="acp-time" :class="{ 'acp-time--user': item.kind === 'user' }">{{ formatTime(item.ts) }}</div>
+				<!-- A reply shows its time once, under its last piece -->
+				<div v-if="showsTime(transcriptItems, i)" class="acp-time" :class="{ 'acp-time--user': item.kind === 'user' }">{{ formatTime(item.ts) }}</div>
 			</template>
 
 			<div
@@ -235,7 +235,6 @@
 import MarkdownIt from "markdown-it";
 import { Badge, Button, Dialog, FileUploadHandler, frappeRequest } from "frappe-ui";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { dayjs } from "@/dayjs";
 import { streamAgentTurn } from "@/utils/aguiClient";
 import { chatDraftKey, useChatDraft } from "@/composables/useChatDraft";
 import ProposedFieldsTray from "../ProposedFieldsTray/ProposedFieldsTray.vue";
@@ -243,6 +242,7 @@ import ResponseFeedback from "../ResponseFeedback/ResponseFeedback.vue";
 import "./AgentChatPanel.css";
 import { adoptPersistedName } from "@/utils/adoptPersistedName";
 import { progressLineFor } from "@/utils/progressLineFor";
+import { formatTime, restoredItems, showsTime, stampNow } from "@/utils/showsTime";
 
 const props = defineProps({
 	agentId: { type: String, required: true },
@@ -487,18 +487,6 @@ const statusLine = computed(() => {
 
 function renderMarkdown(text) {
 	return md.render(text || "");
-}
-
-// Transcript timestamps. Live entries are stamped with the client
-// clock as they land; resumed entries carry the row's `creation` from
-// conversation_history, displayed as-is (site timezone, no conversion).
-function stampNow() {
-	return new Date();
-}
-
-function formatTime(ts) {
-	const t = dayjs(ts);
-	return t.isValid() ? t.short() : "";
 }
 
 function scrollDown() {
@@ -806,68 +794,6 @@ const HISTORY_PAGE = 100;
 const hasOlder = ref(false);
 const loadingOlder = ref(false);
 const oldestMessage = ref("");
-
-// Turn stored turns into transcript items: the words, then the cards and
-// option buttons the reply produced when it first streamed.
-//
-// Restored cards do not act. Nothing records whether an apply succeeded, and
-// re-applying a diagram or a schema is destructive — so a card that came back
-// from history is shown concluded. An unanswered question is different: the
-// only thing its buttons do is send a sentence, so the newest reply's options
-// stay live and the conversation can carry on where it stopped.
-function restoredItems(history, isNewestPage) {
-	const out = [];
-	history.forEach((m, index) => {
-		if (m.role === "user") {
-			out.push({ kind: "user", text: m.content, ts: m.timestamp });
-			return;
-		}
-		// a stored rate-limit refusal carries role "system" —
-		// restore it as a system notice, same as when it first streamed.
-		if (m.role === "system") {
-			if (m.content) out.push({ kind: "system", text: m.content, ts: m.timestamp });
-			return;
-		}
-		for (const note of m.notes || []) {
-			out.push({ kind: "narration", text: note, ts: m.timestamp });
-		}
-		if (m.content) {
-			out.push({ kind: "agent", text: m.content, message: m.message || "", ts: m.timestamp });
-		}
-		const isLastOfPage = index === history.length - 1;
-		for (const event of m.events || []) {
-			const value = event.value || {};
-			if (event.name === "onefm.choice") {
-				out.push({
-					kind: "choice",
-					value,
-					// What the user said next, when it was one of the options —
-					// so a reopened conversation shows which way it went.
-					answered: answeredWith(history, index, value.options || []),
-					restored: !(isNewestPage && isLastOfPage),
-					ts: m.timestamp,
-				});
-			} else {
-				out.push({
-					kind: "custom",
-					name: event.name,
-					value,
-					doneAction: "restored",
-					restored: true,
-					ts: m.timestamp,
-				});
-			}
-		}
-	});
-	return out;
-}
-
-function answeredWith(history, index, options) {
-	const next = history[index + 1];
-	if (!next || next.role !== "user") return "";
-	const said = (next.content || "").trim();
-	return options.find((opt) => opt === said) || "";
-}
 
 async function loadOlder() {
 	if (loadingOlder.value || !oldestMessage.value) return;

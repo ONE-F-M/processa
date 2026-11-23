@@ -147,6 +147,16 @@ class TestNamedRevoke(unittest.TestCase):
 		self.assertEqual(outcome["skipped"][0]["id"], "p-inh")
 		self.assertIn("inherited", outcome["skipped"][0]["reason"])
 
+	def test_role_filter_removes_direct_writers_and_keeps_readers_and_the_domain(self):
+		reader = {"id": "p-reader", "type": "user", "emailAddress": "reader@one-fm.com", "role": "reader"}
+		service, perms = fake_service([DOMAIN_READER, REQUESTER, OTHER_USER, reader])
+
+		outcome = gd.revoke_permissions(FILE_ID, scope="user", role="writer", service=service)
+
+		deleted = {c.kwargs["permissionId"] for c in perms.delete.call_args_list}
+		self.assertEqual(deleted, {"p-req", "p-other"})
+		self.assertEqual({p["id"] for p in outcome["removed"]}, {"p-req", "p-other"})
+
 	def test_scope_all_still_removes_direct_grants_and_skips_inherited(self):
 		service, perms = fake_service([DOMAIN_READER, REQUESTER, INHERITED_USER])
 

@@ -53,6 +53,8 @@ export function createEditorContext(props, emit) {
 	const activeMentionContext = ref("");
 	const mentionSearchQuery = ref("");
 	const mentionStartIndex = ref(-1);
+	const activeMentionIndex = ref(0);
+	const commentError = ref("");
 	const container = ref(null);
 	const propertiesContainer = ref(null);
 	const toolbarEl = ref(null);
@@ -116,6 +118,8 @@ export function createEditorContext(props, emit) {
 		activeMentionContext,
 		mentionSearchQuery,
 		mentionStartIndex,
+		activeMentionIndex,
+		commentError,
 		container,
 		propertiesContainer,
 		toolbarEl,

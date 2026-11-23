@@ -19,6 +19,8 @@ export function useEditorTimeline(ed) {
 		activeMentionContext,
 		mentionSearchQuery,
 		mentionStartIndex,
+		activeMentionIndex,
+		commentError,
 		selectedElements,
 	} = ed;
 
@@ -111,6 +113,14 @@ export function useEditorTimeline(ed) {
 		const element = selectedElements.value[0];
 		const elementId = element?.id || "process";
 
+		const assignedTo = timelineAssignedTo.value || ed.resolveTypedMention(timelineText.value);
+		if (timelineIsTask.value && !assignedTo) {
+			commentError.value =
+				"A task needs an assignee. Mention the person with @ and pick them from the list.";
+			return;
+		}
+		commentError.value = "";
+
 		try {
 			await frappeRequest({
 				url: "/api/method/processa.api.canvas_comments.post_canvas_comment",
@@ -118,7 +128,7 @@ export function useEditorTimeline(ed) {
 					model_name: props.modelName,
 					element_id: elementId,
 					comment: timelineText.value.trim(),
-					assigned_to: timelineAssignedTo.value,
+					assigned_to: assignedTo,
 					is_task: timelineIsTask.value ? 1 : 0,
 				},
 			});
@@ -140,6 +150,7 @@ export function useEditorTimeline(ed) {
 	}
 
 	function handleTimelineCommentInput(e) {
+		commentError.value = "";
 		if (!e || !e.target || typeof e.target.selectionStart !== "number") return;
 
 		const text = timelineText.value || "";
@@ -203,6 +214,14 @@ export function useEditorTimeline(ed) {
 			.map((u) => ({ label: u.full_name, value: u.name }))
 			.filter((u) => u.label.toLowerCase().includes(q) || u.value.toLowerCase().includes(q))
 			.slice(0, 10);
+	});
+
+	watch(mentionSuggestions, () => {
+		activeMentionIndex.value = 0;
+	});
+
+	watch(showMentionDropdown, (open) => {
+		if (open) activeMentionIndex.value = 0;
 	});
 
 	const filteredUsers = computed(() => {

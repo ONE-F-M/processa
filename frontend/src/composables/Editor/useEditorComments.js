@@ -22,6 +22,7 @@ export function useEditorComments(ed) {
 		activeMentionContext,
 		mentionSearchQuery,
 		mentionStartIndex,
+		commentError,
 		modelerInstance,
 		internalProcessName,
 	} = ed;
@@ -112,6 +113,7 @@ export function useEditorComments(ed) {
 	}
 
 	function handleCommentInput(e) {
+		commentError.value = "";
 		if (!e || !e.target || typeof e.target.selectionStart !== "number") return;
 
 		const text = commentFormData.value.text || "";
@@ -246,6 +248,15 @@ export function useEditorComments(ed) {
 			return;
 		}
 
+		const assignedTo =
+			commentFormData.value.assigned_to || ed.resolveTypedMention(commentFormData.value.text);
+		if (commentFormData.value.is_task && !assignedTo) {
+			commentError.value =
+				"A task needs an assignee. Mention the person with @ and pick them from the list.";
+			return;
+		}
+		commentError.value = "";
+
 		try {
 			await frappeRequest({
 				url: "/api/method/processa.api.canvas_comments.post_canvas_comment",
@@ -253,7 +264,7 @@ export function useEditorComments(ed) {
 					model_name: props.modelName,
 					element_id: elementId,
 					comment: commentFormData.value.text,
-					assigned_to: commentFormData.value.assigned_to,
+					assigned_to: assignedTo,
 					is_task: commentFormData.value.is_task ? 1 : 0,
 				},
 			});

@@ -1,4 +1,4 @@
-"""Seeds three layout-instruction cases into ProsAlly Regressions, each expecting RELAYOUT and no drawing tool.
+"""Seeds five layout-instruction cases into ProsAlly Regressions, each expecting RELAYOUT and no drawing tool.
 
 Idempotent by suite and case title.
 """
@@ -29,10 +29,16 @@ PROMPTS = (
 		'Clean up the visual routing of the three Cancel edges into the "Cancelled" gateway. This is a '
 		"layout-only change. Do not alter any source, target or condition.",
 	),
+	("An alignment request is a relayout", "The steps are not aligned, line them up"),
+	(
+		"A convergence request is a relayout",
+		"Make the lines into Cancelled converge instead of each taking its own route",
+	),
 )
 
 ASSERTIONS = [
-	{"assertion_type": "regex", "value": r'(?i)"intent"\s*:\s*"RELAYOUT"'},
+	# The reply text is what the run records, and a RELAYOUT confirmation offers to lay the diagram out again.
+	{"assertion_type": "regex", "value": r"(?i)\blay(?:ing)? (?:the diagram|it) out again\b"},
 	{"assertion_type": "no_tool_call", "value": "modify_process, generate_process"},
 ]
 TRACE = [{"call_order": 1, "tool_name": "classify_intent"}]

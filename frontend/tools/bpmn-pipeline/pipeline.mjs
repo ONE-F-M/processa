@@ -53,6 +53,12 @@ async function main() {
     return;
   }
 
+  // {"audit": xml} measures a drawing that already exists instead of compiling an IR.
+  if (ir && typeof ir.audit === 'string') {
+    process.stdout.write(JSON.stringify(auditLayout(ir.audit)));
+    return;
+  }
+
   // Guard: the IR must carry node/flow arrays before any pass touches them.
   // A malformed IR (e.g. LLM returned partial JSON, or omitted a key) would
   // otherwise crash normalizeGateways with "Cannot read properties of

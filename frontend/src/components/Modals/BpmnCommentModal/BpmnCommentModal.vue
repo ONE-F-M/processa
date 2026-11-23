@@ -7,10 +7,13 @@ const ed = inject(EDITOR_KEY);
 const {
 	activeCommentElement,
 	activeMentionContext,
+	activeMentionIndex,
+	commentError,
 	commentFormData,
 	filteredUsers,
 	handleCommentInput,
 	mentionSuggestions,
+	onMentionKeydown,
 	resolveComment,
 	selectMention,
 	selectedElementComments,
@@ -45,9 +48,11 @@ const {
 						placeholder="What's on your mind?"
 						class="main-comment-textarea"
 						@input="handleCommentInput"
+						@keydown="onMentionKeydown"
 						@keydown.enter.meta.prevent="submitComment"
 						@keydown.enter.ctrl.prevent="submitComment"
 					/>
+					<p v-if="commentError" class="mt-1 text-xs text-red-600">{{ commentError }}</p>
 					<div
 						v-if="showMentionDropdown && activeMentionContext === 'dialog'"
 						v-click-outside="
@@ -58,9 +63,11 @@ const {
 						class="absolute z-[120] w-full max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg py-1 left-0 top-full mt-1"
 					>
 						<div
-							v-for="u in mentionSuggestions"
+							v-for="(u, mIdx) in mentionSuggestions"
 							:key="u.value"
 							class="px-3 py-1.5 text-sm cursor-pointer hover:bg-blue-50 text-gray-900 flex items-center justify-between"
+							:class="mIdx === activeMentionIndex ? 'bg-blue-50 mention-option-active' : ''"
+							@mouseenter="activeMentionIndex = mIdx"
 							@click="selectMention(u)"
 						>
 							<span>{{ u.label }}</span>
