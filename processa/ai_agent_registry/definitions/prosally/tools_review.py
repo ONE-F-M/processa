@@ -21,9 +21,7 @@ from processa.ai_agent_registry.definitions.prosally.helpers import (
 )
 from processa.ai_agent_registry.definitions.prosally.tools_pipeline import (
 	audit_layout,
-	check_topology,
 	compile_ir,
-	flow_pairs_from_xml,
 	has_lanes,
 )
 from processa.ai_agent_registry.definitions.prosally.tools_replies import (
