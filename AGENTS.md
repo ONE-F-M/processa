@@ -4,7 +4,7 @@ This repository holds `processa` (Processa), a Frappe v15 app for BPMN process m
 
 These are the only instructions coding agents read. Folder-specific rules live in nested files:
 
-- [`processa/agents/AGENTS.md`](processa/agents/AGENTS.md): the AI agent runtime, Logix and ProsAlly.
+- [`processa/processa_engine/agent_runtime/AGENTS.md`](processa/processa_engine/agent_runtime/AGENTS.md): the AI agent runtime, Logix and ProsAlly.
 - [`frontend/AGENTS.md`](frontend/AGENTS.md): the Vue frontend and the bpmn-js extensions.
 
 House style lives in `frappe-bench/.claude/rules/`: `house-style.md` always, `python-frappe.md` for Python, `vue-js.md` for JavaScript and Vue. The numbered rule set (A1 to F8) is `frappe-bench/.claude/rules/RULES.md`; cite an id when a PR body justifies an exception. Before you say a task is done, re-read your diff against `house-style.md`.
@@ -32,16 +32,15 @@ House style lives in `frappe-bench/.claude/rules/`: `house-style.md` always, `py
 - `processa/processa_engine/`: engine services: `triggers.py` (document events), `timers.py` (timer and stranded-step jobs), `assignment.py`, `task_selector.py`, `call_activities.py` and `audit.py` (workflow state changes), and `compiler/` (deploy checks and the compile step).
 - `processa/processa_connectors/`: the connector doctypes, the HTTP executor and Google operations (`operations/`), the Google clients (`google/`), manifests, seed and validator, and the handlers the Connector Agent writes (`generated/`); `processa/api/connectors.py` holds the modeler endpoints.
 - `processa/agents_sandbox/`: the sandbox doctypes, the coding-agent sandbox client (`sandbox/`), acceptance criteria and reproduction gates, and the DocType source, customization and GitHub pull request writers (`customization/`).
-- `processa/agents/`: the AI agent runtime. See its `AGENTS.md`.
-- `processa/ai_agent_security/`: the conversation lock, injection pattern and security event doctypes, input and output screening (`screening/`), the generated-script validator and Server Script gate (`code_checks/`), rate limits, turn locks, agent identities and the Server Script Approvals report; `processa/api/security.py` holds their endpoints.
+- `processa/processa_engine/agent_runtime/`: the AI agent runtime (LLM adapters, the step loop, turn state). See its `AGENTS.md`. `processa/ai_agent_registry/` holds agent configurations, definitions and provisioning; `processa/ai_agent_skills/` holds agent tools and skills. `processa/agents/` is an empty package; put no code there.
+- `processa/ai_agent_security/`: the conversation lock, injection pattern, security event, script approval request and script import category doctypes, input and output screening (`screening/`), the generated-script validator and Server Script gate (`code_checks/`), rate limits, turn locks, agent identities and the Server Script Approvals report; `processa/api/security.py` holds their endpoints.
 - `processa/ai_agent_guardrails/`: the tool policy rule and doctype change request doctypes, tool call interception (`tool_policy.py`) and the `AgentRefusal` exception (`refusal.py`).
 - `processa/ai_agent_conversations/`: the seven chat and clarification doctypes, AG-UI streaming and its event contract (`agui/`), chat persistence and permissions, compaction, retention, session state and turn context, clarifications and the four scheduled conversation jobs (`jobs.py`); `processa/api/sessions.py` and `processa/api/clarifications.py` hold their endpoints.
 - `processa/processa_engine/notifications/`: AMP and HTML task emails and their tokens, and mobile push (`push_notification.py`); `processa/api/email_actions.py` holds the endpoints the emails call. See its `README.md`.
 - `processa/commands/`: bench commands.
-- `processa/overrides/`: overridden Frappe classes, such as the scheduler queue for timer jobs.
+- `processa/overrides/`: overridden Frappe classes: `scheduled_job_type.py` (the queue for timer and A2A polling jobs) and `server_script.py`.
 - `processa/templates/`: email and deployment templates.
-- `processa/hooks.py`: app hooks, the universal document-event trigger, scheduler events and fixtures.
-- `processa/tasks.py`: scheduled A2A polling, conversation, memory and model jobs.
+- `processa/hooks.py`: app hooks, the universal document-event trigger and `scheduler_events`. Each scheduled job lives in its own module (for example `a2a/poller.py`, `ai_agent_conversations/jobs.py`, `ai_agent_memory/prune.py`, `processa_engine/timers.py`); there is no `tasks.py`.
 - `frontend/`: the Vue frontend. See its `AGENTS.md`.
 - `docs/`: operations notes and retros.
 
@@ -72,7 +71,7 @@ Do not add a status without checking the DocType JSON and every consumer.
 - Return stable dict and list shapes; the Vue app reads them directly. Change a response shape and its caller in `frontend/src/` together.
 - Never return tracebacks, private fields or file paths.
 - Name only endpoints that exist; search for `@frappe.whitelist()` before documenting or calling one.
-- Ruff enforces tabs, double quotes and a 110-character line.
+- `ruff format` writes tabs, double quotes and a 110-character line. `ruff check` does not flag long lines (E501 is ignored in `pyproject.toml`).
 
 ## Code review focus
 
@@ -105,6 +104,6 @@ bench --site <site> run-tests --app processa --failfast
 ## Branches and commits
 
 - One branch per work item, named after it (for example `WI-000768`). The PR targets the branch the work item names.
-- Conventional commit subjects with the work item id: `feat(WI-000768): ...`, `fix(WI-000771): ...`. The Semantic Commits check requires this form.
+- Conventional commit subjects with the work item id: `feat(WI-000768): ...`, `fix(WI-000771): ...`. The "Check commit titles" step in `.github/workflows/linter.yml` runs commitlint with `commitlint.config.js`, which only checks for a known lower-case type and a non-empty subject. The work item id in the scope is team convention; no check enforces it.
 - Keep a branch to its work item. A documentation change touches no CI or runtime file.
 - Open PRs only through `.claude/open-pr-via-github-app.sh`; see `CLAUDE.md`.
