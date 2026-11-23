@@ -367,7 +367,7 @@ const { lint, requesting, requestError, runLint, requestApproval } = useLogixScr
 const showSecurity = ref(false);
 const flagged = computed(() => (lint.value?.findings || []).filter((f) => !f.approved));
 const flaggedTitle = computed(() => flagged.value.map((f) => f.message).join("\n"));
-const flaggedLines = computed(() => flagged.value.map((f) => `Line ${f.line}: ${f.message}. Request approval in Security.${f.sanctioned_alternative ? ` Instead: ${f.sanctioned_alternative}` : ""}`));
+const flaggedLines = computed(() => flagged.value.map(({ line, name, message, sanctioned_alternative: alt }) => alt ? `Line ${line}: ${message}. Use ${alt.charAt(0).toLowerCase()}${alt.slice(1).replace(/\.?$/, ".")} To keep ${name}, request approval in Security.` : `Line ${line}: ${message}. Request approval in Security.`));
 const securityPanel = computed(() => ({ lint: lint.value, scriptLabel: savedScriptName.value, saved: Boolean(savedScriptName.value), dirty: isDirty.value && !isSaved.value, readonly: props.readonly, requesting: requesting.value, error: requestError.value }));
 const approvalLabel = computed(() => (lint.value?.open_request && lint.value?.latest_request?.status) || "Needs approval");
 const bannerText = computed(() => `${flagged.value.length} item${flagged.value.length > 1 ? "s need" : " needs"} approval before this map can be deployed. Saving is allowed.`);

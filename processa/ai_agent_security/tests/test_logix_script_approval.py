@@ -110,6 +110,13 @@ class TestLogixScriptApproval(FrappeTestCase):
 		self.assertEqual(request.reason, "Fetches exchange rates")
 		self.assertEqual(lint_server_script(CODE, SCRIPT, PROCESS, TASK)["open_request"], request.name)
 
+	def test_lint_marks_only_the_items_the_open_request_lists(self):
+		request = request_script_approval(SCRIPT, PROCESS, TASK, "Fetches exchange rates")
+		result = lint_server_script(CODE + "\nimport socket", SCRIPT, PROCESS, TASK)
+		self.assertEqual(result["open_request"], request["name"])
+		self.assertTrue(self._finding(result, "requests")["in_open_request"])
+		self.assertFalse(self._finding(result, "socket")["in_open_request"])
+
 	def test_request_approval_needs_a_reason(self):
 		with self.assertRaises(frappe.ValidationError) as caught:
 			request_script_approval(SCRIPT, PROCESS, TASK, "  ")

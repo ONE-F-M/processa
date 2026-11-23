@@ -20,4 +20,18 @@ describe("Logix script security controls", () => {
 		expect(panel).toMatch(/<Icon icon="lucide:square-check" class="lsp-check lsp-check--on" \/>/);
 		expect(panel).toMatch(/icon="lucide:x"/);
 	});
+
+	it("says an item is in the open request only when the request lists it", () => {
+		const script = read("LogixSecurityPanel/LogixSecurityPanel.vue");
+		expect(script).toMatch(/item\.in_open_request\s*\?/);
+		expect(script).toMatch(/Not in \$\{open\}/);
+		expect(script).not.toMatch(/\$\{props\.lint\.open_request\} is open/);
+	});
+
+	it("tells the author what to use instead in a full sentence", () => {
+		const canvas = read("LogixCanvas/LogixCanvas.vue");
+		expect(canvas).not.toMatch(/Instead: \$\{/);
+		expect(canvas).toMatch(/Use \$\{alt\.charAt\(0\)\.toLowerCase\(\)\}/);
+		expect(canvas).toMatch(/To keep \$\{name\}, request approval in Security\./);
+	});
 });
