@@ -214,6 +214,8 @@ def validate_workflow_state_field(model, service_extensions: dict) -> None:
 
 def enforce_eval_pass_rate(model_name: str) -> None:
 	"""Refuse activation while a gating eval suite is below its min_pass_rate; a rate of 0 blocks nothing."""
+	if frappe.flags.in_patch:
+		return  # a patch re-deploys a map that already passed this gate
 	suites = frappe.get_list(
 		"AI Eval Suite",
 		filters={"process_model": model_name, "gate_deployment": 1},

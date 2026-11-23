@@ -355,7 +355,6 @@ processa.patches.v1_0.repath_connector_handlers #07-11-2026 stored connector han
 processa.patches.v1_0.frontend_agent_eval_cases_follow_the_pages_folder #07-11-2026 Frontend Agent eval cases and their A2A Task fixtures name the Processa pages by their spiff/src/pages paths
 processa.patches.v1_0.repath_sandbox_handlers #08-11-2026 stored sandbox handler and Choices From paths follow the modules that moved into agents_sandbox
 processa.patches.v1_0.repath_a2a_handlers #08-11-2026 stored A2A connector handler and Choices From paths follow a2a_client_ops into processa.a2a.client_ops
-processa.patches.v1_0.add_server_script_approval_fields #08-11-2026 Server Scripts get allowed modules and a System Manager approval with who, when and the approved code hash
 processa.patches.v1_0.drop_chat_message_is_reply #09-11-2026 Chat Message is_reply was never read or written
 processa.patches.v1_0.repath_skill_tool_imports #09-11-2026 stored Server Script imports follow the skill and tool modules that moved into ai_agent_skills
 processa.patches.v1_0.repath_eval_module_imports #09-11-2026 stored Server Script imports follow the eval modules that moved into ai_agent_evals
@@ -370,9 +369,9 @@ processa.patches.v1_0.add_agent_sandbox_spec_operations #16-11-2026 the agent_sa
 processa.patches.v1_0.add_testing_agent_sandbox_tools #16-11-2026 the Sandbox Tool scripts the Testing Agent uses to write a spec, look at a page and run a scheduled job
 processa.patches.v1_0.seed_prosally_layout_regression_cases
 processa.patches.v1_0.fix_browser_snapshot_screenshot_save #16-11-2026 the Browser Snapshot script saves its screenshot with save_file, so the security gate lets it be linked to a map
-processa.patches.v1_0.seed_logix_refusal_regression_cases #19-11-2026 Logix Baseline gains a script that must import what it uses, a request for 5 that must not return 10, and a client script request
+processa.patches.v1_0.seed_logix_refusal_regression_cases #22-11-2026 Logix Baseline gains read-only debug questions that must be answered and a pasted ignore_permissions script that must be refused with its reason
 processa.patches.v1_0.add_agent_sandbox_upload_videos_operation #16-11-2026 the agent_sandbox connector gets the upload_videos operation the Testing Agent map calls
-processa.patches.v1_0.seed_prosally_confirmed_brief_cases
+processa.patches.v1_0.seed_prosally_confirmed_brief_cases #22-11-2026 two more briefs: a Residency brief never drawn as Leave Request, and named roles with no System lane
 processa.patches.v1_0.seed_logix_pagination_case
 processa.patches.v1_0.add_testing_agent_seed_tools #16-11-2026 the Sandbox Tool scripts the Testing Agent uses to seed test data and read what a DocType needs
 processa.patches.v1_0.add_agent_sandbox_fast_operations #16-11-2026 the agent_sandbox connector gets the fast Testing Agent operations a map can call
@@ -387,5 +386,34 @@ processa.patches.v1_0.rename_on_cancel_request_trigger #17-11-2026 cancellation 
 processa.patches.v1_0.sandbox_tools_fall_back_to_base_branch #18-11-2026 sandbox tool scripts fall back to the map's base_branch when the model passes no git_branch
 processa.patches.v1_0.submit_assertions_reads_one_review #18-11-2026 Submit Assertions reads the checker's one review variable, so approved lines are no longer duplicated and rejected
 processa.patches.v1_0.seed_docu_edit_command_cases
+processa.patches.v1_0.seed_lucrusher_scan_eval_cases
 processa.patches.v1_0.seed_script_import_categories #19-11-2026 the Script Import Category records and the Application Manager role
 processa.patches.v1_0.seed_lucrusher_phase_routing_cases
+processa.patches.v1_0.remove_script_security_settings #19-11-2026 Processa Settings drops the seven script security fields; Script Import Category holds the rules
+processa.patches.v1_0.approve_live_script_tasks #20-11-2026 every script task on an active map gets an Approved Script Approval Request for what its script uses
+processa.patches.v1_0.remove_server_script_approval_fields #20-11-2026 Server Script loses the Processa Approval fields and the Server Script Approvals report
+processa.patches.v1_0.logix_review_passes_items_needing_approval #20-11-2026 Logix review and finalize refuse only a script that does not parse and name the items that need approval
+processa.patches.v1_0.logix_writer_reuses_library_scripts #20-11-2026 Logix's script and tool writers call library functions on the map through import_script
+processa.patches.v1_0.add_logix_library_eval_case #20-11-2026 the Logix baseline suite checks that a library on the map is called through import_script
+processa.patches.v1_0.logix_writer_configs_reuse_library_scripts #21-11-2026 the Logix script and tool writer configurations call library functions on the map through import_script
+processa.patches.v1_0.logix_sends_status_changes_to_apply_workflow #21-11-2026 Logix's classifier, clarifier and writers send status changes to an Apply Workflow service task
+processa.patches.v1_0.add_logix_status_change_eval_case #21-11-2026 the Logix baseline suite checks that a status change gets an Apply Workflow answer and no script
+processa.patches.v1_0.logix_tries_drafts_on_a_record #21-11-2026 Logix review runs each script task draft on a sample record and sends a failure back to the writer
+processa.patches.v1_0.logix_reads_doctype_logic #21-11-2026 Logix reads the controller logic of a DocType before it writes a script for it
+processa.patches.v1_0.seed_logix_reported_request_cases #22-11-2026 Logix Baseline gets cases for the approve-under-500, Medical Appointment, white-screen, explain-the-script and arrival-date-on-Employee requests
+processa.patches.v1_0.logix_instructions_match_the_tool_runner #21-11-2026 Logix's agent tool contract and reviewer describe one namespace, task_data and processa import paths
+processa.patches.v1_0.add_drive_content_restriction_operation #22-11-2026 the google_drive connector gets Lock or unlock file, which sets or lifts a file's read-only content restriction
+processa.patches.v1_0.logix_reviewer_keeps_calls_needing_approval #21-11-2026 Logix's reviewer prompts and safety skill keep a network call that needs approval instead of rewriting it
+processa.patches.v1_0.logix_writer_sees_library_scripts #22-11-2026 Logix Build Context keeps the map's library scripts in the turn and the script writer's prompt lists them
+processa.patches.v1_0.logix_skills_name_import_script_and_flagged_http #22-11-2026 Logix's script task contract names import_script and _, and the outbound HTTP skill treats requests as needing approval
+processa.patches.v1_0.logix_white_screen_case_follows_the_debug_path #22-11-2026 the white-screen Logix case expects classify_intent then debug_script and checks the reply, not a finalize artifact
+processa.patches.v1_0.logix_invoice_case_expects_apply_workflow #22-11-2026 the approve-an-invoice-under-500 Logix case expects an Apply Workflow answer with the 500 condition
+processa.patches.v1_0.logix_explain_case_lets_the_writer_answer #22-11-2026 the explain-the-script Logix case expects the writer to answer in words with no code and no diff
+processa.patches.v1_0.logix_clarifier_names_the_doc_status #22-11-2026 Logix's clarifier gets the trigger DocType's workflow states and names the doc status of a requested state
+processa.patches.v1_0.logix_clarifier_reads_states_from_the_turn #22-11-2026 Logix's clarify step reads the workflow states from the turn and allows 1024 output tokens
+processa.patches.v1_0.logix_review_trial_reads_no_undefined_name #22-11-2026 Logix's review script stops reading _py_block on a site whose script never assigns it
+processa.patches.v1_0.logix_classifier_routes_revert_vague_and_debug_questions #22-11-2026 Logix classifier routes revert, a script request with no subject and a why-question; the clarifier repeats conditions and the writers say what to ask instead of a refused step
+processa.patches.v1_0.logix_baseline_judges_use_an_enabled_model #22-11-2026 Logix Baseline judges that name a disabled model grade with the Logix classifier's model
+processa.patches.v1_0.logix_finalize_explains_a_writer_refusal #22-11-2026 Logix finalize explains a writer the AI model declined instead of asking what the script should do
+processa.patches.v1_0.logix_writer_reads_doctype_fields #22-11-2026 Logix Build Context loads the request's DocType fields, its import is approved and the writer prompt lists them
+processa.patches.v1_0.seed_prosally_route_and_constraint_cases #23-11-2026 ProsAlly Baseline gains one case per route (explain, targeted edit, create) and per request constraint

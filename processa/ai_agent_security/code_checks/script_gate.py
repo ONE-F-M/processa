@@ -12,151 +12,155 @@ Only scripts that belong to BPMN script tasks are gated. Unrelated Server
 Scripts in the site are never touched (see ``is_bpmn_linked_server_script``).
 """
 
-import hashlib
 import keyword
 import xml.etree.ElementTree as ET
 
 import frappe
 from frappe import _
-from frappe.utils import cint, cstr, now_datetime
+from frappe.query_builder import DocType
 
-from processa.ai_agent_security.code_checks.script_validator import deep_inspect_script, parse_allowed
+from processa.ai_agent_security.code_checks.script_validator import (
+	IMPORT_ERROR,
+	NOT_APPROVABLE,
+	SYNTAX_ERROR,
+	import_error,
+	imported_scripts,
+	inspect_script,
+	used_categories,
+)
 
 BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"
 SPIFF_NS = "http://spiffworkflow.org/bpmn/schema/1.0/core"
 
-APPROVAL_FIELDS = ("processa_allowed_modules", "processa_approved")
 
-SERVER_SCRIPT_APPROVAL_FIELDS = {
-	"Server Script": [
-		{
-			"fieldname": "processa_approval_section",
-			"fieldtype": "Section Break",
-			"label": "Processa Approval",
-			"insert_after": "cron_format",
-		},
-		{
-			"fieldname": "processa_allowed_modules",
-			"fieldtype": "Small Text",
-			"label": "Allowed Modules",
-			"description": "Blocked modules and frappe calls this script may use, one per line or comma-separated. Only a System Manager can change this.",
-			"insert_after": "processa_approval_section",
-		},
-		{
-			"fieldname": "processa_approved",
-			"fieldtype": "Check",
-			"label": "Approved",
-			"description": "Set by a System Manager. Any change to the script clears it and disables the script.",
-			"insert_after": "processa_allowed_modules",
-		},
-		{
-			"fieldname": "processa_approved_by",
-			"fieldtype": "Link",
-			"options": "User",
-			"label": "Approved By",
-			"read_only": 1,
-			"insert_after": "processa_approved",
-		},
-		{
-			"fieldname": "processa_approved_on",
-			"fieldtype": "Datetime",
-			"label": "Approved On",
-			"read_only": 1,
-			"insert_after": "processa_approved_by",
-		},
-		{
-			"fieldname": "processa_pending_review",
-			"fieldtype": "Check",
-			"label": "Pending Review",
-			"description": "Set when an agent writes or edits the script. A System Manager enabling it clears this.",
-			"read_only": 1,
-			"insert_after": "processa_approved_on",
-		},
-		{
-			"fieldname": "processa_approved_hash",
-			"fieldtype": "Data",
-			"label": "Approved Code Hash",
-			"read_only": 1,
-			"hidden": 1,
-			"insert_after": "processa_pending_review",
-		},
-	]
-}
+def approved_request_names(process: str, script_task: str, server_script: str) -> frozenset:
+	"""The item names on Approved Script Approval Requests for this script task."""
+	return frozenset(approved_request_items(process, script_task, server_script))
 
 
-def script_hash(code: str | None) -> str:
-	return hashlib.sha256(cstr(code).encode()).hexdigest()
+def approved_request_items(process: str, script_task: str, server_script: str) -> dict:
+	"""Each item name on an Approved Script Approval Request for this script task, with that request."""
+	request = DocType("Script Approval Request")
+	item = DocType("Script Approval Request Item")
+	rows = (
+		frappe.qb.from_(request)
+		.join(item)
+		.on(item.parent == request.name)
+		.select(item.item_name, request.name)
+		.where(request.process_name == process)
+		.where(request.script_task == script_task)
+		.where(request.server_script == server_script)
+		.where(request.status == "Approved")
+	).run()
+	return dict(rows)
 
 
-def approved_names(script) -> frozenset:
-	"""The allowed modules of a Server Script approved for its current code, else none."""
-	if not cint(script.get("processa_approved")):
-		return frozenset()
-	if script.get("processa_approved_hash") != script_hash(script.get("script")):
-		return frozenset()
-	return parse_allowed(script.get("processa_allowed_modules"))
+def script_task_findings(code: str, process: str, script_task: str, server_script: str) -> list[dict]:
+	"""Findings in code and its libraries that no Approved request for this script task covers."""
+	allowed = approved_request_names(process, script_task, server_script)
+	return inspect_script(code, allowed) + library_findings(code, allowed)
 
 
-def lint_code(code: str, script_name: str = "") -> list[str]:
-	"""The violations in ``code``, allowing what the saved script's approval covers while it still matches."""
-	allowed = frozenset()
+def library_findings(
+	code: str, allowed: frozenset, map_scripts: set | None = None, task: str = ""
+) -> list[dict]:
+	"""What each library ``code`` imports needs under the importing task's approval, naming the library.
+
+	With ``map_scripts`` a library that is not a script on the same map is a finding too.
+	"""
+	findings = []
+	for library, line in imported_scripts(code):
+		if map_scripts is not None and library not in map_scripts:
+			message = _("Script Task '{0}' imports '{1}', which is not in this process").format(task, library)
+			findings.append(import_error(library, line, message))
+			continue
+		library_code = frappe.db.get_value("Server Script", library, "script") or ""
+		inner = inspect_script(library_code, allowed)
+		if imported_scripts(library_code) or any(f["category"] == IMPORT_ERROR for f in inner):
+			message = _("Library '{0}' cannot import another script").format(library)
+			findings.append(import_error(library, line, message))
+		for finding in inner:
+			if finding["category"] not in NOT_APPROVABLE:
+				message = _("{0}, through library {1}").format(finding["message"], library)
+				findings.append({**finding, "line": line, "library": library, "message": message})
+	return findings
+
+
+def map_scripts_of(bpmn_xml: str) -> set:
+	"""The Server Scripts the script tasks of a map link."""
+	return {source[4] for source in script_task_sources(bpmn_xml) if source[4]}
+
+
+def model_scripts(model_name: str) -> set:
+	"""The Server Scripts a model's script tasks link, with those of the maps it calls, from its compiled spec."""
+	bpmn_xml, spec = frappe.db.get_value("BPMN Process Model", model_name, ["bpmn_xml", "serialized_spec"])
+	compiled = (frappe.parse_json(spec or "{}") or {}).get("script_task_extensions") or {}
+	called = {cfg.get("serverScript") for cfg in compiled.values() if cfg.get("serverScript")}
+	return map_scripts_of(bpmn_xml or "") | called
+
+
+def lint_script(code: str, script_name: str = "", process: str = "", script_task: str = "") -> dict:
+	"""Each finding in ``code`` with its approval state, and the status and open request of its script task.
+
+	Without a Process, script task and Server Script every finding is checked against the default categories.
+	"""
 	if script_name and frappe.db.exists("Server Script", script_name):
-		script = frappe.get_doc("Server Script", script_name)
-		script.check_permission("read")
-		allowed = approved_names(frappe._dict(script.as_dict(), script=code))
-	return deep_inspect_script(code or "", allowed=allowed)
-
-
-def apply_server_script_approval(doc, method=None) -> None:
-	"""Server Script validate: only a System Manager approves, and a code change clears the approval."""
-	before = doc.get_doc_before_save()
-	stored = before or frappe._dict()
-	if (
-		cstr(stored.get("processa_allowed_modules")) != cstr(doc.get("processa_allowed_modules"))
-		or cint(stored.get("processa_approved")) != cint(doc.get("processa_approved"))
-	) and "System Manager" not in frappe.get_roles():
-		frappe.throw(
-			_("Only a System Manager can change the allowed modules or the approval of a Server Script."),
-			frappe.PermissionError,
+		frappe.get_doc("Server Script", script_name).check_permission("read")
+	on_task = bool(process and script_task and script_name)
+	approved = approved_request_items(process, script_task, script_name) if on_task else {}
+	categories = frappe.get_list(
+		"Script Import Category",
+		fields=["name", "allowed_by_default", "sanctioned_alternative"],
+		order_by="name asc",
+	)
+	alternatives = {c.name: c.sanctioned_alternative for c in categories}
+	model = process and frappe.db.get_value(
+		"BPMN Process Model", {"process_name": process}, "name", order_by="modified desc"
+	)
+	map_scripts = model_scripts(model) if model else None
+	findings = []
+	code = code or ""
+	for finding in inspect_script(code) + library_findings(code, frozenset(), map_scripts, script_task):
+		request = _covering_request(finding["name"], approved)
+		alternative = alternatives.get(finding["category"]) or ""
+		findings.append(
+			{**finding, "approved": bool(request), "request": request, "sanctioned_alternative": alternative}
 		)
-
-	_apply_pending_review(doc, stored)
-
-	# The stamps are server-owned: start from the stored values whatever the client sent.
-	doc.processa_approved_by = stored.get("processa_approved_by")
-	doc.processa_approved_on = stored.get("processa_approved_on")
-	doc.processa_approved_hash = stored.get("processa_approved_hash")
-	code_hash = script_hash(doc.script)
-
-	if not cint(doc.processa_approved):
-		_clear_approval(doc)
-	elif not cint(stored.get("processa_approved")) or cstr(stored.get("processa_allowed_modules")) != cstr(
-		doc.processa_allowed_modules
-	):
-		doc.processa_approved_by = frappe.session.user
-		doc.processa_approved_on = now_datetime()
-		doc.processa_approved_hash = code_hash
-	elif doc.processa_approved_hash != code_hash:
-		_clear_approval(doc)
-		doc.disabled = 1
+	open_request = _open_request(process, script_task, script_name) if on_task else None
+	latest = on_task and frappe.get_list(
+		"Script Approval Request",
+		filters={"process_name": process, "script_task": script_task, "server_script": script_name},
+		fields=["name", "status", "decision_note"],
+		order_by="creation desc",
+		limit=1,
+	)
+	return {
+		"findings": findings,
+		"open_request": open_request,
+		"status": _task_status(findings, open_request),
+		"latest_request": latest[0] if latest else None,
+		"in_use": used_categories(code),
+		"categories": [{"name": c.name, "allowed_by_default": c.allowed_by_default} for c in categories],
+	}
 
 
-def _apply_pending_review(doc, stored) -> None:
-	"""Only a System Manager enables a script awaiting review, and enabling it clears the marker."""
-	if "System Manager" not in frappe.get_roles():
-		doc.processa_pending_review = stored.get("processa_pending_review")
-	if not cint(doc.processa_pending_review) or cint(doc.disabled):
-		return
-	if "System Manager" not in frappe.get_roles():
-		frappe.throw(_("Only a System Manager can enable a Server Script awaiting review."), frappe.PermissionError)
-	doc.processa_pending_review = 0
+def _covering_request(name: str, approved: dict) -> str | None:
+	"""The Approved request listing name or one of its dotted prefixes."""
+	parts = name.split(".")
+	for end in range(len(parts), 0, -1):
+		request = approved.get(".".join(parts[:end]))
+		if request:
+			return request
+	return None
 
 
-def _clear_approval(doc) -> None:
-	doc.processa_approved = 0
-	doc.processa_approved_by = None
-	doc.processa_approved_on = None
-	doc.processa_approved_hash = None
+def _task_status(findings: list, open_request: str | None) -> str:
+	for category in (SYNTAX_ERROR, IMPORT_ERROR):
+		if any(f["category"] == category for f in findings):
+			return category
+	if all(f["approved"] for f in findings):
+		return "Approved" if findings else "Clear"
+	return "Requested" if open_request else "Needs approval"
 
 
 def _looks_like_python(text: str) -> bool:
@@ -176,13 +180,12 @@ def _looks_like_python(text: str) -> bool:
 	return False
 
 
-def _script_task_sources(bpmn_xml: str) -> list[tuple]:
+def script_task_sources(bpmn_xml: str, process: str | None = None) -> list[tuple]:
 	"""
 	Resolve every script task in the diagram to the code that will run.
 
-	Returns a list of ``(label, code, allowed)`` tuples:
-	  * inline ``<bpmn:script>`` tasks -> (label, inline python, no allowed names)
-	  * ``spiffworkflow:serverScript`` tasks -> (label, Server Script .script, its approved names)
+	Returns a list of ``(label, code, allowed, bpmn_id, server_script)`` tuples. Inline code gets
+	no allowed names; a Server Script gets the names its Approved requests on ``process`` list.
 
 	Referenced Server Scripts that do not exist yet (authoring in progress) are
 	skipped — the deploy gate re-checks once they exist. Never raises: an
@@ -210,37 +213,52 @@ def _script_task_sources(bpmn_xml: str) -> list[tuple]:
 			inline = ""
 
 		if server_script:
-			script = frappe.db.get_value(
-				"Server Script",
-				server_script,
-				["script", "processa_approved", "processa_approved_hash", "processa_allowed_modules"],
-				as_dict=True,
-			)
-			if script and script.script:
+			code = frappe.db.get_value("Server Script", server_script, "script")
+			if code:
 				sources.append((
 					_("Script Task '{0}' → Server Script '{1}'").format(bpmn_id, server_script),
-					script.script,
-					approved_names(script),
+					code,
+					approved_request_names(process, bpmn_id, server_script) if process else frozenset(),
+					bpmn_id,
+					server_script,
 				))
 		elif inline and _looks_like_python(inline):
-			sources.append((_("Script Task '{0}' (inline)").format(bpmn_id), inline, frozenset()))
+			sources.append((_("Script Task '{0}' (inline)").format(bpmn_id), inline, frozenset(), bpmn_id, ""))
 
 	return sources
 
 
-def collect_script_security_violations(bpmn_xml: str) -> list:
-	"""
-	Structurally validate every (non-exempt) script task in a diagram.
+def collect_script_security_violations(
+	bpmn_xml: str, process: str | None = None, called_scripts: frozenset = frozenset()
+) -> list:
+	"""Every finding on the diagram's script tasks that no Approved request on ``process`` covers.
 
-	Shared by the deploy readiness check and the authoring/deploy gate, so all
-	surfaces report exactly the same findings. Returns a list of dicts:
-	``{"label": <task → script>, "message": <violation>}``. Empty when clean.
+	Each is ``{"label", "message", "category", "request"}``; request is the open request for the task, if any.
 	"""
 	findings: list = []
-	for label, code, allowed in _script_task_sources(bpmn_xml):
-		for message in deep_inspect_script(code, allowed=allowed):
-			findings.append({"label": label, "message": message})
+	sources = script_task_sources(bpmn_xml, process)
+	map_scripts = {source[4] for source in sources if source[4]} | called_scripts
+	for label, code, allowed, bpmn_id, server_script in sources:
+		request = _open_request(process, bpmn_id, server_script)
+		for finding in inspect_script(code, allowed) + library_findings(code, allowed, map_scripts, bpmn_id):
+			findings.append(
+				{"label": label, "message": finding["message"], "category": finding["category"], "request": request}
+			)
 	return findings
+
+
+def _open_request(process: str | None, script_task: str, server_script: str) -> str | None:
+	if not (process and server_script):
+		return None
+	return frappe.db.get_value(
+		"Script Approval Request",
+		{
+			"process_name": process,
+			"script_task": script_task,
+			"server_script": server_script,
+			"status": ("in", ("Pending Review", "Pending Approval")),
+		},
+	)
 
 
 def _format_violations(messages: list) -> str:
@@ -257,21 +275,26 @@ def _format_violations(messages: list) -> str:
 	return "\n".join(f"• {m}" for m in safe)
 
 
-def validate_process_model_scripts(bpmn_xml: str) -> None:
-	"""
-	Gate every script task in a process model. Raises ``frappe.ValidationError``
-	with a concise, generic summary when any violation is found. No-op when clean.
+def validate_process_model_scripts(
+	bpmn_xml: str, process: str | None = None, called_scripts: frozenset = frozenset()
+) -> None:
+	"""Deploy gate: refuse the map while any script task has a finding no Approved request covers."""
+	_refuse_findings(
+		collect_script_security_violations(bpmn_xml, process, called_scripts),
+		_("This process can't be deployed because these script tasks need approval:"),
+	)
 
-	The user-facing message names the affected task(s) and the number of issues,
-	and points to the Deployment Readiness → Script Security panel for the full
-	per-rule breakdown — rather than dumping every rule into a modal. The complete
-	detail is written to the admin-only Frappe Error Log.
 
-	Used by both the authoring gate (model.validate) and the deploy gate
-	(compile_process_model) as a backend safety net; the deploy readiness check
-	surfaces the same findings in the UI first.
-	"""
-	findings = collect_script_security_violations(bpmn_xml)
+def validate_process_model_syntax(bpmn_xml: str) -> None:
+	"""Map save gate: refuse only a script task whose code does not parse."""
+	_refuse_findings(
+		[f for f in collect_script_security_violations(bpmn_xml) if f["category"] == SYNTAX_ERROR],
+		_("This process can't be saved because a script task has a syntax error:"),
+	)
+
+
+def _refuse_findings(findings: list, heading: str) -> None:
+	"""Log the full findings and throw one line per affected script task."""
 	if not findings:
 		return
 
@@ -289,23 +312,19 @@ def validate_process_model_scripts(bpmn_xml: str) -> None:
 		safe_label = str(f["label"]).replace("<", "").replace(">", "")
 		issue_counts[safe_label] = issue_counts.get(safe_label, 0) + 1
 
-	lines = [
-		_("This process can't be saved because one or more script tasks contain unsafe code:"),
-		"",
-	]
+	lines = [heading, ""]
 	for label, count in issue_counts.items():
 		lines.append(_("• {0} — {1} security issue(s)").format(label, count))
 	lines.append("")
 	lines.append(
 		_(
-			"Unsafe scripts are blocked to protect the system. Open Deployment "
-			"Readiness → Script Security to see each issue, or contact your administrator."
+			"Open Deployment Readiness → Script Security to see each item and request approval for it."
 		)
 	)
 
 	frappe.throw(
 		"\n".join(lines),
-		title=_("Unsafe BPMN Script Task"),
+		title=_("Script Task Security"),
 		exc=frappe.ValidationError,
 	)
 
@@ -344,9 +363,8 @@ def validate_server_script_on_save(doc, method=None) -> None:
 	"""
 	doc_event hook (Server Script ``validate``).
 
-	Runs the structural validator on the script body, but only when the Server
-	Script is linked to a BPMN process model — unrelated Server Scripts pass
-	through untouched. Raises ``frappe.ValidationError`` on any violation.
+	Refuses a syntax error in a Server Script linked to a BPMN process model; what needs
+	approval is checked at deploy and before the script runs. Unrelated Server Scripts pass through.
 	"""
 	code = getattr(doc, "script", None)
 	if not code:
@@ -354,7 +372,7 @@ def validate_server_script_on_save(doc, method=None) -> None:
 	if not is_bpmn_linked_server_script(doc.name):
 		return
 
-	violations = deep_inspect_script(code, allowed=approved_names(doc))
+	violations = [f["message"] for f in inspect_script(code) if f["category"] == SYNTAX_ERROR]
 	if violations:
 		frappe.throw(
 			_format_violations(violations),

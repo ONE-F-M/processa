@@ -1,8 +1,12 @@
 # Copyright (c) 2026, one-fm and contributors
 
+from unittest.mock import patch
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from processa import install
+from processa.ai_agent_security.code_checks.category_seed import CATEGORIES
 from processa.ai_agent_security.code_checks.script_categories import category_for, clear_category_cache
 from processa.patches.v1_0 import seed_script_import_categories
 
@@ -27,12 +31,15 @@ class TestScriptImportCategory(FrappeTestCase):
 			{
 				"doctype": "Script Import Category",
 				"category_name": name,
-				"names": [{"dotted_name": dotted, "kind": kind} for dotted, kind in rows],
+				"names": [
+					dict(zip(("dotted_name", "kind", "match_on_any_object"), row, strict=False))
+					for row in rows
+				],
 			}
 		)
 
 	def test_seed_lists_every_category_with_names(self):
-		for category in seed_script_import_categories.CATEGORIES:
+		for category in CATEGORIES:
 			doc = frappe.get_doc("Script Import Category", category["category_name"])
 			self.assertEqual(doc.allowed_by_default, category["allowed_by_default"])
 			self.assertEqual(len(doc.names), len(category["names"]))
@@ -83,10 +90,46 @@ class TestScriptImportCategory(FrappeTestCase):
 			doc.insert()
 		self.assertIn("Row 1", str(caught.exception))
 
+	def test_a_kind_that_does_not_fit_the_name_is_refused(self):
+		for row in (
+			("conquer", "Frappe function"),
+			("conquere", "Builtin"),
+			("conquer.lost", "Module", 1),
+			("frappe.conquer", "Module"),
+		):
+			with self.subTest(row=row):
+				doc = self._category("Test Kind", row)
+				with self.assertRaises(frappe.ValidationError) as caught:
+					doc.insert()
+				self.assertIn("Row 1", str(caught.exception))
+
+	def test_a_kind_that_fits_the_name_saves(self):
+		self._category(
+			"Test Kind",
+			("conquer.lost", "Module"),
+			("frappe.conquer", "Frappe function"),
+			("conquer_now", "Frappe function", 1),
+			("divmod", "Builtin"),
+		).insert()
+		self.assertEqual(category_for("conquer.lost.find"), "Test Kind")
+		self.assertEqual(category_for("doc.conquer_now"), "Test Kind")
+
+	def test_same_name_with_another_kind_is_refused(self):
+		doc = self._category("Test Duplicate", ("requests", "Frappe function", 1))
+		with self.assertRaises(frappe.ValidationError) as caught:
+			doc.insert()
+		self.assertIn("Network", str(caught.exception))
+
 	def test_other_users_can_read_but_not_change(self):
 		if not frappe.db.exists("User", READER):
 			frappe.get_doc(
-				{"doctype": "User", "email": READER, "first_name": "Reader", "send_welcome_email": 0}
+				{
+					"doctype": "User",
+					"email": READER,
+					"first_name": "Reader",
+					"send_welcome_email": 0,
+					"roles": [{"role": "Process Designer"}],
+				}
 			).insert()
 		self.assertTrue(frappe.has_permission("Script Import Category", "read", "Network", user=READER))
 		self.assertFalse(frappe.has_permission("Script Import Category", "write", "Network", user=READER))
@@ -96,3 +139,13 @@ class TestScriptImportCategory(FrappeTestCase):
 		frappe.db.delete("Role", {"name": "Application Manager"})
 		seed_script_import_categories.execute()
 		self.assertTrue(frappe.db.exists("Role", "Application Manager"))
+
+	def test_a_fresh_install_seeds_the_categories(self):
+		with (
+			patch(
+				"processa.ai_agent_security.code_checks.category_seed.seed_script_import_categories"
+			) as seed,
+			patch("frappe.db.commit"),
+		):
+			install.after_install()
+		seed.assert_called_once_with()

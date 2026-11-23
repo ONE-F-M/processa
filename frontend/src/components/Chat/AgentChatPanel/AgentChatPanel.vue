@@ -24,7 +24,7 @@
 			</div>
 			<template v-for="(item, i) in transcriptItems" :key="i">
 				<!-- plain text bubbles -->
-				<div v-if="item.kind === 'user'" class="acp-msg acp-msg--user" :class="{ 'acp-msg--failed': item.failed }">{{ item.text }}<span v-if="item.file" class="acp-filechip">📎 {{ item.file }}</span>
+				<div v-if="item.kind === 'user'" class="acp-msg acp-msg--user" :class="{ 'acp-msg--failed': item.failed }">{{ item.text }}<Badge v-for="name in item.files || []" :key="name" class="acp-filechip" theme="gray" :label="name" />
 					<button v-if="item.failed" class="acp-retry" :disabled="busy" @click="retrySend(item)">{{ __("Not sent — Retry") }}</button>
 				</div>
 				<div v-else-if="item.kind === 'agent'" class="acp-agent-block">
@@ -86,8 +86,8 @@
 						<pre>{{ JSON.stringify(item.value, null, 2) }}</pre>
 					</details>
 				</div>
-				<!-- Every stamped entry shows when it happened -->
-				<div v-if="item.ts" class="acp-time" :class="{ 'acp-time--user': item.kind === 'user' }">{{ formatTime(item.ts) }}</div>
+				<!-- A reply shows its time once, under its last piece -->
+				<div v-if="showsTime(transcriptItems, i)" class="acp-time" :class="{ 'acp-time--user': item.kind === 'user' }">{{ formatTime(item.ts) }}</div>
 			</template>
 
 			<div
@@ -134,9 +134,24 @@
 		<div v-if="busy" class="acp-locked-note" role="status">
 			{{ __("Still drawing — you can send another message when this finishes.") }}
 		</div>
-		<div v-if="pendingFile" class="acp-pending-file">
-			<span class="acp-filechip">📎 {{ pendingFile.file_name }}</span>
-			<button class="acp-tb" :title="__('Remove')" @click="pendingFile = null">✕</button>
+		<div v-if="pendingFiles.length" class="acp-pending-file">
+			<span
+				v-for="(file, index) in pendingFiles"
+				:key="`${index}-${file.file_name}`"
+				class="acp-pending-item"
+			>
+				<Badge
+					:theme="file.failed ? 'red' : 'gray'"
+					:label="file.file_name"
+				/>
+				<Button
+					variant="ghost"
+					size="sm"
+					icon="x"
+					:label="__('Remove')"
+					@click="pendingFiles.splice(index, 1)"
+				/>
+			</span>
 		</div>
 		<div class="acp-composer">
 			<button
@@ -148,7 +163,7 @@
 			>
 				{{ uploading ? "…" : "📎" }}
 			</button>
-			<input ref="fileInput" type="file" class="acp-hidden" @change="onFilePicked" />
+			<input ref="fileInput" type="file" multiple class="acp-hidden" @change="onFilePicked" />
 			<textarea
 				ref="input"
 				v-model="draft"
@@ -218,9 +233,8 @@
 // (the id arrives on RUN_STARTED as thread_id). Unmount ends the
 // conversation — the fix for this week's orphaned Active instances.
 import MarkdownIt from "markdown-it";
-import { Dialog, FileUploadHandler, frappeRequest } from "frappe-ui";
+import { Badge, Button, Dialog, FileUploadHandler, frappeRequest } from "frappe-ui";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { dayjs } from "@/dayjs";
 import { streamAgentTurn } from "@/utils/aguiClient";
 import { chatDraftKey, useChatDraft } from "@/composables/useChatDraft";
 import ProposedFieldsTray from "../ProposedFieldsTray/ProposedFieldsTray.vue";
@@ -228,6 +242,7 @@ import ResponseFeedback from "../ResponseFeedback/ResponseFeedback.vue";
 import "./AgentChatPanel.css";
 import { adoptPersistedName } from "@/utils/adoptPersistedName";
 import { progressLineFor } from "@/utils/progressLineFor";
+import { formatTime, restoredItems, showsTime, stampNow } from "@/utils/showsTime";
 
 const props = defineProps({
 	agentId: { type: String, required: true },
@@ -244,7 +259,7 @@ const props = defineProps({
 	// File uploads (one-ai parity). The file uploads through
 	// frappe's standard upload_file and its file_url rides the next turn's
 	// context — the transport itself stays a plain SSE GET.
-	allowUploads: { type: Boolean, default: false },
+	allowUploads: { type: Boolean, default: true },
 	// chat-surface-layout scope: hosts may force a layout regardless of the
 	// agent's surface_type — a cramped modal passes "conversation" to refuse
 	// the split. Empty = derive from configuration.
@@ -474,18 +489,6 @@ function renderMarkdown(text) {
 	return md.render(text || "");
 }
 
-// Transcript timestamps. Live entries are stamped with the client
-// clock as they land; resumed entries carry the row's `creation` from
-// conversation_history, displayed as-is (site timezone, no conversion).
-function stampNow() {
-	return new Date();
-}
-
-function formatTime(ts) {
-	const t = dayjs(ts);
-	return t.isValid() ? t.short() : "";
-}
-
 function scrollDown() {
 	nextTick(() => {
 		if (log.value) log.value.scrollTop = log.value.scrollHeight;
@@ -570,21 +573,22 @@ onBeforeUnmount(() => {
 
 // ── uploads ─────────────────────────────────────────────────────
 
-const pendingFile = ref(null); // { file_url, file_name }
+const pendingFiles = ref([]); // [{ file_url, file_name, failed }]
 const uploading = ref(false);
 const fileInput = ref(null);
 
 async function onFilePicked(event) {
-	const file = event.target.files && event.target.files[0];
-	if (!file) return;
+	const picked = Array.from(event.target.files || []);
+	if (!picked.length) return;
 	uploading.value = true;
 	try {
-		const uploaded = await new FileUploadHandler().upload(file, { private: false });
-		const url = uploaded && uploaded.file_url;
-		if (url) pendingFile.value = { file_url: url, file_name: file.name };
-	} catch {
-		errorMessage.value = __("The file could not be uploaded.");
-		errorOpen.value = true;
+		const uploads = await Promise.allSettled(
+			picked.map((file) => new FileUploadHandler().upload(file, { private: false }))
+		);
+		uploads.forEach((upload, index) => {
+			const url = upload.status === "fulfilled" && upload.value && upload.value.file_url;
+			pendingFiles.value.push({ file_url: url || "", file_name: picked[index].name, failed: !url });
+		});
 	} finally {
 		uploading.value = false;
 		if (fileInput.value) fileInput.value.value = "";
@@ -603,6 +607,11 @@ function newMessageId() {
 async function send(text, extraContext = null, reuseId = null) {
 	const message = (text ?? draft.value).trim();
 	if (!message || busy.value) return;
+	if (pendingFiles.value.some((file) => file.failed)) {
+		errorMessage.value = __("The file could not be uploaded.");
+		errorOpen.value = true;
+		return;
+	}
 	draft.value = "";
 	// One id per message the person typed, kept across retries. A stream that
 	// dies after the agent has already answered used to cost a second run and a
@@ -622,11 +631,10 @@ async function send(text, extraContext = null, reuseId = null) {
 	// a host that doesn't (the desk Chat dialog) must not clobber it with
 	// an empty placeholder.
 	let turnContext = { ...props.context, ...(extraContext || {}) };
-	if (pendingFile.value) {
-		turnContext.file = pendingFile.value.file_url;
-		sent.file = pendingFile.value.file_name;
-		pendingFile.value = null;
-	}
+	// Sent on every turn, empty included, so an earlier turn's files do not stay in the process data.
+	turnContext.files = pendingFiles.value.map((file) => file.file_url);
+	sent.files = pendingFiles.value.map((file) => file.file_name);
+	pendingFiles.value = [];
 	if (props.contextProvider) {
 		try {
 			turnContext = { ...turnContext, ...((await props.contextProvider()) || {}) };
@@ -786,68 +794,6 @@ const HISTORY_PAGE = 100;
 const hasOlder = ref(false);
 const loadingOlder = ref(false);
 const oldestMessage = ref("");
-
-// Turn stored turns into transcript items: the words, then the cards and
-// option buttons the reply produced when it first streamed.
-//
-// Restored cards do not act. Nothing records whether an apply succeeded, and
-// re-applying a diagram or a schema is destructive — so a card that came back
-// from history is shown concluded. An unanswered question is different: the
-// only thing its buttons do is send a sentence, so the newest reply's options
-// stay live and the conversation can carry on where it stopped.
-function restoredItems(history, isNewestPage) {
-	const out = [];
-	history.forEach((m, index) => {
-		if (m.role === "user") {
-			out.push({ kind: "user", text: m.content, ts: m.timestamp });
-			return;
-		}
-		// a stored rate-limit refusal carries role "system" —
-		// restore it as a system notice, same as when it first streamed.
-		if (m.role === "system") {
-			if (m.content) out.push({ kind: "system", text: m.content, ts: m.timestamp });
-			return;
-		}
-		for (const note of m.notes || []) {
-			out.push({ kind: "narration", text: note, ts: m.timestamp });
-		}
-		if (m.content) {
-			out.push({ kind: "agent", text: m.content, message: m.message || "", ts: m.timestamp });
-		}
-		const isLastOfPage = index === history.length - 1;
-		for (const event of m.events || []) {
-			const value = event.value || {};
-			if (event.name === "onefm.choice") {
-				out.push({
-					kind: "choice",
-					value,
-					// What the user said next, when it was one of the options —
-					// so a reopened conversation shows which way it went.
-					answered: answeredWith(history, index, value.options || []),
-					restored: !(isNewestPage && isLastOfPage),
-					ts: m.timestamp,
-				});
-			} else {
-				out.push({
-					kind: "custom",
-					name: event.name,
-					value,
-					doneAction: "restored",
-					restored: true,
-					ts: m.timestamp,
-				});
-			}
-		}
-	});
-	return out;
-}
-
-function answeredWith(history, index, options) {
-	const next = history[index + 1];
-	if (!next || next.role !== "user") return "";
-	const said = (next.content || "").trim();
-	return options.find((opt) => opt === said) || "";
-}
 
 async function loadOlder() {
 	if (loadingOlder.value || !oldestMessage.value) return;
@@ -1117,6 +1063,7 @@ defineExpose({ send, conversationName });
 .acp-error-text { color: var(--ig8); }
 .acp-filechip { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 11.5px;
 	background: var(--sg2); border-radius: 6px; padding: 1px 7px; color: var(--ig6); }
-.acp-pending-file { display: flex; align-items: center; gap: 6px; padding: 4px 14px 0; background: var(--sw); }
+.acp-pending-file { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 14px 0; background: var(--sw); }
+.acp-pending-item { display: inline-flex; align-items: center; gap: 2px; }
 .acp-hidden { display: none; }
 </style>

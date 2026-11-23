@@ -1,5 +1,6 @@
 """ProsAlly's replies that say what a redraw changed, or why nothing changed."""
 
+import html
 import re
 from collections import Counter
 from xml.etree import ElementTree as ET
@@ -121,7 +122,7 @@ def _settings(xml: str) -> dict:
 	found = {}
 	for attrs in re.findall(r"<bpmn:\w+\s([^>]*?)/?>", xml or ""):
 		values = dict(re.findall(r'([\w.-]+:[\w.-]+)="([^"]*)"', attrs))
-		values = {key: val for key, val in values.items() if not key.startswith("xmlns")}
+		values = {key: html.unescape(val) for key, val in values.items() if not key.startswith("xmlns")}
 		elem_id = re.search(r'\bid="([^"]+)"', attrs)
 		if values and elem_id:
 			found[elem_id.group(1)] = values
@@ -169,6 +170,107 @@ def _moved_arrows(previous_xml: str, xml: str) -> list[str]:
 				_("Moved the arrow from {0} to {1}.").format(quoted(new_names[source] or source), quoted(new_names[target] or target))
 			)
 	return lines
+
+
+# Element kinds a request can rule out ("no script tasks"), and the BPMN tags each one covers.
+NO_ELEMENT_KINDS = {
+	"script task": ("scriptTask",),
+	"service task": ("serviceTask",),
+	"user task": ("userTask",),
+	"gateway": ("exclusiveGateway", "parallelGateway", "inclusiveGateway", "eventBasedGateway"),
+	"decision": ("exclusiveGateway", "inclusiveGateway", "eventBasedGateway"),
+	"lane": ("lane",),
+	"timer": ("timerEventDefinition",),
+	"sub-process": ("subProcess",),
+}
+RULE_OUT = r"\b(?:no|without|avoid|never (?:use|add)|do not (?:use|add)|don'?t (?:use|add))\s+(?:any\s+|new\s+|extra\s+)?"
+ONLY_WHAT_IS_NAMED = re.compile(
+	r"\b(?:do not|don'?t|never)\s+(?:change|touch|modify|move|alter)\s+(?:anything|any other|the rest|other)"
+	r"|\bnothing else\b|\bleave (?:the rest|everything else)\b|\bonly (?:change|edit|update|rename|add|remove)\b",
+	re.I,
+)
+ASKS_FOR_A_GATEWAY = re.compile(
+	r"\b(?:gateway|decision|condition|split|join|merge|parallel|branch|if|whether|either|otherwise)\b", re.I
+)
+
+
+def request_constraints(text: str) -> dict:
+	"""The constraints a request sets: the element kinds it rules out, and whether only what it names may change."""
+	ruled_out = [
+		kind
+		for kind in NO_ELEMENT_KINDS
+		if re.search(RULE_OUT + kind.replace("-", "[- ]?") + r"s?\b", text or "", re.I)
+	]
+	return {"ruled_out": ruled_out, "only_what_is_named": bool(ONLY_WHAT_IS_NAMED.search(text or ""))}
+
+
+def constraint_prompt(constraints: dict) -> str:
+	"""The constraints as lines for the step that draws the change; "" when the request sets none."""
+	lines = [f"Do not add any {kind}." for kind in constraints["ruled_out"]]
+	if constraints["only_what_is_named"]:
+		lines.append(
+			"Change only what the request names. Every other step, arrow, lane and setting stays exactly as it is."
+		)
+	if not lines:
+		return ""
+	return "Constraints from the request; the result is checked against them:\n- " + "\n- ".join(lines)
+
+
+def unrequested_changes(previous_xml: str, xml: str, text: str, constraints: dict) -> list[str]:
+	"""Each way xml breaks a constraint of the request, or adds what the request did not ask for, in plain words."""
+	problems = [
+		_("The request says no {0}, and the change adds one.").format(kind)
+		for kind in constraints["ruled_out"]
+		if sum(_count(xml, tag) for tag in NO_ELEMENT_KINDS[kind])
+		> sum(_count(previous_xml, tag) for tag in NO_ELEMENT_KINDS[kind])
+	]
+	before, after = element_names(previous_xml), element_names(xml)
+	for elem_id, (kind, name) in after.items():
+		if elem_id in before or kind == "sequenceFlow":
+			continue
+		gateway_not_asked = kind.endswith("Gateway") and not ASKS_FOR_A_GATEWAY.search(text or "")
+		element_not_asked = not kind.endswith("Gateway") and bool(name) and not _named_in(name, text)
+		if gateway_not_asked or element_not_asked:
+			problems.append(
+				_("The change adds {0}, which the request did not ask for.").format(
+					_element_label(kind, name)
+				)
+			)
+	if constraints["only_what_is_named"]:
+		problems += _changed_but_not_named(previous_xml, xml, text)
+	return problems
+
+
+def _changed_but_not_named(previous_xml: str, xml: str, text: str) -> list[str]:
+	"""Elements removed, renamed, retyped or reconfigured although the request names none of them."""
+	before, after = element_names(previous_xml), element_names(xml)
+	old_settings, new_settings = _settings(previous_xml), _settings(xml)
+	problems = []
+	for elem_id, (kind, name) in before.items():
+		if kind == "sequenceFlow" or _named_in(name, text):
+			continue
+		changed = elem_id not in after or after[elem_id] != (kind, name)
+		changed = changed or old_settings.get(elem_id) != new_settings.get(elem_id)
+		if changed:
+			problems.append(
+				_("The request says to change nothing else, and the change also alters {0}.").format(
+					_element_label(kind, name)
+				)
+			)
+	return problems
+
+
+def _named_in(name: str, text: str) -> bool:
+	"""True when a significant word of name appears in text, matched on its first five letters."""
+	asked = {word[:5] for word in re.findall(r"[a-z]{4,}", (text or "").lower())}
+	words = [
+		word[:5] for word in re.findall(r"[a-z]{4,}", (name or "").lower()) if word not in REQUEST_STOPWORDS
+	]
+	return bool(words) and any(word in asked for word in words)
+
+
+def _count(xml: str, tag: str) -> int:
+	return len(re.findall(r"<(?:\w+:)?" + tag + r"\b", xml or ""))
 
 
 def similar_steps(xml: str, texts: list, skip: str = "") -> list[str]:
