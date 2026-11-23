@@ -59,4 +59,13 @@ describe("Logix script security controls", () => {
 		expect(canvas).toMatch(/Use \$\{alt\.charAt\(0\)\.toLowerCase\(\)\}/);
 		expect(canvas).toMatch(/To keep \$\{name\}, request approval in Security\./);
 	});
+
+	it("stacks the chat above the editor on a phone so Security stays reachable", () => {
+		const canvas = read("LogixCanvas/LogixCanvas.vue");
+		expect(canvas).toMatch(/<style scoped src="\.\/LogixCanvas\.css"><\/style>/);
+		const css = read("LogixCanvas/LogixCanvas.css");
+		const phone = css.slice(css.indexOf("@media (max-width: 768px)"));
+		expect(phone).toMatch(/\.lc-root \{\s*flex-direction: column;/);
+		expect(phone).toMatch(/\.lc-chat-panel \{\s*width: 100%;/);
+	});
 });
