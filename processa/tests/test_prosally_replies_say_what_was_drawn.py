@@ -140,7 +140,9 @@ class TestRequestConstraints(FrappeTestCase):
 		text = "Add a step that emails the employee. No script tasks."
 		new = self._new('<bpmn:scriptTask id="mail" name="Email the employee" />')
 
-		problems = tools_replies.unrequested_changes(self.OLD, new, text, tools_replies.request_constraints(text))
+		problems = tools_replies.unrequested_changes(
+			self.OLD, new, text, tools_replies.request_constraints(text)
+		)
 
 		self.assertEqual(problems, ["The request says no script task, and the change adds one."])
 
@@ -152,7 +154,9 @@ class TestRequestConstraints(FrappeTestCase):
 			'<bpmn:userTask id="audit" name="Audit the payroll" />',
 		)
 
-		problems = tools_replies.unrequested_changes(self.OLD, new, text, tools_replies.request_constraints(text))
+		problems = tools_replies.unrequested_changes(
+			self.OLD, new, text, tools_replies.request_constraints(text)
+		)
 
 		self.assertEqual(len(problems), 2)
 		self.assertIn('the decision "Record Join"', problems[0])
@@ -162,15 +166,25 @@ class TestRequestConstraints(FrappeTestCase):
 		text = 'Rename "Record leave" to "Record leave in HR". Do not change anything else.'
 		new = self._new(review='name="Review request"').replace("Record leave", "Record leave in HR")
 
-		problems = tools_replies.unrequested_changes(self.OLD, new, text, tools_replies.request_constraints(text))
+		problems = tools_replies.unrequested_changes(
+			self.OLD, new, text, tools_replies.request_constraints(text)
+		)
 
-		self.assertEqual(problems, ['The request says to change nothing else, and the change also alters the step "Review request".'])
+		self.assertEqual(
+			problems,
+			[
+				'The request says to change nothing else, and the change also alters the step "Review request".'
+			],
+		)
 
 	def test_the_asked_change_alone_passes(self):
 		text = 'Rename "Record leave" to "Record leave in HR". Do not change anything else.'
 		new = self._new().replace("Record leave", "Record leave in HR")
 
-		self.assertEqual(tools_replies.unrequested_changes(self.OLD, new, text, tools_replies.request_constraints(text)), [])
+		self.assertEqual(
+			tools_replies.unrequested_changes(self.OLD, new, text, tools_replies.request_constraints(text)),
+			[],
+		)
 
 
 class TestGenerateNamesTheMissingLane(FrappeTestCase):

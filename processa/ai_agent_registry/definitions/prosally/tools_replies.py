@@ -196,7 +196,9 @@ ASKS_FOR_A_GATEWAY = re.compile(
 def request_constraints(text: str) -> dict:
 	"""The constraints a request sets: the element kinds it rules out, and whether only what it names may change."""
 	ruled_out = [
-		kind for kind in NO_ELEMENT_KINDS if re.search(RULE_OUT + kind.replace("-", "[- ]?") + r"s?\b", text or "", re.I)
+		kind
+		for kind in NO_ELEMENT_KINDS
+		if re.search(RULE_OUT + kind.replace("-", "[- ]?") + r"s?\b", text or "", re.I)
 	]
 	return {"ruled_out": ruled_out, "only_what_is_named": bool(ONLY_WHAT_IS_NAMED.search(text or ""))}
 
@@ -205,7 +207,9 @@ def constraint_prompt(constraints: dict) -> str:
 	"""The constraints as lines for the step that draws the change; "" when the request sets none."""
 	lines = [f"Do not add any {kind}." for kind in constraints["ruled_out"]]
 	if constraints["only_what_is_named"]:
-		lines.append("Change only what the request names. Every other step, arrow, lane and setting stays exactly as it is.")
+		lines.append(
+			"Change only what the request names. Every other step, arrow, lane and setting stays exactly as it is."
+		)
 	if not lines:
 		return ""
 	return "Constraints from the request; the result is checked against them:\n- " + "\n- ".join(lines)
@@ -226,7 +230,11 @@ def unrequested_changes(previous_xml: str, xml: str, text: str, constraints: dic
 		gateway_not_asked = kind.endswith("Gateway") and not ASKS_FOR_A_GATEWAY.search(text or "")
 		element_not_asked = not kind.endswith("Gateway") and bool(name) and not _named_in(name, text)
 		if gateway_not_asked or element_not_asked:
-			problems.append(_("The change adds {0}, which the request did not ask for.").format(_element_label(kind, name)))
+			problems.append(
+				_("The change adds {0}, which the request did not ask for.").format(
+					_element_label(kind, name)
+				)
+			)
 	if constraints["only_what_is_named"]:
 		problems += _changed_but_not_named(previous_xml, xml, text)
 	return problems
@@ -244,7 +252,9 @@ def _changed_but_not_named(previous_xml: str, xml: str, text: str) -> list[str]:
 		changed = changed or old_settings.get(elem_id) != new_settings.get(elem_id)
 		if changed:
 			problems.append(
-				_("The request says to change nothing else, and the change also alters {0}.").format(_element_label(kind, name))
+				_("The request says to change nothing else, and the change also alters {0}.").format(
+					_element_label(kind, name)
+				)
 			)
 	return problems
 
@@ -252,7 +262,9 @@ def _changed_but_not_named(previous_xml: str, xml: str, text: str) -> list[str]:
 def _named_in(name: str, text: str) -> bool:
 	"""True when a significant word of name appears in text, matched on its first five letters."""
 	asked = {word[:5] for word in re.findall(r"[a-z]{4,}", (text or "").lower())}
-	words = [word[:5] for word in re.findall(r"[a-z]{4,}", (name or "").lower()) if word not in REQUEST_STOPWORDS]
+	words = [
+		word[:5] for word in re.findall(r"[a-z]{4,}", (name or "").lower()) if word not in REQUEST_STOPWORDS
+	]
 	return bool(words) and any(word in asked for word in words)
 
 

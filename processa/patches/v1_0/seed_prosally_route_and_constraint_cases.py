@@ -14,6 +14,20 @@ MAP_XML = json.loads(Path(__file__).with_name("prosally_leave_request_map.json")
 OLD_STEPS = ("Submit leave request", "Review request", "Record leave", "Notify employee")
 
 
+def _edit(title, request, *checks):
+	return {
+		"title": title,
+		"prompt": "Yes, proceed",
+		"context": _confirmed(request, "MODIFY_EXISTING"),
+		"calls": _calls("classify_intent", "modify_process"),
+		"assertions": [
+			*BASE_ASSERTIONS,
+			{"assertion_type": "no_tool_call", "value": "generate_process"},
+			*checks,
+		],
+	}
+
+
 def _calls(*tools):
 	return [
 		{"call_order": order, "tool_name": tool, "argument": "", "matcher": "", "expected_value": ""}
@@ -49,20 +63,6 @@ def _confirmed(request, action):
 	if action == "MODIFY_EXISTING":
 		context["current_xml"] = MAP_XML
 	return context
-
-
-def _edit(title, request, *checks):
-	return {
-		"title": title,
-		"prompt": "Yes, proceed",
-		"context": _confirmed(request, "MODIFY_EXISTING"),
-		"calls": _calls("classify_intent", "modify_process"),
-		"assertions": [
-			*BASE_ASSERTIONS,
-			{"assertion_type": "no_tool_call", "value": "generate_process"},
-			*checks,
-		],
-	}
 
 
 CASES = [
