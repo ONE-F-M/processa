@@ -137,7 +137,7 @@
   },
   {
    "default": "HTTP Request",
-   "description": "<b>HTTP Request</b> — fully configured here, no Python needed. <b>Python Handler</b> — dispatch to a registered @connector handler (or an operation's Handler Path); use for SDK-based providers.",
+   "description": "<b>HTTP Request</b> - fully configured here, no Python needed. <b>Python Handler</b> - each operation calls the function named by its Handler Path; use for SDK-based providers. An operation can override this.",
    "fieldname": "execution_type",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -180,7 +180,7 @@
   },
   {
    "default": "None",
-   "description": "How the secret is presented. <b>Service Account JSON</b> is handled by the Python handlers (Google) rather than the HTTP executor.",
+   "description": "How the secret is presented. <b>Service Account JSON</b> is a Google key: the HTTP executor exchanges it for an access token using the Scopes below, and the Google Python handlers read it directly.",
    "fieldname": "auth_type",
    "fieldtype": "Select",
    "label": "Auth Type",
@@ -189,7 +189,7 @@
   {
    "default": "On this connector",
    "depends_on": "eval:doc.auth_type && doc.auth_type!='None'",
-   "description": "<b>On this connector</b> — type the secret below; it is encrypted and never leaves the server. <b>From a settings DocType</b> — read it from a Password field elsewhere, for a credential several connectors share (how the Google connectors reuse one service account).",
+   "description": "<b>On this connector</b> - type the secret below; it is encrypted and never leaves the server. <b>From a settings DocType</b> - read it from a Password field elsewhere, for a credential several connectors share.",
    "fieldname": "credential_source",
    "fieldtype": "Select",
    "label": "Credential Source",
@@ -280,7 +280,7 @@
    "link_fieldname": "connector"
   }
  ],
- "modified": "2026-11-16 15:00:00.000000",
+ "modified": "2026-11-23 09:30:14.393093",
  "modified_by": "Administrator",
  "module": "Processa Connectors",
  "name": "BPMN Connector",

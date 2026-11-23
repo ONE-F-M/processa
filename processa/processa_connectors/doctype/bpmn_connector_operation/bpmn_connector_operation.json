@@ -111,7 +111,7 @@
    "options": "\nHTTP Request\nPython Handler"
   },
   {
-   "description": "Dotted path to a <code>handler(params, ctx) -> dict</code> function. Blank falls back to the @connector registry entry for (connector, operation).",
+   "description": "Dotted path to a <code>handler(params, ctx) -> dict</code> function. Required for a Python Handler operation; with it blank the operation has no executor.",
    "fieldname": "handler_path",
    "fieldtype": "Data",
    "label": "Handler Path",
@@ -195,7 +195,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-29 08:00:00",
+ "modified": "2026-11-23 09:30:14.393093",
  "modified_by": "Administrator",
  "module": "Processa Connectors",
  "name": "BPMN Connector Operation",

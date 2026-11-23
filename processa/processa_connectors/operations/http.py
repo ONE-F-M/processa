@@ -54,7 +54,7 @@ def execute(spec, params, ctx):
 
 
 def _request(spec, url, headers, body):
-	"""Perform the call through Frappe's request helper, retrying 429/5xx."""
+	"""Perform the call with requests, retrying 429, 500, 502, 503 and 504."""
 	import requests
 
 	method = (spec.http_method or "POST").upper()
