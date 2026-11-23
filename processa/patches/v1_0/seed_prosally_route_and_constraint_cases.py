@@ -10,7 +10,7 @@ import frappe
 
 from processa.patches.v1_0.seed_prosally_baseline_suite import AGENT_ID, BASE_ASSERTIONS, SHAPE, SUITE_TITLE
 
-MAP_XML = json.loads(Path(__file__).with_name("prosally_leave_request_map.json").read_text())["current_xml"]
+MAP_XML = json.loads((Path(__file__).parent / "data" / "prosally_leave_request_map.json").read_text())["current_xml"]
 OLD_STEPS = ("Submit leave request", "Review request", "Record leave", "Notify employee")
 
 
