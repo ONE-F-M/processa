@@ -498,7 +498,12 @@ def _draw_inserted(
 	ET.SubElement(
 		shape,
 		dc + "Bounds",
-		{"x": coordinate_text(new_x), "y": coordinate_text(new_y), "width": coordinate_text(width), "height": coordinate_text(height)},
+		{
+			"x": coordinate_text(new_x),
+			"y": coordinate_text(new_y),
+			"width": coordinate_text(width),
+			"height": coordinate_text(height),
+		},
 	)
 	target_shape = next(
 		(s for s in plane.findall(bpmndi + "BPMNShape") if s.get("bpmnElement") == target_id), None
@@ -509,14 +514,20 @@ def _draw_inserted(
 	if old_edge is not None:
 		for point in old_edge.findall(di + "waypoint"):
 			old_edge.remove(point)
-		ET.SubElement(old_edge, di + "waypoint", {"x": coordinate_text(x + w), "y": coordinate_text(y + h / 2)})
-		ET.SubElement(old_edge, di + "waypoint", {"x": coordinate_text(new_x), "y": coordinate_text(y + h / 2)})
+		ET.SubElement(
+			old_edge, di + "waypoint", {"x": coordinate_text(x + w), "y": coordinate_text(y + h / 2)}
+		)
+		ET.SubElement(
+			old_edge, di + "waypoint", {"x": coordinate_text(new_x), "y": coordinate_text(y + h / 2)}
+		)
 	if target_shape is not None:
 		tb = target_shape.find(dc + "Bounds")
 		edge = ET.SubElement(
 			plane, bpmndi + "BPMNEdge", {"id": new_flow_id + "_di", "bpmnElement": new_flow_id}
 		)
-		ET.SubElement(edge, di + "waypoint", {"x": coordinate_text(new_x + width), "y": coordinate_text(y + h / 2)})
+		ET.SubElement(
+			edge, di + "waypoint", {"x": coordinate_text(new_x + width), "y": coordinate_text(y + h / 2)}
+		)
 		ET.SubElement(
 			edge,
 			di + "waypoint",

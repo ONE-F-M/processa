@@ -7,8 +7,12 @@ from xml.etree import ElementTree as ET
 
 from frappe import _
 
-from processa.ai_agent_registry.definitions.prosally.helpers import NS, quoted, register_namespaces
-from processa.ai_agent_registry.definitions.prosally.tools_review import IR_NODE_TYPES
+from processa.ai_agent_registry.definitions.prosally.helpers import (
+	IR_NODE_TYPES,
+	NS,
+	quoted,
+	register_namespaces,
+)
 from processa.ai_agent_registry.definitions.prosally.tools_subprocess import (
 	NODE_TAGS,
 	add_flow_references,

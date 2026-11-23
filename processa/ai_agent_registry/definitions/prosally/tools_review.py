@@ -10,6 +10,7 @@ from frappe import _
 
 from processa.ai_agent_memory.text_clean import strip_html
 from processa.ai_agent_registry.definitions.prosally.helpers import (
+	IR_NODE_TYPES,
 	NS,
 	REQUEST_STOPWORDS,
 	STEP_TAGS,
@@ -18,6 +19,12 @@ from processa.ai_agent_registry.definitions.prosally.helpers import (
 	prosally_config,
 	quoted,
 	register_namespaces,
+)
+from processa.ai_agent_registry.definitions.prosally.tools_operations import (
+	add_subprocess_output,
+	add_workflow_state_output,
+	reroute_arrow_output,
+	switch_gateways_output,
 )
 from processa.ai_agent_registry.definitions.prosally.tools_pipeline import (
 	compile_ir,
@@ -33,15 +40,6 @@ DIAGNOSE_MAX_ELEMENTS = 5
 DIAGNOSE_SCRIPT_CHARS = 4000
 DIAGNOSE_MIN_NAME_CHARS = 3
 DIAGNOSE_ORIGINS = frozenset({"map", "server_script", "unknown"})
-
-IR_NODE_TYPES = frozenset(
-	{
-		"startEvent", "endEvent", "intermediateThrowEvent", "intermediateCatchEvent", "task", "userTask", "scriptTask",
-		"serviceTask", "manualTask", "businessRuleTask", "exclusiveGateway", "parallelGateway", "inclusiveGateway",
-		"subProcess", "callActivity",
-	}
-)  # fmt: skip
-
 
 def xml_to_ir(xml: str) -> dict | None:
 	"""The IR that draws xml again, or None when xml has an element the IR cannot hold."""
@@ -287,14 +285,6 @@ def layout_is_automatic() -> str:
 
 def diagram_edit_output(xml: str, text: str) -> dict | None:
 	"""The reply to a message that only asks for one edit ProsAlly makes in code, or None to leave it to the model."""
-	# Imported here: tools_operations imports IR_NODE_TYPES from this module.
-	from processa.ai_agent_registry.definitions.prosally.tools_operations import (
-		add_subprocess_output,
-		add_workflow_state_output,
-		reroute_arrow_output,
-		switch_gateways_output,
-	)
-
 	if not (xml or "").strip():
 		return None
 	for operation in (
