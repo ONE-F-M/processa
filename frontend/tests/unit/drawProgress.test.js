@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 import { progressLineFor } from "@/utils/progressLineFor.js"
-import { showsTime } from "@/utils/showsTime.js"
 
 // No component harness in the frontend, so the panel is read as text (as cardExpand.test.mjs does).
 const here = fileURLToPath(new URL("../../src/components/Chat/", import.meta.url))
@@ -64,17 +63,4 @@ test("progress lines wrap inside the panel and the page cannot scroll sideways",
 	assert.match(panel, /\.acp \{ min-width: 0; max-width: 100%; overflow-x: hidden; \}/)
 	// The log must not clip: wide content scrolls inside it, which a 375px check in a browser confirmed.
 	assert.doesNotMatch(panel, /\.acp-log \{ overflow-x: hidden; \}/)
-})
-
-test("one reply shows its time once, under its last piece, and every message of yours keeps its own", () => {
-	const items = [
-		{ kind: "user", ts: "11:38" },
-		{ kind: "agent", ts: "11:38" },
-		{ kind: "choice", ts: "11:38" },
-		{ kind: "user", ts: "11:40" },
-		{ kind: "agent", ts: "11:41" },
-		{ kind: "routed" },
-	]
-	const shown = items.map((_item, i) => showsTime(items, i, (ts) => ts))
-	assert.deepEqual(shown, [true, false, true, true, true, false])
 })

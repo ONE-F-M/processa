@@ -87,13 +87,7 @@
 					</details>
 				</div>
 				<!-- Every stamped entry shows when it happened -->
-				<div
-					v-if="timeShown[i]"
-					class="acp-time"
-					:class="{ 'acp-time--user': item.kind === 'user' }"
-				>
-					{{ formatTime(item.ts) }}
-				</div>
+				<div v-if="item.ts" class="acp-time" :class="{ 'acp-time--user': item.kind === 'user' }">{{ formatTime(item.ts) }}</div>
 			</template>
 
 			<div
@@ -249,7 +243,6 @@ import ResponseFeedback from "../ResponseFeedback/ResponseFeedback.vue";
 import "./AgentChatPanel.css";
 import { adoptPersistedName } from "@/utils/adoptPersistedName";
 import { progressLineFor } from "@/utils/progressLineFor";
-import { showsTime } from "@/utils/showsTime";
 
 const props = defineProps({
 	agentId: { type: String, required: true },
@@ -432,8 +425,6 @@ const trayItem = computed(() => {
 
 // The transcript in document/form mode replaces the routed item with a
 // small marker, keeping chronology readable without rendering it twice.
-const timeShown = computed(() => transcriptItems.value.map((_item, i) => showsTime(transcriptItems.value, i, formatTime)));
-
 const transcriptItems = computed(() => {
 	if (layoutMode.value === "conversation") return items.value;
 	return items.value.map((item) => {
