@@ -120,9 +120,29 @@ def _script_tasks(bpmn_xml: str) -> dict:
 	}
 
 
+class _EmptyResponse:
+	"""The reply a stubbed requests call gives, so a draft that reads it keeps running."""
+
+	status_code = None
+	ok = False
+	text = ""
+	content = b""
+
+	def json(self):
+		return {}
+
+	def raise_for_status(self):
+		return None
+
+
 def _stub(stubbed: list, target: str):
 	def stub(*args, **kwargs):
 		stubbed.append(target.rsplit(".", 1)[-1])
+		if target.startswith("requests."):
+			return _EmptyResponse()
+		if target.startswith("frappe.integrations."):
+			return {}
+		return None
 
 	return stub
 
