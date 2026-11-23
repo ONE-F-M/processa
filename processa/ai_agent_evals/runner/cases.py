@@ -321,9 +321,9 @@ def _execute_case(case, eval_run: str = None, agent_cfg: str = None) -> dict:
 
     The suite's ``eval_type`` selects how the agent runs:
       - "Agent":  run the full agent through its process map, so its tools run
-                  too. When the case or suite names a ``process_model`` that map
-                  is started directly (the only path that works for a Background
-                  or otherwise non-chat agent); otherwise the turn goes through
+                  too. ``_needs_map_eval`` picks the path: a Background agent, or
+                  one whose linked map is not chat-triggered, starts the case's,
+                  suite's or agent's map directly; any other agent goes through
                   the chat-shaped ``invoke_agent``. Either way the AI Agent Runs
                   produced are tagged eval-origin and supply tokens/cost.
       - "Direct": a plain LLM call using the agent's provider/model/system prompt

@@ -115,8 +115,8 @@ def customization_json_path(app: str, dt: str) -> str:
 	to match the DocType's own app - which is what makes it possible to carry an
 	Interview customization inside one_fm at all.
 
-	Uses the module named after the app when it has one (both one_fm and processa
-	do), else its first module.
+	Uses the module named after the app when it has one (one_fm does), else its
+	first module (processa_engine for processa).
 	"""
 	modules = frappe.local.app_modules.get(app) or []
 	module = app if app in modules else (modules[0] if modules else app)

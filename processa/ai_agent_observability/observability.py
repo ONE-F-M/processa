@@ -1,12 +1,10 @@
 """
-Instrumentation layer for AI Agent observability.
+Instrumentation for AI Agent observability, called between the dispatcher and the executor.
 
-Three core functions that sit between the dispatcher and the executor:
-
-- create_ai_run(instance, bpmn_id, element_type, config) → AI Agent Run
-- record_ai_step(run, step_index, role, content, tokens, latency_ms) → AI Agent Step
-- finalize_ai_run(run, result) → None (updates run status, duration, costs)
-- finalize_ai_run_on_exception(run, exception) → None (error handling)
+- create_ai_run(instance, bpmn_id, element_type, config, ...) -> AI Agent Run
+- record_ai_step(run, step_index, role, content, *, prompt_tokens, completion_tokens, cache_read_tokens, cache_write_tokens, latency_ms, ...) -> AI Agent Step
+- finalize_ai_run(run, result) -> None (updates run status, duration, costs)
+- finalize_ai_run_on_exception(run, exception) -> None (error handling)
 """
 
 from __future__ import annotations
@@ -1069,7 +1067,7 @@ def record_selector_turns(
 
 	Turns with tool calls become role="tool" Steps carrying one AI Agent
 	Tool Call row per call (tool_source resolved via *source_map*,
-	{tool_name: "diagram_task"|"registry_tool"}); the final-answer turn
+	{tool_name: "diagram_task"|"PYTHON_FUNCTION"}); the final-answer turn
 	becomes a role="assistant" Step with no Tool Call rows.
 
 	*already_recorded* is how many leading turns of *trace* are already Steps; a

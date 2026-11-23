@@ -16,12 +16,10 @@ type Adversarial whose most recent completed run had zero failures AND ran
 a clean run from three months ago keeps clearing a system prompt that was
 rewritten yesterday, which is precisely the hole a go-live gate exists to close.
 
-A CONFORMING MAP
-----------------
-The suite proves the agent resisted the attacks it was shown. The conformance
-check proves the screening stage is actually wired into the map that will run in
-production, so an agent cannot pass its adversarial suite and then ship a map
-with the screen removed. See ``conformance.py``.
+SCREENING CONFORMANCE
+---------------------
+Not checked here. provision_agent also calls ``conformance.validate_chat_map``, which
+checks that message screening is armed and that a linked map is a chat map.
 
 WHAT THIS DOES NOT DO
 ---------------------

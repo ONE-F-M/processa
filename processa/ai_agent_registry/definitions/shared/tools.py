@@ -12,7 +12,7 @@ from processa.ai_agent_registry.definitions.shared.helpers import tool_envelope
 	lambda doctype: json.dumps({"error": f"Failed to fetch fields for DocType '{doctype}'."}),
 )
 def get_doctype_fields(doctype: str) -> str:
-	"""The fieldname, fieldtype, label and reqd of each data field on a DocType, as JSON."""
+	"""The fieldname, fieldtype, label and reqd of each DocType field except Section Break, Column Break, HTML and Heading, as JSON."""
 	if not frappe.db.exists("DocType", doctype):
 		return json.dumps({"error": f"DocType '{doctype}' does not exist."})
 

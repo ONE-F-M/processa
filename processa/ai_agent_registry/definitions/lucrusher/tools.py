@@ -3,29 +3,9 @@
 """
 Filesystem primitives for agent tools that read the bench's own code.
 
-WHY THIS IS A MODULE AND NOT A SERVER SCRIPT
---------------------------------------------
-Agent tools are Server Scripts on an ad-hoc "Tools" sub-process, and every BPMN
-Script Task passes ``processa.ai_agent_security.code_checks.script_validator.deep_inspect_script``
-before it can be saved or deployed. That gate permanently forbids ``os``,
-``glob``, ``pathlib`` and the ``open()`` builtin — a script cannot walk or read
-the filesystem, by design. So the primitives live here, and the tool script owns
-everything else.
-
-The split is deliberate and minimal: this module returns RAW structure (which
-DocTypes exist and where their files are, what each app's hooks.py declares,
-which functions carry @frappe.whitelist()). It holds no matching, scoring,
-ranking, thresholds or narrative — all of that is LuCrusher's analysis and lives
-in the "LuCrusher – Tool Scan Codebase" Server Script. Same shape as the Docu
-migration keeping its deterministic ``tools.py`` helpers while the pipeline logic
-moved into the map.
-
-Nothing here is agent-specific, so any future agent that needs to read the bench
-can call it.
-
-Caching: the DocType + hooks index is cached in Redis for an hour (hooks.py and
-the DocType list barely move). The @frappe.whitelist() walk is per-call but
-bounded by its ``apps`` and ``path_keywords`` arguments.
+A Server Script may use os, glob, pathlib or open() only under an approved Script Import Category, so these walks live here.
+Returns raw structure: DocTypes and their files, hooks.py declarations, @frappe.whitelist() functions, controller sources.
+The DocType and hooks index is cached in Redis for an hour; find_whitelisted_methods walks the files on every call.
 """
 
 from __future__ import annotations
@@ -40,7 +20,7 @@ import frappe
 INDEX_CACHE_KEY = "lucrusher_codebase_index_v2"
 INDEX_TTL = 3600  # 1 hour
 
-# hooks.py top-level assignments worth reporting.
+# hooks.py assignments worth reporting, at any nesting level.
 HOOK_KEYS = frozenset({
 	"doc_events",
 	"override_doctype_class",

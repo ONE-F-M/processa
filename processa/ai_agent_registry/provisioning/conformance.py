@@ -1,45 +1,12 @@
 # Copyright (c) 2026, one-fm and contributors
 # For license information, please see license.txt
 """
-Conformance validator for chat agents.
+Conformance check a chat agent passes before go-live.
 
-A passing adversarial suite proves the agent resisted the attacks it was shown.
-It does not prove the shipped agent still screens anything. This closes that gap:
-no conforming agent can skip the screen.
-
-WHY THIS NO LONGER LOOKS INSIDE THE MAP
----------------------------------------
-It originally required a screening stage as an element in the agent's map,
-marked ``spiffworkflow:aiScreeningStage``. The reasoning was sound at the time:
-the creation process CLONED a template map per agent, so a clone could have the
-stage deleted and that agent would silently stop being screened.
-
-Two things then made that check false rather than strict:
-
-  * The template and the cloning were retired. A map is now a designer's own
-    link, and a chat agent may legitimately have no map at all (the Direct API
-    path), so "the cloned map" it guarded no longer exists.
-  * Screening was never built as a map step. It runs centrally, on every turn of
-    every agent: ``security.pii.screen_chat_message`` on Chat Message insert, and
-    ``security.injection.screen_for_injection`` inside the invocation path. No map
-    on this site has ever carried the marker.
-
-So the check was hunting for a declaration that nothing produces, while the thing
-it was meant to guarantee was already true everywhere — failing every agent, and
-teaching a reader that the gate is noise.
-
-WHAT "CONFORMING" MEANS NOW
----------------------------
-That the screen an agent's messages pass through is actually armed:
-
-  * the Chat Message screening hook is registered, so stored messages are
-    screened — this one is load-bearing, because every map-driven agent re-reads
-    the stored row; and
-  * the injection pack has at least one enabled rule, since a pack with nothing
-    in it matches nothing and would pass silently.
-
-Both fail CLOSED. A map, when one is linked, must still be a chat map — an agent
-with a chat mode label pointed at a business process can never receive a turn.
+screening_status passes when a Chat Message before_insert hook runs
+ai_agent_security.screening.pii.screen_chat_message and AI Injection Pattern has an enabled rule.
+validate_chat_map adds that a linked map exists, is not empty, and starts on Chat Conversation insert.
+An agent with no map passes the map part. Any check that cannot be read counts as a failure.
 """
 
 from __future__ import annotations

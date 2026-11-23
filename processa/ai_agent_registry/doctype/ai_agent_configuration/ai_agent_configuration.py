@@ -112,7 +112,7 @@ class AIAgentConfiguration(Document):
 	# end: auto-generated types
 
 	def validate(self):
-		"""Validate that required runtime variables are present in the system prompt."""
+		"""Derive the provider from the model, then run every save-time check on the configuration."""
 		self.derive_provider_from_model()
 		self.validate_required_variables()
 		self.validate_unique_chat_mode_label()
@@ -463,9 +463,7 @@ class AIAgentConfiguration(Document):
 			)
 
 	def on_update(self):
-		# Leave a timeline trail when a save parks the agent.
-		# (The creation process's park path writes its own comment — this
-		# covers the controller-driven Background auto-lifecycle.)
+		# Leave a timeline comment when a save moves the agent into Needs Attention.
 		prev = getattr(self, "_doc_before_save", None)
 		if (
 			self.lifecycle_status == "Needs Attention"
@@ -496,23 +494,9 @@ class AIAgentConfiguration(Document):
 			sync_shapes_to_config(self.name)
 
 	def revalidate_credentials_on_save(self):
-		"""Re-prove the agent on EVERY save — assume nothing (user ruling,
-		2026-07-21): credentials that validated at creation may since have
-		been rotated, disabled, or pointed at a dead model, and a Live badge
-		must mean the agent works NOW.
-
-		Runs the full validation including the live provider test call:
-		  * Live agent that fails    → parked Needs Attention, with the reason
-		  * Needs Attention that passes → promoted back to Live (self-healing)
-		  * Needs Attention that fails with new errors → the reason is replaced
-		  * Draft is the creation process's to advance, Retired is a manual
-		    state — neither is touched.
-
-		Skipped during migrate/patch/install/import (seed patches save many
-		configs on sites whose credentials arrive later — parking them all
-		mid-migration would be noise) and in tests unless a test opts in via
-		frappe.flags.test_agent_revalidation.
-		"""
+		"""Re-run validate_agent_config with a live provider call when a Live or Needs Attention agent is saved.
+		A failure parks the agent Needs Attention with the reason; a Needs Attention agent that passes gets start_reprovision.
+		Skipped in migrate, patch, install, import, and in tests unless frappe.flags.test_agent_revalidation is set."""
 		if self.lifecycle_status not in ("Live", "Needs Attention"):
 			return
 		if (

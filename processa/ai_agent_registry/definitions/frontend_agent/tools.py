@@ -6,9 +6,9 @@ The only things the Frontend Agent cannot do from a Server Script.
 WHY THIS MODULE IS AS SMALL AS IT IS
 ------------------------------------
 Every BPMN Script Task passes ``processa.ai_agent_security.code_checks.script_validator.deep_inspect_script``,
-which permanently forbids ``os``, ``glob``, ``pathlib``, ``subprocess``, ``shutil``,
-``tempfile``, ``requests`` and the ``open()`` builtin. That is the ONLY reason
-anything here is Python. The test applied to every function below was not "is
+which lets a script use ``os``, ``glob``, ``pathlib``, ``subprocess``, ``shutil``,
+``tempfile``, ``requests`` or the ``open()`` builtin only under an approved Script
+Import Category. That is the ONLY reason anything here is Python. The test applied to every function below was not "is
 this easier in Python" but "does the gate make it impossible in a script" — and
 whatever failed that test went back into the tool script, where a process owner
 can see and change it.
@@ -77,7 +77,7 @@ def relative(abs_path: str) -> str:
 
 
 def resolve(path: str) -> tuple:
-	"""Resolve a bench-relative path, or explain the refusal.
+	"""Resolve a path relative to ``apps/``, or explain the refusal.
 
 	Returns ``(abs_path, "")`` when the path is inside ``apps/``, carries a
 	readable extension and is not generated or vendored; ``("", reason)``
@@ -138,7 +138,7 @@ def list_dir(path: str) -> list:
 
 
 def list_files(apps=None, exts=None, limit: int = 20000) -> list:
-	"""Bench-relative paths of files under ``apps`` with one of ``exts``."""
+	"""``apps/``-relative paths of files under ``apps`` with one of ``exts``."""
 	root = apps_root()
 	roots = []
 	for app in (apps or []):

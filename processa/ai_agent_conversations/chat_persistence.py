@@ -1,12 +1,9 @@
 """
-Chat persistence helpers for Logix and ProsAlly.
+Chat persistence helpers for agent chats.
 
-Stores conversation history in the shared Chat Conversation / Chat Message
-DocTypes (owned by onefm_mcp).  Each conversation is tagged with an
-``agent_mode`` ("Logix" or "ProsAlly") so that queries by one agent never
-surface chats from the other — or from Lumina.
-
-Ephemeral session state (not conversation history) stays in Redis for speed.
+Stores conversation history in processa's Chat Conversation / Chat Message DocTypes.
+Each conversation stores the ``agent_mode`` string it was created with.
+Ephemeral session state (not conversation history) stays in Redis.
 """
 
 import json
@@ -17,11 +14,8 @@ import frappe
 # ── Conversation management ────────────────────────────────────────────────────
 
 def create_conversation(agent_mode: str, title: str, user: str, commit: bool = True) -> str:
-	"""Create a new Chat Conversation document and return its name.
-
-	Mirrors the pattern used by Lumina's ``create_conversation()`` but
-	sets ``agent_mode`` to "Logix" or "ProsAlly" for proper isolation.
-	"""
+	"""Create a new Chat Conversation with the given ``agent_mode`` string and return its name.
+	create_agent_conversation passes the agent's chat_mode_label, or its agent_id when there is none."""
 	title = frappe.utils.strip_html_tags(title).strip() or frappe._("New chat")
 	doc = frappe.get_doc({
 		"doctype": "Chat Conversation",
@@ -255,13 +249,8 @@ def _parsed_metadata(raw) -> dict:
 # ── Conversation state (stays in Redis — ephemeral per-session) ────────────────
 
 def get_or_create_state(conversation_name: str, initial_data: dict | None = None) -> dict:
-	"""
-	Return the Chat Conversation State for *conversation_name*, creating one if
-	it doesn't exist yet.  Returns the parsed state_data as a dict.
-
-	NOTE: State is ephemeral per-session data (e.g. the current step in a
-	multi-step agent flow).  It is intentionally kept in Redis for speed.
-	"""
+	"""Return the state_data dict cached in Redis under ``chat_state:<conversation_name>``.
+	Stores a new entry seeded with *initial_data* when the key is missing."""
 	state_dict = frappe.cache.get_value(f"chat_state:{conversation_name}")
 	if state_dict:
 		return state_dict.get("state_data") or {}
@@ -278,7 +267,7 @@ def get_or_create_state(conversation_name: str, initial_data: dict | None = None
 
 
 def update_state(conversation_name: str, data: dict) -> None:
-	"""Overwrite the state_data for a conversation's Chat Conversation State."""
+	"""Overwrite the state_data cached in Redis under ``chat_state:<conversation_name>``."""
 	state_dict = frappe.cache.get_value(f"chat_state:{conversation_name}")
 	if not state_dict:
 		state_dict = {

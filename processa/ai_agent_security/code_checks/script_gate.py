@@ -1,12 +1,12 @@
 """
 Enforcement gates for BPMN Script Task security.
 
-These helpers wire :func:`processa.ai_agent_security.code_checks.script_validator.deep_inspect_script`
-into the three pre-deployment gates:
+These helpers run :func:`processa.ai_agent_security.code_checks.script_validator.inspect_script`
+in three gates:
 
-  1. Server Script save        → ``validate_server_script_on_save`` (doc_event)
-  2. Process-model authoring    → ``validate_process_model_scripts`` (model.validate)
-  3. Process-model deploy       → ``validate_process_model_scripts`` (compile_process_model)
+  1. Server Script save        -> ``validate_server_script_on_save`` (doc_event, syntax errors only)
+  2. Process-model save        -> ``validate_process_model_syntax`` (model.validate, syntax errors only)
+  3. Process-model deploy      -> ``validate_process_model_scripts`` (compile step, unapproved findings)
 
 Only scripts that belong to BPMN script tasks are gated. Unrelated Server
 Scripts in the site are never touched (see ``is_bpmn_linked_server_script``).

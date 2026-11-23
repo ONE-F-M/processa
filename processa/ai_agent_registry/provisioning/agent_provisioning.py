@@ -176,22 +176,12 @@ def _set_status(config_name: str, status: str, reason: str = None):
 
 
 def provision_agent(config_name: str):
-	"""AI Agent creation flow.
-
-	Carries a chat agent from Draft to Live: Validating -> Evaluating ->
-	Live. Live means "details valid and tested" — NO diagram is created or
-	required: diagrams are authored by people in the editor, and
-	the config's process_model is a manual, informational link. Any failure
-	lands the agent in Needs Attention with the reason logged; editing the
-	configuration re-triggers this. Idempotent and safe to enqueue.
-	"""
+	"""Move a Chat agent through Validating and Evaluating to Live, or to Needs Attention with the reason logged.
+	Runs validate_agent_config, the baseline eval suite, the adversarial gate and validate_chat_map; creates no diagram.
+	In this repo only the seed_ai_assistant_agent patch calls it."""
 	cfg = frappe.get_doc("AI Agent Configuration", config_name)
 	if cfg.agent_type != "Chat":
-		# Background agents used to go Live from a controller hook
-		# (apply_background_lifecycle), which pre-empted the creation process —
-		# they were already Live before its Draft start condition was evaluated.
-		# Every agent type now walks the map; this path stays chat-only because
-		# nothing calls it, and the map is where go-live is decided.
+		# Agents other than Chat are left untouched.
 		return
 
 	try:
@@ -223,12 +213,7 @@ def provision_agent(config_name: str):
 				)
 				return
 
-		# The release gate. A conversational agent is reachable by
-		# anyone who can open a chat box, so it does not ship untested against
-		# injection, jailbreak, exfiltration and tool coercion — and it does not
-		# ship on a map with the screening stage removed. Both fail CLOSED:
-		# unlike the runtime screens, this authorises a release, and "cannot
-		# prove it is safe" must mean no.
+		# Release gate: the adversarial suite must pass, then screening must be armed and any linked map must be a chat map.
 		from processa.ai_agent_evals.adversarial_gate import check as adversarial_check
 		from processa.ai_agent_registry.provisioning.conformance import validate_chat_map
 

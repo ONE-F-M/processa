@@ -42,7 +42,7 @@ _GATEWAY_TAGS = {
 	f"{{{_BPMN_NS}}}inclusiveGateway": "Inclusive Gateway",
 }
 
-# The shape fields update_agent_config_from_shape accepts; the provider follows the model.
+# Shape fields an AI Assistant update proposal may carry; the provider follows the model.
 _UPDATABLE_FIELDS = {"aiModel", "aiSystemPrompt", "aiTemperature", "aiMaxTokens"}
 
 
@@ -101,7 +101,7 @@ def _sanitize_proposed_config(proposed) -> dict | None:
 
 	from processa.ai_agent_registry.provisioning.agent_config_resolver import get_creation_process_model
 
-	# Only chat agents need the creation process; background agents go live on insert.
+	# Drop a non-Background proposal when no creation process map is active.
 	agent_type = str(proposed.get("agent_type") or "Chat").strip().capitalize()
 	if agent_type != "Background" and not get_creation_process_model():
 		return None
@@ -190,7 +190,8 @@ def _build_full_diagram_block(bpmn_xml: str, element_id: str = "", process_model
 def _build_diagram_digest(bpmn_xml: str, element_id: str, process_model: str = "") -> dict | None:
 	"""A digest of the diagram's ad-hoc subprocess: candidates, automatic chains, state changes and completion.
 
-	Returns {"block", "candidate_ids", "element_ids"}, or None when the diagram has no ad-hoc subprocess.
+	Returns {"block", "candidate_ids", "element_ids"}, or None when the XML is empty or unparseable
+	or has no ad-hoc subprocess matching element_id.
 	"""
 	import xml.etree.ElementTree as _ET
 

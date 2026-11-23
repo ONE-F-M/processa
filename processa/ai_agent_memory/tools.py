@@ -5,9 +5,8 @@ Long-term memory tools exposed to AI agents: ``memory_search`` and
 These are standalone, unit-testable Python functions that read/write the
 AI Memory doctype, honouring scope so an agent only sees memories for the
 exact scope key it asks about. Each is registered in ``MEMORY_TOOLS`` with an
-MCP-compatible definition ({name, description, input_schema}) so a future
-multi-turn loop can discover and expose them as LLM tools without adding any
-memory code — ``MEMORY_TOOLS`` is the single export the loop reads.
+MCP-compatible definition ({name, description, input_schema}) and its handler;
+outside the tests nothing reads ``MEMORY_TOOLS``.
 
 Scope key shapes (the ``scope_key`` argument):
     - "Agent"  -> agent_element (str) or {"agent_element": str}
@@ -652,12 +651,11 @@ def _reconcile_and_invalidate(
 
 	Candidates are the union of (a) currently-valid rows sharing ``dedup_key`` —
 	fetched directly, not by keyword match, so a same-topic restatement worded
-	differently still surfaces — and (b) the existing scoped ``memory_search``
-	keyword/FULLTEXT results, filling up to ``_RECONCILE_K`` after the ``dedup_key``
-	rows are pinned first. Before any of that, an exact ``content`` match among the
-	``dedup_key`` rows short-circuits the whole call: no LLM is invoked, so a
-	reconciler failure can never let that specific duplicate through — the one
-	case that used to guarantee an unwanted insert.
+	differently still surfaces - and (b) the scoped ``memory_search`` results
+	(a trusted call, so hybrid semantic-plus-FULLTEXT ranking first), filling up to
+	``_RECONCILE_K`` after the ``dedup_key`` rows are pinned first. Before any of that,
+	an exact ``content`` match among the ``dedup_key`` rows short-circuits the whole
+	call: no LLM is invoked, so a reconciler failure cannot let that duplicate through.
 
 	Asks the configured chat model to decide add/update/replace for whatever
 	wasn't short-circuited, and for each superseded memory sets ``expires_on =
@@ -885,7 +883,7 @@ def _memory_write(
 	``dedup_key``/exact-content match short-circuits straight to "insert nothing"
 	(no LLM call, so a reconciler failure can't let that duplicate through
 	either); otherwise the most similar currently-valid memories in scope
-	(``dedup_key`` matches pinned first, then keyword/FULLTEXT search) are handed
+	(``dedup_key`` matches pinned first, then ``memory_search``) are handed
 	to the configured chat model (``reconcile_ctx={provider_name, backend,
 	model}``), which decides add/update/replace. Superseded memories are
 	invalidated (``expires_on = now``, kept for history) and a surviving new fact
@@ -1097,9 +1095,7 @@ MEMORY_WRITE_SCHEMA = {
 	"additionalProperties": False,
 }
 
-# Single export the Epic-4 loop reads. Each entry is an MCP-compatible tool
-# definition ({name, description, input_schema}) plus the Python `handler` that
-# implements it.
+# MCP-compatible tool definitions ({name, description, input_schema}) plus each Python `handler`; only the tests read it.
 MEMORY_TOOLS: dict[str, dict] = {}
 
 

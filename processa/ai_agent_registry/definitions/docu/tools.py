@@ -37,7 +37,7 @@ def timed(timings: list, call: str):
 
 @tool_envelope("Docu Tool - list_doctypes", lambda search: json.dumps([]))
 def list_doctypes(search: str = "") -> str:
-	"""List existing DocTypes (name + module), optionally filtered by *search*."""
+	"""Up to 50 non-child DocTypes (name, module, custom), newest modified first, optionally filtered by *search*."""
 	filters = {"istable": 0}
 	if search:
 		filters["name"] = ["like", f"%{search}%"]
@@ -219,7 +219,7 @@ def validate_doctype_json(ir: str = "{}") -> str:
 
 
 def _field_index(ir: dict) -> dict:
-	"""Map fieldname to field dict for the data fields of an IR, layout breaks skipped."""
+	"""Map fieldname to field dict for every IR field that has a fieldname."""
 	out = {}
 	for f in (ir.get("fields") or []):
 		fn = (f.get("fieldname") or "").strip()

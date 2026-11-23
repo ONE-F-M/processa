@@ -11,25 +11,19 @@ history slot uses:
 Three backends behind a single interface (see ``get_conversation_store``):
 
 - "process_variable" (default): the thread lives in the live spiff task's
-  ``task.data["{bpmn_id}_conversation"]`` and dies with the instance — today's
-  behaviour, no new storage. The live task is injected via the factory.
-- "document_store": the thread is persisted so it survives the instance,
-  reusing onefm_mcp's Chat Conversation / Chat Message doctypes.
+  ``task.data["{bpmn_id}_conversation"]`` and dies with the instance; no extra
+  storage. The live task is injected via the factory.
+- "document_store": the thread is persisted so it survives the instance, in
+  processa's Chat Conversation / Chat Message doctypes.
 - "custom": resolves a ConversationStore subclass from the ``ai_conversation_store``
   hook so an app can supply its own store.
 
 A ContextWindowPolicy (max_messages, retain_system_prompt) lives in this layer
 so callers stay within model limits.
 
-MIGRATION NOTE (known limitation):
-    onefm_mcp's Chat Conversation / Chat Message are reused cross-app for now by
-    explicit decision. They are to be MOVED into processa later (same approach as
-    the model rate-card move) and generalised with a BPMN-appropriate role
-    vocabulary — the onefm_mcp Chat Message.message_type / receiver / agent_mode
-    Selects have no BPMN-specific values, so the canonical role and the BPMN
-    context (instance_name, bpmn_id) are carried in Chat Message.metadata and
-    Chat Conversation.title. ALL onefm_mcp coupling is confined to
-    ``DocumentConversationStore`` so the move touches one class.
+Chat Message.message_type only offers User/Bot/Tool, so the canonical role and
+the BPMN context (instance_name, bpmn_id) are carried in Chat Message.metadata
+and Chat Conversation.title.
 """
 
 from __future__ import annotations
@@ -318,12 +312,11 @@ class ProcessVariableStore(ConversationStore):
 		data[key] = thread
 
 
-# ── document_store (persistent, via onefm_mcp) ───────────────────────────────
+# document_store: persistent, via Chat Conversation
 class DocumentConversationStore(ConversationStore):
-	"""Persists the thread using onefm_mcp's Chat Conversation / Chat Message.
+	"""Persists the thread in processa's Chat Conversation / Chat Message.
 
-	This class is the ONLY place that references the onefm_mcp doctypes (see the
-	module migration note). Mapping:
+	Mapping:
 	    role         -> Chat Message.message_type  (best-effort; canonical role in metadata)
 	    content      -> Chat Message.text
 	    tool_calls   -> Chat Message.tool_calls (JSON)
@@ -344,26 +337,8 @@ class DocumentConversationStore(ConversationStore):
 
 	def _get_conversation(self, instance_name: str, bpmn_id: str, create: bool = False):
 		"""The conversation for this thread key, created if asked for.
-
-		Get-or-create is NOT atomic, and this is called from anywhere an agent
-		appends — including paths that genuinely overlap: two tool calls landing
-		together, a retry racing the run it is retrying, a resumed instance
-		alongside its original. Every caller then saw no conversation and every
-		caller made one.
-
-		Proven rather than theorised: eight parallel appenders produced SEVEN
-		conversation rows for one thread key, five messages in each, and the
-		agent read back five of forty. Nothing was lost from the table; the
-		thread was. That is worse than losing rows, because it looks like the
-		agent simply forgot.
-
-		The obvious guard — re-read before inserting — does not work here: an
-		uncommitted insert is invisible to other connections, so every racer
-		still sees nothing. So this creates, COMMITS, and then reconciles: all
-		racers converge on the oldest row and each deletes its own loser. The
-		reconcile happens before any message is appended, so a discarded row is
-		always empty.
-		"""
+		Returns the row with the deterministic name, else one with this title; otherwise inserts under the deterministic name and commits.
+		An insert that collides commits for a fresh snapshot and adopts the winner's row."""
 		title = self._title(instance_name, bpmn_id)
 		name = self._deterministic_name(title)
 		if frappe.db.exists(self._CONVERSATION_DOCTYPE, name):

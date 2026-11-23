@@ -28,9 +28,9 @@ def compile_shape_tools(tool_shapes, instance, process_data: dict | None = None)
 	    {"bpmn_id": str, "description": str,
 	     "serverScript": str (Script Task) | "serviceType": str (Service/Send)}
 
-	Eligibility (executable leaf shapes only; human/container shapes excluded)
-	is already enforced at extraction, so here we simply build one tool per
-	descriptor: name = bpmn_id, description = the shape's documentation (Camunda
+	A descriptor flagged ``human`` becomes a ``ToolSpec(human=True)`` unless its
+	clarification cap is reached; any other needs a ``serverScript`` or ``serviceType``.
+	Each tool gets name = bpmn_id, description = the shape's documentation (Camunda
 	uses an activity's documentation as its tool description). ``parameters``/
 	``required`` (from the shape's aiToolParams, if any) are passed through so
 	the LLM sees the tool's real argument schema instead of a zero-arg function.
@@ -622,10 +622,10 @@ def _run_server_script(instance, script_name: str, task, bpmn_id: str, shape_con
 	else:
 		local_vars["doc"] = frappe._dict()
 
-	# Trusted, pre-deployed BPMN code — plain exec (mirrors engine.py), not
+	# Trusted, pre-deployed BPMN code - plain exec (mirrors script_engine.py), not
 	# safe_exec (which is for untrusted browser-submitted scripts).
 	#
-	# ONE namespace for globals AND locals — mirrors engine.py's own exec()
+	# ONE namespace for globals AND locals - mirrors script_engine.py's own exec()
 	# exactly, and for the same reason: with separate dicts, a top-level
 	# `def` in the script lands in locals but its own __globals__ is still
 	# exec_globals, so it can't see another top-level function or import in
@@ -644,7 +644,7 @@ def _run_server_script(instance, script_name: str, task, bpmn_id: str, shape_con
 	# agent. The engine's own script path has switched user for a long time; this
 	# path never did.
 	#
-	# The session dance is the same hazard engine.py guards against: set_user
+	# The session dance is the same hazard script_engine.py guards against: set_user
 	# rewrites session.sid and WIPES session.data, which guts a browser session
 	# when a tool runs inline inside a web request. So the sid and data are put
 	# back in the finally, and the switch is skipped entirely when we are already

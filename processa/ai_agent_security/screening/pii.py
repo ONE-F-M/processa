@@ -34,10 +34,9 @@ text gets switched off within a week:
 
 WHAT THIS DOES NOT DO
 ---------------------
-Input only, per the sprint scope. A tool result can still carry the real value
-back into the model's context — restoring a token for a lookup necessarily means
-the lookup's ANSWER contains real data. Closing that needs output screening,
-which is tracked separately.
+Screens input only. A tool result can still carry the real value back into the
+model's context: restoring a token for a lookup means the lookup's ANSWER contains
+real data. Agent replies are screened by ``output_screening``, which reuses DETECTORS.
 """
 
 from __future__ import annotations
