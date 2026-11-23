@@ -10,9 +10,9 @@ from processa.patches.v1_0.seed_lucrusher_eval_suite import (
 	LUCID_DOC_ID,
 	PARSED_DOC,
 	SCAN_SUMMARY,
-	tool_call,
 	judge_rubric,
-	expected_state,
+	tool_call,
+	turn_state,
 )
 from processa.patches.v1_0.seed_lucrusher_skill_eval_cases import NO_REFETCH, _turn, seed_cases
 from processa.patches.v1_0.seed_lucrusher_skills import PROSALLY_SKILL
@@ -39,7 +39,7 @@ def _case(title, topology_names, rubric, lucid=None):
 			for name in topology_names
 		]
 	}
-	state = expected_state(
+	state = turn_state(
 		"MIGRATION_TASKS_CONFIRMED",
 		document=DOC_SUMMARY,
 		codebase_scan=SCAN_SUMMARY,

@@ -46,7 +46,7 @@ TOPOLOGY = {
 }
 
 
-def expected_state(intent, **parts):
+def turn_state(intent, **parts):
 	return {
 		"intent": intent,
 		"confirmed_process": {"name": "Visa", "process_name": "Visa"},
@@ -136,11 +136,19 @@ CASES = [
 					"message_type": "Bot",
 					"text": 'I fetched "Visa Process": 2 pages, Visa Request and Visa Renewal, 12 shapes.',
 				},
-				{"message_type": "Tool", "text": STATE_TEXT, "metadata": expected_state("LUCIDCHART_PARSED", document=DOC_SUMMARY)},
+				{
+					"message_type": "Tool",
+					"text": STATE_TEXT,
+					"metadata": turn_state("LUCIDCHART_PARSED", document=DOC_SUMMARY),
+				},
 			],
 			"session_state": {f"lucid_doc:{LUCID_DOC_ID}": PARSED_DOC},
 		},
-		"calls": [tool_call(1, "finalize", "intent", "regex", "^(CLARIFY|LUCIDCHART_PARSED|LUCIDCHART_METADATA_ONLY)$")],
+		"calls": [
+			tool_call(
+				1, "finalize", "intent", "regex", "^(CLARIFY|LUCIDCHART_PARSED|LUCIDCHART_METADATA_ONLY)$"
+			)
+		],
 		"assertions": [
 			IN_ORDER,
 			{"assertion_type": "no_tool_call", "value": "fetch_lucidchart_document,scan_codebase_for_process"},
@@ -160,7 +168,11 @@ CASES = [
 			"conversation_messages": [
 				{"message_type": "User", "text": LUCID_URL},
 				{"message_type": "Bot", "text": 'I fetched "Visa Process": 2 pages, 12 shapes.'},
-				{"message_type": "Tool", "text": STATE_TEXT, "metadata": expected_state("LUCIDCHART_PARSED", document=DOC_SUMMARY)},
+				{
+					"message_type": "Tool",
+					"text": STATE_TEXT,
+					"metadata": turn_state("LUCIDCHART_PARSED", document=DOC_SUMMARY),
+				},
 			],
 			"session_state": {f"lucid_doc:{LUCID_DOC_ID}": PARSED_DOC},
 		},
@@ -186,7 +198,7 @@ CASES = [
 				{
 					"message_type": "Tool",
 					"text": STATE_TEXT,
-					"metadata": expected_state(
+					"metadata": turn_state(
 						"TOPOLOGY_PROPOSAL", document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY, topology=TOPOLOGY
 					),
 				},

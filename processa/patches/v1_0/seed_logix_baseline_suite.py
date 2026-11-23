@@ -10,7 +10,7 @@ import json
 
 import frappe
 
-from processa.patches.v1_0.seed_lucrusher_eval_suite import tool_call, judge_for
+from processa.patches.v1_0.seed_lucrusher_eval_suite import judge_for, tool_call
 
 AGENT_ID = "logix_agent"
 SHAPE = "run_logix_agent"

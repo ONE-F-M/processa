@@ -19,10 +19,10 @@ from processa.patches.v1_0.seed_lucrusher_eval_suite import (
 	STATE_TEXT,
 	SUITE_TITLE,
 	TOPOLOGY,
-	tool_call,
-	judge_rubric,
-	expected_state,
 	judge_for,
+	judge_rubric,
+	tool_call,
+	turn_state,
 )
 from processa.patches.v1_0.seed_lucrusher_skills import PROSALLY_SKILL, TASKS_SKILL, TOPOLOGY_SKILL
 
@@ -70,7 +70,7 @@ CASES = [
 		"context": _turn(
 			"scan the codebase for the Visa process",
 			"The scan found 2 apps and 2 DocTypes: Visa and Residency Permit.",
-			expected_state("CODEBASE_SCAN_RESULT", document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY),
+			turn_state("CODEBASE_SCAN_RESULT", document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY),
 		),
 		"calls": [
 			tool_call(1, "load_skill", "skill_name", "equals", TOPOLOGY_SKILL),
@@ -85,7 +85,9 @@ CASES = [
 		"context": _turn(
 			"yes, the topology looks good",
 			"Topology confirmed: Visa Request and Visa Renewal. Next I can generate the migration tasks.",
-			expected_state("TOPOLOGY_CONFIRMED", document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY, topology=TOPOLOGY),
+			turn_state(
+				"TOPOLOGY_CONFIRMED", document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY, topology=TOPOLOGY
+			),
 		),
 		"calls": [
 			tool_call(1, "load_skill", "skill_name", "equals", TASKS_SKILL),
@@ -100,7 +102,7 @@ CASES = [
 		"context": _turn(
 			"approved",
 			"Migration tasks confirmed. Next I can write the ProsAlly prompts.",
-			expected_state(
+			turn_state(
 				"MIGRATION_TASKS_CONFIRMED",
 				document=DOC_SUMMARY,
 				codebase_scan=SCAN_SUMMARY,
@@ -128,7 +130,7 @@ CASES = [
 		"context": _turn(
 			"generate the migration tasks",
 			"I drafted 2 tasks across 2 processes. Do they look right?",
-			expected_state(
+			turn_state(
 				"MIGRATION_TASKS_DRAFT",
 				document=DOC_SUMMARY,
 				codebase_scan=SCAN_SUMMARY,

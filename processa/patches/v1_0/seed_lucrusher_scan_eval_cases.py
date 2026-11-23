@@ -3,7 +3,7 @@
 A module of its own, so running it seeds only these cases and leaves the suite and the older cases as they are.
 """
 
-from processa.patches.v1_0.seed_lucrusher_eval_suite import IN_ORDER, tool_call, judge_rubric
+from processa.patches.v1_0.seed_lucrusher_eval_suite import IN_ORDER, judge_rubric, tool_call
 from processa.patches.v1_0.seed_lucrusher_skill_eval_cases import seed_cases
 
 
