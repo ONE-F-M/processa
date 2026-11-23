@@ -256,6 +256,7 @@ class TestFinalizeSelfReview(FrappeTestCase):
 		self.assertIn("act on the same client event", raised)
 		self.assertIn("R7", raised)
 		self.assertTrue(stored["finalize_reviewed"])
+		self.assertIn("Check before you approve", stored["review_draft"]["response"])
 
 	def test_a_problem_left_after_the_second_finalize_is_flagged_in_the_reply(self):
 		output, raised = self._topology("Approve Client Event", "Accept Client Event", finalize_reviewed=True)
@@ -331,3 +332,115 @@ class TestFinalizeSelfReview(FrappeTestCase):
 		self.assertEqual(raised, "")
 		self.assertEqual(output["prosally_prompts"]["processes"][0]["element_count"], 2)
 		self.assertIn("uses a ScriptTask for a signal", output["response"])
+
+
+class TestConfirmationKeepsTheDraft(FrappeTestCase):
+	"""Runs the site's Save Response script on a confirmation that echoes a names-only topology."""
+
+	def setUp(self):
+		script = frappe.db.get_value("Server Script", "LuCrusher \u2013 Save Response", "script") or ""
+		if "_CONFIRMED_DRAFT" not in script:
+			self.skipTest(
+				"the LuCrusher Save Response script that keeps the confirmed draft is not on this site"
+			)
+		self.script = script
+		patcher = patch("processa.processa_engine.triggers.on_doc_event")
+		patcher.start()
+		self.addCleanup(patcher.stop)
+		self.conversation = (
+			frappe.get_doc({"doctype": "Chat Conversation", "title": "confirm probe"}).insert().name
+		)
+
+	def _save(self, output, context_state=None):
+		recorded = {}
+		turn = {"output": output, "context_state": context_state or {}}
+		with (
+			patch("processa.processa_engine.agent_runtime.turn_state.get_turn", return_value=turn),
+			patch("processa.processa_engine.agent_runtime.turn_state.clear_turn"),
+			patch(
+				"processa.ai_agent_conversations.session_state.record",
+				side_effect=lambda _c, snap: recorded.update(snap),
+			),
+		):
+			exec(
+				as_deployed(self.script),
+				{"frappe": frappe, "task_data": {}, "context_docname": self.conversation, "result": {}},
+			)
+		saved = frappe.get_all(
+			"Chat Message",
+			{"conversation": self.conversation, "message_type": "Bot"},
+			pluck="metadata",
+			order_by="creation desc",
+			limit=1,
+		)[0]
+		return json.loads(saved)["agent_result"], recorded
+
+	def test_a_confirmed_topology_keeps_the_reasons_and_sources_of_the_proposal(self):
+		proposal = {
+			"processes": [
+				{
+					"process_name": "Manage Absence Case",
+					"type": "User Task Driven",
+					"reason": "R7",
+					"source": "Action Absence Case",
+				}
+			]
+		}
+		self._save({"intent": "TOPOLOGY_PROPOSAL", "response": "proposal", "topology": proposal})
+
+		echoed = {"processes": [{"process_name": "Manage Absence Case"}]}
+		result, snapshot = self._save(
+			{"intent": "TOPOLOGY_CONFIRMED", "response": "confirmed", "topology": echoed}
+		)
+
+		self.assertEqual(result["topology"], proposal)
+		self.assertEqual(snapshot["topology"]["processes"][0]["reason"], "R7")
+		self.assertEqual(snapshot["topology"]["processes"][0]["source"], "Action Absence Case")
+
+	def test_confirmed_tasks_are_the_draft_held_in_the_state(self):
+		held = {
+			"processes": [{"process_name": "P", "tasks": [{"task": "Build the map", "references": ["a.py"]}]}]
+		}
+
+		result, _snapshot = self._save(
+			{
+				"intent": "MIGRATION_TASKS_CONFIRMED",
+				"response": "ok",
+				"migration_tasks": {"processes": [{"process_name": "P"}]},
+			},
+			{"migration_tasks": held},
+		)
+
+		self.assertEqual(result["migration_tasks"], held)
+
+	def test_a_sent_back_draft_is_saved_flagged_when_the_model_does_not_finalize_again(self):
+		draft = {
+			"intent": "TOPOLOGY_PROPOSAL",
+			"response": "proposal\n\n**Check before you approve:**\n- x",
+			"topology": {"processes": []},
+		}
+		recorded = {}
+		turn = {"output": None, "review_draft": draft, "context_state": {}}
+		with (
+			patch("processa.processa_engine.agent_runtime.turn_state.get_turn", return_value=turn),
+			patch("processa.processa_engine.agent_runtime.turn_state.clear_turn"),
+			patch(
+				"processa.ai_agent_conversations.session_state.record",
+				side_effect=lambda _c, snap: recorded.update(snap),
+			),
+		):
+			exec(
+				as_deployed(self.script),
+				{
+					"frappe": frappe,
+					"task_data": {"ai_result": "proposal as text"},
+					"context_docname": self.conversation,
+					"result": {},
+				},
+			)
+
+		self.assertEqual(recorded["intent"], "TOPOLOGY_PROPOSAL")
+		saved = frappe.get_all(
+			"Chat Message", {"conversation": self.conversation, "message_type": "Bot"}, pluck="text"
+		)
+		self.assertIn("Check before you approve", saved[0])
