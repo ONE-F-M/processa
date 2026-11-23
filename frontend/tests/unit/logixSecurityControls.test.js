@@ -20,4 +20,11 @@ describe("Logix script security controls", () => {
 		expect(panel).toMatch(/<Icon icon="lucide:square-check" class="lsp-check lsp-check--on" \/>/);
 		expect(panel).toMatch(/icon="lucide:x"/);
 	});
+
+	it("says an item is in the open request only when the request lists it", () => {
+		const script = read("LogixSecurityPanel/LogixSecurityPanel.vue");
+		expect(script).toMatch(/item\.in_open_request\s*\?/);
+		expect(script).toMatch(/Not in \$\{open\}/);
+		expect(script).not.toMatch(/\$\{props\.lint\.open_request\} is open/);
+	});
 });

@@ -118,15 +118,27 @@ def lint_script(code: str, script_name: str = "", process: str = "", script_task
 		"BPMN Process Model", {"process_name": process}, "name", order_by="modified desc"
 	)
 	map_scripts = model_scripts(model) if model else None
+	open_request = _open_request(process, script_task, script_name) if on_task else None
+	requested = dict.fromkeys(
+		frappe.get_all("Script Approval Request Item", filters={"parent": open_request}, pluck="item_name")
+		if open_request
+		else [],
+		open_request,
+	)
 	findings = []
 	code = code or ""
 	for finding in inspect_script(code) + library_findings(code, frozenset(), map_scripts, script_task):
 		request = _covering_request(finding["name"], approved)
 		alternative = alternatives.get(finding["category"]) or ""
 		findings.append(
-			{**finding, "approved": bool(request), "request": request, "sanctioned_alternative": alternative}
+			{
+				**finding,
+				"approved": bool(request),
+				"request": request,
+				"in_open_request": bool(_covering_request(finding["name"], requested)),
+				"sanctioned_alternative": alternative,
+			}
 		)
-	open_request = _open_request(process, script_task, script_name) if on_task else None
 	latest = on_task and frappe.get_list(
 		"Script Approval Request",
 		filters={"process_name": process, "script_task": script_task, "server_script": script_name},

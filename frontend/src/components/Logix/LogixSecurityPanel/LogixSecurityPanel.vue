@@ -184,9 +184,11 @@ function itemNote(item) {
 	const where = item.library
 		? `Line ${item.line}, through ${item.library}`
 		: `Line ${item.line}`;
-	return props.lint?.open_request
-		? `${where}. ${props.lint.open_request} is open.`
-		: `${where}.`;
+	const open = props.lint?.open_request;
+	if (!open) return `${where}.`;
+	return item.in_open_request
+		? `${where}. In ${open}, which is open.`
+		: `${where}. Not in ${open}: request it after ${open} is decided.`;
 }
 
 function send() {
