@@ -276,19 +276,40 @@
 
 /* Read-Only Mode */
 
-/* Hide palette and context pad in read-only mode */
+/* Hide palette, popups and direct editing in read-only mode */
 
 .bpmn-canvas--readonly .djs-palette,
-.bpmn-canvas--readonly .djs-context-pad,
 .bpmn-canvas--readonly .djs-popup,
 .bpmn-canvas--readonly .djs-direct-editing-parent {
 	display: none !important;
+}
+
+/* The context pad goes with them unless commenting is allowed. */
+
+.bpmn-canvas--readonly:not(.bpmn-canvas--comments) .djs-context-pad {
+	display: none !important;
+}
+
+/* Commenting allowed on a locked map: hide every pad entry, restore only "Add Comment" */
+
+.bpmn-canvas--readonly.bpmn-canvas--comments .djs-context-pad [data-action] {
+	display: none !important;
+}
+
+.bpmn-canvas--readonly.bpmn-canvas--comments .djs-context-pad [data-action="add-comment"] {
+	display: inline-block !important;
 }
 
 /* Disable drag/move cursor on elements in read-only mode */
 
 .bpmn-canvas--readonly .djs-element {
 	cursor: default !important;
+}
+
+/* ...except while the Comment Tool is armed, where a shape is a target. */
+
+.bpmn-canvas--readonly.comment-mode-active .djs-element {
+	cursor: crosshair !important;
 }
 
 /* Semi-transparent overlay to visually indicate read-only */

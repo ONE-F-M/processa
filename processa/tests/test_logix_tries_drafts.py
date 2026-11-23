@@ -9,8 +9,9 @@ from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_registry.definitions.logix import dry_run as trial
 from processa.ai_agent_registry.definitions.logix import tools
-from processa.ai_agent_registry.definitions.logix.helpers import debug_inputs
+from processa.ai_agent_registry.definitions.logix.helpers import debug_inputs, doctype_inputs, field_findings
 from processa.api.server_scripts import run_logix_test_case
+from processa.patches.v1_0 import logix_review_trial_reads_no_undefined_name as repair
 from processa.patches.v1_0 import logix_tries_drafts_on_a_record as p
 
 MODEL = frappe._dict(name="Trial Model", trigger_doctype="Note", bpmn_xml="")
@@ -30,6 +31,37 @@ class TestLogixTriesDrafts(FrappeTestCase):
 	def _try(self, code):
 		with patch.object(trial, "_process_model", return_value=MODEL):
 			return trial.dry_run(code, TURN)
+
+	def test_the_map_open_in_the_editor_is_found_by_its_name(self):
+		model = frappe.new_doc("BPMN Process Model")
+		model.update(
+			{"name": "Trial Map - v1", "title": "Trial Map - v1", "process_id": "trial_map", "version": 1}
+		)
+		model.trigger_doctype = "Note"
+		model.bpmn_xml = (
+			'<?xml version="1.0" encoding="UTF-8"?>'
+			'<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">'
+			'<bpmn:process id="trial_map" name="Trial Map" isExecutable="true" /></bpmn:definitions>'
+		)
+		model.insert()
+		turn = {
+			"process_context": {
+				"process_name": "Trial Map",
+				"process_model": "Trial Map - v1",
+				"element_id": "t",
+			}
+		}
+		outcome = trial.dry_run('result["title"] = doc.title\n', turn)
+		self.assertTrue(outcome["ran"], outcome)
+		self.assertEqual(trial._process_model({"process_name": "trial_map"}).name, "Trial Map - v1")
+
+	def test_a_draft_using_an_approved_item_is_tried(self):
+		code = 'import requests\nresult["title"] = doc.title\n'
+		with patch.object(trial, "approved_request_names", return_value={"requests"}):
+			outcome = self._try(code)
+		self.assertTrue(outcome["ran"], outcome)
+		with patch.object(trial, "approved_request_names", return_value=set()):
+			self.assertFalse(self._try(code)["ran"])
 
 	def test_a_failing_draft_returns_its_traceback_and_failing_line(self):
 		outcome = self._try('x = 1\nresult["date"] = doc.appointment_date.year\n')
@@ -85,6 +117,24 @@ class TestLogixTriesDrafts(FrappeTestCase):
 		self.assertIn("dry_run(code, turn)", code)
 
 
+class TestLogixReviewTrialReadsNoUndefinedName(FrappeTestCase):
+	def _patched(self, code):
+		if not frappe.db.exists("Server Script", p.REVIEW_SCRIPT):
+			self.skipTest("the Logix review script is not on this site")
+		frappe.db.set_value("Server Script", p.REVIEW_SCRIPT, "script", code)
+		repair.execute()
+		return frappe.db.get_value("Server Script", p.REVIEW_SCRIPT, "script")
+
+	def test_a_script_that_never_assigns_the_name_stops_reading_it(self):
+		code = self._patched(p.TRIAL.format(""))
+		self.assertNotIn("_py_block", code)
+		self.assertIn('if _valid and shape_kind == "script_task":', code)
+
+	def test_a_script_that_assigns_the_name_is_left_as_it_is(self):
+		code = "_py_block = True\n" + p.TRIAL.format("")
+		self.assertEqual(self._patched(code), code)
+
+
 class TestLogixReadsTheNewestError(FrappeTestCase):
 	def setUp(self):
 		super().setUp()
@@ -126,3 +176,58 @@ class TestLogixReadsTheNewestError(FrappeTestCase):
 		outcome = run_logix_test_case(SCRIPT, "{}")
 		self.assertIn("AttributeError", outcome["summary"])
 		self.assertTrue(frappe.db.exists("Error Log", {"method": f'Logix check: "{SCRIPT}" failed'}))
+
+
+class TestLogixChecksFields(FrappeTestCase):
+	def _names(self, code, trigger="Note"):
+		return [f["name"] for f in field_findings(code, {"doc_doctype": trigger})]
+
+	def test_a_field_the_doctype_lacks_is_found_wherever_the_script_uses_it(self):
+		code = (
+			'result["a"] = doc.arrival_date\n'
+			'result["b"] = doc.get("departure")\n'
+			'rows = frappe.get_all("ToDo", filters={"status": "Open", "priority_level": 1}, fields=["name", "due"])\n'
+			'todo = frappe.get_doc("ToDo", rows[0].name)\n'
+			"todo.closing_note = 1\n"
+			'frappe.db.set_value("ToDo", todo.name, "reviewer", "x")\n'
+		)
+		self.assertEqual(
+			self._names(code),
+			["arrival_date", "departure", "priority_level", "due", "closing_note", "reviewer"],
+		)
+		self.assertIn("is not a field of Note", field_findings(code, {"doc_doctype": "Note"})[0]["rule"])
+
+	def test_real_fields_methods_and_standard_fields_pass(self):
+		code = (
+			'result["t"] = doc.title\n'
+			'doc.db_set("public", 1)\n'
+			"doc.save()\n"
+			'names = frappe.get_all("ToDo", filters=[["status", "=", "Open"]], fields=["name", "description", "count(name) as n"], pluck="name")\n'
+			'result["d"] = frappe.db.get_value("ToDo", names[0], ["allocated_to", "modified"])\n'
+			'frappe.get_doc({"doctype": "ToDo", "description": "x", "allocated_to": "Administrator"}).insert()\n'
+		)
+		self.assertEqual(field_findings(code, {"doc_doctype": "Note"}), [])
+
+	def test_a_doctype_that_does_not_exist_is_found_and_not_guessed(self):
+		findings = field_findings('x = frappe.get_doc("Arrival Register", "A-1")\n', {})
+		self.assertEqual(findings[0]["name"], "Arrival Register")
+		self.assertIn("ask which DocType", findings[0]["rule"])
+
+	def test_the_turn_loads_named_doctypes_with_child_tables_and_lists_missing_ones(self):
+		out = doctype_inputs("Copy the ToDo records into the Arrival Register DocType", {}, "")
+		self.assertEqual(list(out["doctype_fields"]), ["ToDo"])
+		self.assertIn("allocated_to", out["doctype_fields"]["ToDo"]["fields"])
+		self.assertEqual(out["missing_doctypes"], ["Arrival Register"])
+		user = doctype_inputs("Update the User record", {}, "")["doctype_fields"]["User"]
+		self.assertEqual(user["child_tables"]["roles"]["doctype"], "Has Role")
+		self.assertIn("role", user["child_tables"]["roles"]["fields"])
+
+	def test_this_record_named_in_the_request_is_the_doc_the_script_reads(self):
+		out = doctype_inputs("Close this ToDo and set its due date from the Note title", {}, "")
+		self.assertEqual(out["doc_doctype"], "ToDo")
+		self.assertEqual(set(out["doctype_fields"]), {"ToDo", "Note"})
+		self.assertEqual([f["name"] for f in field_findings("doc.due_on = 1\n", out)], ["due_on"])
+
+	def test_a_filter_row_with_a_computed_field_is_skipped_not_a_crash(self):
+		code = 'field = "status"\nrows = frappe.get_all("ToDo", filters=[["ToDo", field, "=", "Open"], ["priority", "=", 1]])\n'
+		self.assertEqual(field_findings(code, {}), [])

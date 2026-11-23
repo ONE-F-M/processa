@@ -8,7 +8,18 @@
 			<Badge :theme="headerTheme" size="sm">
 				{{ headerStatus }}
 			</Badge>
-			<Button variant="ghost" icon="x" label="Close" @click="emit('close')" />
+			<Button
+				variant="ghost"
+				label="Close"
+				@click="emit('close')"
+			>
+				<template #icon>
+					<Icon
+						icon="lucide:x"
+						class="h-4 w-4"
+					/>
+				</template>
+			</Button>
 		</div>
 		<p v-if="headerStatus === 'Rejected' && latestRequest?.decision_note" class="lsp-note">
 			{{ latestRequest.decision_note }}
@@ -20,7 +31,7 @@
 				<span>{{ needsApproval.length }}</span>
 			</div>
 			<div v-for="item in needsApproval" :key="`${item.name}-${item.line}`" class="lsp-item">
-				<span class="lsp-check lsp-check--on" />
+				<Icon icon="lucide:square-check" class="lsp-check lsp-check--on" />
 				<div class="lsp-label">
 					{{ item.category }} <span class="lsp-mono">{{ item.name }}</span>
 					<small>{{ itemNote(item) }}</small>
@@ -35,7 +46,7 @@
 				<span>{{ allowedSummary }}</span>
 			</div>
 			<div v-for="row in allowedRows" :key="row.key" class="lsp-item">
-				<span class="lsp-check lsp-check--on" />
+				<Icon icon="lucide:square-check" class="lsp-check lsp-check--on" />
 				<div class="lsp-label">
 					{{ row.label }}
 					<small v-if="row.note">{{ row.note }}</small>
@@ -47,7 +58,7 @@
 				<span>approval</span>
 			</div>
 			<div v-for="name in otherCategories" :key="name" class="lsp-item">
-				<span class="lsp-check" />
+				<Icon icon="lucide:square" class="lsp-check" />
 				<div class="lsp-label">{{ name }}</div>
 			</div>
 		</div>
@@ -96,6 +107,7 @@
 <script setup>
 import { computed, ref } from "vue";
 import { Badge, Button, Textarea } from "frappe-ui";
+import { Icon } from "@iconify/vue";
 
 const props = defineProps({
 	lint: { type: Object, default: null },

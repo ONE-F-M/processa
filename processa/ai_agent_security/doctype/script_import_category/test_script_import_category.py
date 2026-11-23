@@ -31,7 +31,10 @@ class TestScriptImportCategory(FrappeTestCase):
 			{
 				"doctype": "Script Import Category",
 				"category_name": name,
-				"names": [{"dotted_name": dotted, "kind": kind} for dotted, kind in rows],
+				"names": [
+					dict(zip(("dotted_name", "kind", "match_on_any_object"), row, strict=False))
+					for row in rows
+				],
 			}
 		)
 
@@ -86,6 +89,36 @@ class TestScriptImportCategory(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError) as caught:
 			doc.insert()
 		self.assertIn("Row 1", str(caught.exception))
+
+	def test_a_kind_that_does_not_fit_the_name_is_refused(self):
+		for row in (
+			("conquer", "Frappe function"),
+			("conquere", "Builtin"),
+			("conquer.lost", "Module", 1),
+			("frappe.conquer", "Module"),
+		):
+			with self.subTest(row=row):
+				doc = self._category("Test Kind", row)
+				with self.assertRaises(frappe.ValidationError) as caught:
+					doc.insert()
+				self.assertIn("Row 1", str(caught.exception))
+
+	def test_a_kind_that_fits_the_name_saves(self):
+		self._category(
+			"Test Kind",
+			("conquer.lost", "Module"),
+			("frappe.conquer", "Frappe function"),
+			("conquer_now", "Frappe function", 1),
+			("divmod", "Builtin"),
+		).insert()
+		self.assertEqual(category_for("conquer.lost.find"), "Test Kind")
+		self.assertEqual(category_for("doc.conquer_now"), "Test Kind")
+
+	def test_same_name_with_another_kind_is_refused(self):
+		doc = self._category("Test Duplicate", ("requests", "Frappe function", 1))
+		with self.assertRaises(frappe.ValidationError) as caught:
+			doc.insert()
+		self.assertIn("Network", str(caught.exception))
 
 	def test_other_users_can_read_but_not_change(self):
 		if not frappe.db.exists("User", READER):

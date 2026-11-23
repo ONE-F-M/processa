@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 # Tests for the Service Task connector layer (serviceType="connector").
 
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -217,6 +218,93 @@ class TestRevokeRoleField(FrappeTestCase):
 				"connectorParams": '{"file": "FILE123ABCDEF", "scope": "user", "role": "writer"}',
 			}, "t_role")
 		self.assertEqual(revoke.call_args.kwargs["role"], "writer")
+
+
+class TestContentRestriction(FrappeTestCase):
+	"""Lock and unlock are one PATCH on the file; readOnly must reach Drive as a JSON boolean."""
+
+	def setUp(self):
+		from processa.processa_connectors.manifest import get_execution_spec
+
+		if not get_execution_spec("google_drive", "setContentRestriction"):
+			self.skipTest("google_drive setContentRestriction is not on this site")
+
+	def _dispatch(self, params, task_data=None):
+		task = SimpleNamespace(data=dict(task_data or {}))
+		sent = {}
+
+		def request(spec, url, headers, body):
+			sent.update(method=spec.http_method, url=url, body=body)
+			restriction = body["contentRestrictions"][0]
+			# Drive returns no contentRestrictions once a file is unlocked.
+			locked = [restriction] if restriction["readOnly"] is True else []
+			return {"id": "FILE123ABCDEF", "name": "SOP", "contentRestrictions": locked}
+
+		with (
+			patch("processa.processa_connectors.operations.http._request", side_effect=request),
+			patch("processa.processa_connectors.operations.http._service_account_token", return_value="t"),
+		):
+			dispatch_connector(_instance(), task, {
+				"connectorId": "google_drive", "operation": "setContentRestriction",
+				"resultVariable": "lock", "failOnError": "1", "connectorParams": json.dumps(params),
+			}, "t_lock")
+		return task, sent
+
+	def test_lock_patches_the_file_with_a_boolean_read_only_and_the_reason(self):
+		task, sent = self._dispatch({
+			"file": "https://docs.google.com/document/d/FILE123ABCDEF/edit", "readOnly": True, "reason": "Under approval",
+		})
+		self.assertEqual(sent["method"], "PATCH")
+		self.assertIn("/files/FILE123ABCDEF?", sent["url"])
+		self.assertIn("supportsAllDrives=true", sent["url"])
+		self.assertEqual(sent["body"], {"contentRestrictions": [{"readOnly": True, "reason": "Under approval"}]})
+		self.assertIs(sent["body"]["contentRestrictions"][0]["readOnly"], True)
+		self.assertEqual(task.data["lock"], {"id": "FILE123ABCDEF", "name": "SOP", "readOnly": True, "reason": "Under approval"})
+
+	def test_unlock_from_a_rendered_expression_sends_false_and_no_reason(self):
+		task, sent = self._dispatch(
+			{"file": "FILE123ABCDEF", "readOnly": "{{ task_data.lock_it }}", "reason": "Under approval"},
+			{"lock_it": False},
+		)
+		# Drive refuses a reason unless readOnly is true.
+		self.assertEqual(sent["body"], {"contentRestrictions": [{"readOnly": False}]})
+		self.assertIs(sent["body"]["contentRestrictions"][0]["readOnly"], False)
+		self.assertEqual(task.data["lock"]["id"], "FILE123ABCDEF")
+		self.assertIsNone(task.data["lock"]["readOnly"])
+
+
+class TestContentRestrictionPatch(FrappeTestCase):
+	def test_the_patch_adds_the_operation_with_a_boolean_lock_field(self):
+		from processa.patches.v1_0 import add_drive_content_restriction_operation as patch_module
+
+		if not frappe.db.exists("BPMN Connector", "google_drive"):
+			self.skipTest("no google_drive connector on this site")
+		name = frappe.db.get_value(
+			"BPMN Connector Operation", {"connector": "google_drive", "operation_id": "setContentRestriction"}
+		)
+		if name:
+			frappe.delete_doc("BPMN Connector Operation", name)
+
+		patch_module.execute()
+		patch_module.execute()
+
+		ops = frappe.get_all(
+			"BPMN Connector Operation",
+			filters={"connector": "google_drive", "operation_id": "setContentRestriction"},
+			fields=["name", "execution_type", "http_method", "url_template", "handler_path"],
+		)
+		self.assertEqual(len(ops), 1)
+		self.assertEqual(
+			(ops[0].execution_type, ops[0].http_method, ops[0].url_template, ops[0].handler_path),
+			("HTTP Request", "PATCH", "files/{{ params.file }}", None),
+		)
+		lock = frappe.db.get_value(
+			"BPMN Connector Field",
+			{"parent": ops[0].name, "field_name": "readOnly"},
+			["field_type", "value_transform", "default_value"],
+			as_dict=True,
+		)
+		self.assertEqual(lock, {"field_type": "Boolean", "value_transform": "frappe.utils.sbool", "default_value": "true"})
 
 
 class TestManifestValidator(FrappeTestCase):

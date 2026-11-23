@@ -7,6 +7,7 @@ export function useEditorInlineComment(ed) {
 		timelineText,
 		activeCommentElement,
 		commentFormData,
+		users,
 		showInlineCommentPopover,
 		inlineCommentPopoverEl,
 		inlineCommentFormData,
@@ -22,10 +23,12 @@ export function useEditorInlineComment(ed) {
 		activeMentionContext,
 		mentionSearchQuery,
 		mentionStartIndex,
+		activeMentionIndex,
+		commentError,
 	} = ed;
 
 	function openInlineComment(element) {
-		if (props.readonly) return;
+		if (!props.commentsAllowed) return;
 
 		activeCommentElement.value = element;
 		inlineCommentElement.value = element;
@@ -83,6 +86,16 @@ export function useEditorInlineComment(ed) {
 		if (!inlineCommentFormData.value.text || !props.modelName || !inlineCommentElement.value)
 			return;
 
+		const assignedTo =
+			inlineCommentFormData.value.assigned_to ||
+			resolveTypedMention(inlineCommentFormData.value.text);
+		if (inlineCommentFormData.value.is_task && !assignedTo) {
+			commentError.value =
+				"A task needs an assignee. Mention the person with @ and pick them from the list.";
+			return;
+		}
+		commentError.value = "";
+
 		try {
 			await frappeRequest({
 				url: "/api/method/processa.api.canvas_comments.post_canvas_comment",
@@ -90,7 +103,7 @@ export function useEditorInlineComment(ed) {
 					model_name: props.modelName,
 					element_id: inlineCommentElement.value.id,
 					comment: inlineCommentFormData.value.text,
-					assigned_to: inlineCommentFormData.value.assigned_to,
+					assigned_to: assignedTo,
 					is_task: inlineCommentFormData.value.is_task ? 1 : 0,
 				},
 			});
@@ -114,6 +127,7 @@ export function useEditorInlineComment(ed) {
 
 	function handleInlineCommentInput(e) {
 		// Reusing mention logic for inline popover
+		commentError.value = "";
 		if (!e || !e.target || typeof e.target.selectionStart !== "number") return;
 
 		const text = inlineCommentFormData.value.text || "";
@@ -158,6 +172,52 @@ export function useEditorInlineComment(ed) {
 		nextTick(() => ed.autoResizeTextarea(e.target));
 	}
 
+	function scrollActiveMentionIntoView() {
+		nextTick(() => {
+			const el = document.querySelector(".mention-option-active");
+			if (el) el.scrollIntoView({ block: "nearest" });
+		});
+	}
+
+	function onMentionKeydown(e) {
+		if (!showMentionDropdown.value) return;
+		if (e.isComposing) return;
+
+		const suggestions = ed.mentionSuggestions.value;
+
+		if (e.key === "Escape") {
+			e.preventDefault();
+			e.stopPropagation();
+			showMentionDropdown.value = false;
+			return;
+		}
+
+		if (!suggestions.length) return;
+
+		if (e.key === "ArrowDown") {
+			e.preventDefault();
+			activeMentionIndex.value = (activeMentionIndex.value + 1) % suggestions.length;
+			scrollActiveMentionIntoView();
+		} else if (e.key === "ArrowUp") {
+			e.preventDefault();
+			activeMentionIndex.value =
+				(activeMentionIndex.value - 1 + suggestions.length) % suggestions.length;
+			scrollActiveMentionIntoView();
+		} else if (e.key === "Enter" || e.key === "Tab") {
+			// Cmd/Ctrl+Enter stays the submit shortcut.
+			if (e.metaKey || e.ctrlKey) return;
+			e.preventDefault();
+			e.stopPropagation();
+			selectMention(suggestions[Math.min(activeMentionIndex.value, suggestions.length - 1)]);
+		}
+	}
+
+	function resolveTypedMention(text) {
+		if (!text) return "";
+		const match = users.value.find((u) => u.full_name && text.includes("@" + u.full_name));
+		return match ? match.name : "";
+	}
+
 	function selectMention(user) {
 		const isTimeline = activeMentionContext.value === "timeline";
 		const isInline = activeMentionContext.value === "inline";
@@ -191,6 +251,9 @@ export function useEditorInlineComment(ed) {
 			inlineCommentFormData.value.is_task = true;
 		} else {
 			commentFormData.value.text = newText;
+			// Set the query too, or the userSearchQuery watcher clears this assignee.
+			commentFormData.value.assigned_to = user.value;
+			userSearchQuery.value = user.label;
 		}
 
 		showMentionDropdown.value = false;
@@ -247,5 +310,7 @@ export function useEditorInlineComment(ed) {
 		submitInlineComment,
 		handleInlineCommentInput,
 		selectMention,
+		onMentionKeydown,
+		resolveTypedMention,
 	});
 }

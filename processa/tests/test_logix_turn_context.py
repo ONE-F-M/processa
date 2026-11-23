@@ -44,6 +44,7 @@ class TestLogixTurnContext(FrappeTestCase):
 
 
 LIBRARY = "P: Lib Replies"
+LIBRARY_CODE = "def strip_fences(text):\n\treturn text.strip('`')\n"
 STEP = "Logix Library Test Finalize"
 MODEL = "Logix Library Test Map"
 READER = "logix-library-reader@example.com"
@@ -52,7 +53,7 @@ READER = "logix-library-reader@example.com"
 class TestLogixLibraryScripts(FrappeTestCase):
 	def setUp(self):
 		super().setUp()
-		self._script(LIBRARY, "def strip_fences(text):\n\treturn text.strip('`')\n")
+		self._script(LIBRARY, LIBRARY_CODE)
 		self._script(STEP, "result['ok'] = 1")
 		self._model(
 			'<bpmn:scriptTask id="lib" name="Lib" spiffworkflow:serverScript="P: Lib Replies" />'
@@ -97,7 +98,10 @@ class TestLogixLibraryScripts(FrappeTestCase):
 
 	def test_a_library_on_the_map_reaches_the_context_and_the_text(self):
 		out = self._turn()
-		self.assertEqual(out["library_scripts"], [{"name": LIBRARY, "functions": ["strip_fences(text)"]}])
+		self.assertEqual(
+			out["library_scripts"],
+			[{"name": LIBRARY, "functions": ["strip_fences(text)"], "code": LIBRARY_CODE}],
+		)
 		self.assertIn("LIBRARY SCRIPTS ON THIS MAP", out["dialog_context"])
 		self.assertIn(f"- {LIBRARY}: strip_fences(text)", out["dialog_context"])
 
@@ -128,7 +132,9 @@ class TestLogixLibraryScripts(FrappeTestCase):
 	def test_a_library_with_a_syntax_error_is_listed_with_no_functions(self):
 		self._script(LIBRARY, "def strip_fences(text:\n")
 		out = self._turn()
-		self.assertEqual(out["library_scripts"], [{"name": LIBRARY, "functions": []}])
+		self.assertEqual(
+			out["library_scripts"], [{"name": LIBRARY, "functions": [], "code": "def strip_fences(text:\n"}]
+		)
 		self.assertIn(f"- {LIBRARY}: no functions could be read", out["dialog_context"])
 
 	def test_a_turn_without_a_map_has_no_library_section(self):
