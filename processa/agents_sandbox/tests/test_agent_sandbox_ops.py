@@ -14,6 +14,7 @@ receives the concrete action and its arguments.
 
 from __future__ import annotations
 
+import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -176,6 +177,26 @@ class TestSlowActionDispatch(AgentSandboxCase):
 		self.assertEqual(kwargs["json"]["target_app"], "processa")
 		self.assertNotIn("agent_config", kwargs["json"])
 		self.assertNotIn("tools", kwargs["json"])
+
+	def test_the_test_password_is_derived_from_the_run_id_forwarded_and_never_stored(self):
+		caller_value = "caller-" + uuid.uuid4().hex  # random at run time, so no credential-looking literal sits in the file
+		_result, ctx, mock_post = self._dispatch("prepare_site", run_id="run-1", password=caller_value)
+		sent = mock_post.call_args.kwargs["json"]["args"]["password"]
+		self.assertEqual(sent, ops.test_password_for("run-1"))  # a caller's own value is replaced
+		row = frappe.get_doc("Agent Sandbox Run", ctx["task"].data[ops.AGENT_SANDBOX_WAITING_KEY]["run"])
+		self.assertNotIn(sent, row.request_payload)
+		self.assertNotIn(caller_value, row.request_payload)
+		self.assertEqual(frappe.parse_json(row.request_payload)["args"], {"run_id": "run-1", "password": "REDACTED"})
+
+	def test_the_derived_password_is_stable_per_run_different_between_runs_and_acceptable_to_the_sandbox(self):
+		first, again, other = ops.test_password_for("run-1"), ops.test_password_for("run-1"), ops.test_password_for("run-2")
+		self.assertEqual(first, again)
+		self.assertNotEqual(first, other)
+		self.assertTrue(8 <= len(first) <= 128 and first == first.strip())
+
+	def test_prepare_site_without_a_run_id_is_refused(self):
+		with self.assertRaises(ops.AgentSandboxError):
+			self._dispatch("prepare_site")
 
 	def test_open_pull_request_parks_and_forwards_summary_as_an_arg(self):
 		result, ctx, mock_post = self._dispatch("open_pull_request", summary="Added the docstring.")
@@ -782,3 +803,40 @@ class TestTheSandboxIsPostedToWithRetries(FrappeTestCase):
 		self.assertIn("write_file", ops._IDEMPOTENT_ACTIONS)
 		for action in ("edit_file", "apply_edits", "delete_file"):
 			self.assertNotIn(action, ops._IDEMPOTENT_ACTIONS)
+
+
+class TestSlowActionCommandKind(FrappeTestCase):
+	"""Which session command kind each slow action is queued as: only the pull request is a finalize."""
+
+	def _kind(self, action):
+		run = SimpleNamespace(name="RUN-1", caller_instance=None)
+		payload = {
+			"work_item_id": "WI-1", "target_app": "processa", "git_branch": "staging",
+			"agent_name": "Testing Agent", "work_item_description": "Test it.",
+		}
+		with patch.object(ops.sessions, "ensure_session", return_value=SimpleNamespace(name="S-1")), \
+				patch.object(ops.sessions, "enqueue") as enqueue:
+			ops._slow_action_in_session(run, action, payload, {"x": 1})
+		enqueue.assert_called_once()
+		return enqueue.call_args.args[1], enqueue.call_args.args[2]
+
+	def test_the_pull_request_is_finalize_and_run_tests_is_run_tests(self):
+		self.assertEqual(self._kind("open_pull_request"), ("finalize", "open_pull_request"))
+		self.assertEqual(self._kind("run_tests"), ("run_tests", "run_tests"))
+
+	def test_any_other_slow_action_is_queued_as_its_own_kind_never_finalize(self):
+		for action in ("prepare_site", "checkout_pr_head", "run_specs", "run_specs_on_base", "upload_videos"):
+			self.assertEqual(self._kind(action), (action, action))
+
+	def test_the_command_doctype_allows_those_kinds(self):
+		import json
+		import os
+
+		path = os.path.join(
+			os.path.dirname(ops.__file__), "..", "doctype", "agent_sandbox_session_command", "agent_sandbox_session_command.json",
+		)
+		with open(path) as fh:
+			kind = next(f for f in json.load(fh)["fields"] if f["fieldname"] == "kind")
+		options = kind["options"].split("\n")
+		for expected in ("tool", "run_tests", "finalize", "close", "prepare_site", "checkout_pr_head", "run_specs", "run_specs_on_base", "upload_videos"):
+			self.assertIn(expected, options)
