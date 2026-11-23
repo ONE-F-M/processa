@@ -3,7 +3,7 @@
 A module of its own, so running it seeds only these cases and leaves the suite and the older cases as they are.
 """
 
-from processa.patches.v1_0.seed_lucrusher_eval_suite import IN_ORDER, _call, _judge
+from processa.patches.v1_0.seed_lucrusher_eval_suite import IN_ORDER, tool_call, judge_rubric
 from processa.patches.v1_0.seed_lucrusher_skill_eval_cases import seed_cases
 
 
@@ -13,10 +13,10 @@ def _scan_case(title, steps, rubric, extra=()):
 		"prompt": "I have no Lucidchart for this one. Scan the codebase for these steps: " + ", ".join(steps),
 		"context": {},
 		"calls": [
-			_call(1, "scan_codebase_for_process"),
-			_call(2, "finalize", "intent", "equals", "CODEBASE_SCAN_RESULT"),
+			tool_call(1, "scan_codebase_for_process"),
+			tool_call(2, "finalize", "intent", "equals", "CODEBASE_SCAN_RESULT"),
 		],
-		"assertions": [IN_ORDER, *extra, _judge(rubric)],
+		"assertions": [IN_ORDER, *extra, judge_rubric(rubric)],
 		"skill": None,
 	}
 

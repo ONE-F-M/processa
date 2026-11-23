@@ -46,7 +46,7 @@ TOPOLOGY = {
 }
 
 
-def _state(intent, **parts):
+def expected_state(intent, **parts):
 	return {
 		"intent": intent,
 		"confirmed_process": {"name": "Visa", "process_name": "Visa"},
@@ -59,7 +59,7 @@ def _state(intent, **parts):
 	}
 
 
-def _call(order, tool, argument="", matcher="", value=""):
+def tool_call(order, tool, argument="", matcher="", value=""):
 	return {
 		"call_order": order,
 		"tool_name": tool,
@@ -69,7 +69,7 @@ def _call(order, tool, argument="", matcher="", value=""):
 	}
 
 
-def _judge(rubric):
+def judge_rubric(rubric):
 	return {"assertion_type": "llm_judge", "value": rubric, "pass_threshold": 4}
 
 
@@ -92,8 +92,8 @@ CASES = [
 		"prompt": "Visa",
 		"context": {},
 		"calls": [
-			_call(1, "search_processes_on_production", "search_term", "contains", "Visa"),
-			_call(2, "finalize", "intent", "equals", "EXACT_MATCH_FOUND"),
+			tool_call(1, "search_processes_on_production", "search_term", "contains", "Visa"),
+			tool_call(2, "finalize", "intent", "equals", "EXACT_MATCH_FOUND"),
 		],
 		"assertions": [
 			IN_ORDER,
@@ -105,12 +105,12 @@ CASES = [
 		"prompt": "Maintenance",
 		"context": {},
 		"calls": [
-			_call(1, "search_processes_on_production", "search_term", "contains", "Maintenance"),
-			_call(2, "finalize", "intent", "equals", "MULTIPLE_MATCHES"),
+			tool_call(1, "search_processes_on_production", "search_term", "contains", "Maintenance"),
+			tool_call(2, "finalize", "intent", "equals", "MULTIPLE_MATCHES"),
 		],
 		"assertions": [
 			IN_ORDER,
-			_judge(
+			judge_rubric(
 				"The reply lists more than one matching process and asks the user which one they mean. "
 				"It does not pick one on the user's behalf."
 			),
@@ -121,8 +121,8 @@ CASES = [
 		"prompt": f"I would like you to review {LUCID_URL}",
 		"context": {},
 		"calls": [
-			_call(1, "fetch_lucidchart_document", "document_id_or_url", "contains", LUCID_DOC_ID),
-			_call(2, "finalize", "intent", "regex", "^LUCIDCHART_(PARSED|METADATA_ONLY)$"),
+			tool_call(1, "fetch_lucidchart_document", "document_id_or_url", "contains", LUCID_DOC_ID),
+			tool_call(2, "finalize", "intent", "regex", "^LUCIDCHART_(PARSED|METADATA_ONLY)$"),
 		],
 		"assertions": [IN_ORDER],
 	},
@@ -136,15 +136,15 @@ CASES = [
 					"message_type": "Bot",
 					"text": 'I fetched "Visa Process": 2 pages, Visa Request and Visa Renewal, 12 shapes.',
 				},
-				{"message_type": "Tool", "text": STATE_TEXT, "metadata": _state("LUCIDCHART_PARSED", document=DOC_SUMMARY)},
+				{"message_type": "Tool", "text": STATE_TEXT, "metadata": expected_state("LUCIDCHART_PARSED", document=DOC_SUMMARY)},
 			],
 			"session_state": {f"lucid_doc:{LUCID_DOC_ID}": PARSED_DOC},
 		},
-		"calls": [_call(1, "finalize", "intent", "regex", "^(CLARIFY|LUCIDCHART_PARSED|LUCIDCHART_METADATA_ONLY)$")],
+		"calls": [tool_call(1, "finalize", "intent", "regex", "^(CLARIFY|LUCIDCHART_PARSED|LUCIDCHART_METADATA_ONLY)$")],
 		"assertions": [
 			IN_ORDER,
 			{"assertion_type": "no_tool_call", "value": "fetch_lucidchart_document,scan_codebase_for_process"},
-			_judge(
+			judge_rubric(
 				"The reply tells the user the Visa Process document is already loaded and waits for their next "
 				"instruction. It does not report an error, say it fetched the document again, or start a codebase scan."
 			),
@@ -160,13 +160,13 @@ CASES = [
 			"conversation_messages": [
 				{"message_type": "User", "text": LUCID_URL},
 				{"message_type": "Bot", "text": 'I fetched "Visa Process": 2 pages, 12 shapes.'},
-				{"message_type": "Tool", "text": STATE_TEXT, "metadata": _state("LUCIDCHART_PARSED", document=DOC_SUMMARY)},
+				{"message_type": "Tool", "text": STATE_TEXT, "metadata": expected_state("LUCIDCHART_PARSED", document=DOC_SUMMARY)},
 			],
 			"session_state": {f"lucid_doc:{LUCID_DOC_ID}": PARSED_DOC},
 		},
 		"calls": [
-			_call(1, "scan_codebase_for_process"),
-			_call(2, "finalize", "intent", "equals", "CODEBASE_SCAN_RESULT"),
+			tool_call(1, "scan_codebase_for_process"),
+			tool_call(2, "finalize", "intent", "equals", "CODEBASE_SCAN_RESULT"),
 		],
 		"assertions": [IN_ORDER],
 	},
@@ -186,18 +186,18 @@ CASES = [
 				{
 					"message_type": "Tool",
 					"text": STATE_TEXT,
-					"metadata": _state(
+					"metadata": expected_state(
 						"TOPOLOGY_PROPOSAL", document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY, topology=TOPOLOGY
 					),
 				},
 			],
 			"session_state": {f"lucid_doc:{LUCID_DOC_ID}": PARSED_DOC},
 		},
-		"calls": [_call(1, "finalize", "intent", "equals", "TOPOLOGY_CONFIRMED")],
+		"calls": [tool_call(1, "finalize", "intent", "equals", "TOPOLOGY_CONFIRMED")],
 		"assertions": [
 			IN_ORDER,
 			{"assertion_type": "no_tool_call", "value": "fetch_lucidchart_document,scan_codebase_for_process"},
-			_judge(
+			judge_rubric(
 				"The reply confirms the two processes, Visa Request and Visa Renewal, as the agreed topology "
 				"and moves on to the next step. It does not propose a different topology."
 			),
