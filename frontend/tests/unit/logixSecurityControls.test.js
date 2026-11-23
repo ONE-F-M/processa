@@ -39,6 +39,12 @@ describe("Logix script security controls", () => {
 		expect(composable).toMatch(/updating \? UPDATE_URL : REQUEST_URL/);
 	});
 
+	it("enables Update request only when the request is out of date", () => {
+		const panel = read("LogixSecurityPanel/LogixSecurityPanel.vue");
+		expect(panel).toMatch(/updatable\.value && !latestRequest\.value\.has_changes/);
+		expect(panel).toMatch(/already lists everything this script needs approved/);
+	});
+
 	it("never offers approval for a syntax error", () => {
 		const panel = read("LogixSecurityPanel/LogixSecurityPanel.vue");
 		expect(panel).toMatch(/if \(blockingError\.value\) return blockingError\.value\.category;/);

@@ -131,6 +131,18 @@ class TestLogixScriptApproval(FrappeTestCase):
 			]
 		)
 
+	def test_update_is_offered_only_when_the_saved_script_changed_what_needs_approval(self):
+		request_script_approval(SCRIPT, PROCESS, TASK, "Fetches exchange rates")
+
+		def latest(code):
+			return lint_server_script(code, SCRIPT, PROCESS, TASK)["latest_request"]
+
+		self.assertFalse(latest(CODE)["has_changes"])
+		_server_script(SCRIPT, CODE + "\nimport socket")
+		self.assertTrue(latest(CODE + "\nimport socket")["has_changes"])
+		update_script_approval(latest(CODE + "\nimport socket")["name"])
+		self.assertFalse(latest(CODE + "\nimport socket")["has_changes"])
+
 	def test_update_is_refused_once_the_request_left_pending_review(self):
 		request = request_script_approval(SCRIPT, PROCESS, TASK, "Fetches exchange rates")
 		frappe.db.set_value("Script Approval Request", request["name"], "status", "Pending Approval")

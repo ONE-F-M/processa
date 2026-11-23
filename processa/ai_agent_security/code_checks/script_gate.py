@@ -146,12 +146,14 @@ def lint_script(code: str, script_name: str = "", process: str = "", script_task
 		order_by="creation desc",
 		limit=1,
 	)
+	needed = {f["name"] for f in findings if not f["approved"] and f["category"] not in NOT_APPROVABLE}
 	for request in latest or []:
 		request["can_update"] = (
 			request.name == open_request
 			and request.status == "Pending Review"
 			and request.requested_by == frappe.session.user
 		)
+		request["has_changes"] = request["can_update"] and needed != set(requested)
 	return {
 		"findings": findings,
 		"open_request": open_request,
