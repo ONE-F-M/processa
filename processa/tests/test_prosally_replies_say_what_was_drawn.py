@@ -111,6 +111,68 @@ class TestDescribeChanges(FrappeTestCase):
 		self.assertIn("could not find any change", tools_replies.describe_changes(old, new))
 
 
+class TestRequestConstraints(FrappeTestCase):
+	OLD = (
+		'<bpmn:userTask id="submit" name="Submit leave request" />'
+		'<bpmn:userTask id="review" name="Review request" spiffworkflow:assignee="manager" />'
+		'<bpmn:userTask id="record" name="Record leave" />'
+		'<bpmn:sequenceFlow id="f1" sourceRef="submit" targetRef="review" />'
+	)
+
+	def _new(self, *extra, review='name="Review request" spiffworkflow:assignee="manager"'):
+		return (
+			'<bpmn:userTask id="submit" name="Submit leave request" />'
+			f'<bpmn:userTask id="review" {review} />'
+			'<bpmn:userTask id="record" name="Record leave" />' + "".join(extra)
+		)
+
+	def test_the_request_names_what_it_rules_out_and_whether_the_rest_may_change(self):
+		constraints = tools_replies.request_constraints(
+			"Add a step that emails the employee. No script tasks and no new gateways; do not change anything else."
+		)
+
+		self.assertEqual(constraints, {"ruled_out": ["script task", "gateway"], "only_what_is_named": True})
+		self.assertEqual(tools_replies.request_constraints("Add an email step")["ruled_out"], [])
+		self.assertIn("Do not add any script task.", tools_replies.constraint_prompt(constraints))
+		self.assertEqual(tools_replies.constraint_prompt({"ruled_out": [], "only_what_is_named": False}), "")
+
+	def test_a_ruled_out_kind_the_change_adds_is_a_problem(self):
+		text = "Add a step that emails the employee. No script tasks."
+		new = self._new('<bpmn:scriptTask id="mail" name="Email the employee" />')
+
+		problems = tools_replies.unrequested_changes(self.OLD, new, text, tools_replies.request_constraints(text))
+
+		self.assertEqual(problems, ["The request says no script task, and the change adds one."])
+
+	def test_a_gateway_or_step_nobody_asked_for_is_a_problem(self):
+		text = "Add a step to email the employee after the leave is recorded."
+		new = self._new(
+			'<bpmn:userTask id="mail" name="Email the employee" />',
+			'<bpmn:exclusiveGateway id="j" name="Record Join" />',
+			'<bpmn:userTask id="audit" name="Audit the payroll" />',
+		)
+
+		problems = tools_replies.unrequested_changes(self.OLD, new, text, tools_replies.request_constraints(text))
+
+		self.assertEqual(len(problems), 2)
+		self.assertIn('the decision "Record Join"', problems[0])
+		self.assertIn('the step "Audit the payroll"', problems[1])
+
+	def test_change_nothing_else_catches_a_step_the_request_does_not_name(self):
+		text = 'Rename "Record leave" to "Record leave in HR". Do not change anything else.'
+		new = self._new(review='name="Review request"').replace("Record leave", "Record leave in HR")
+
+		problems = tools_replies.unrequested_changes(self.OLD, new, text, tools_replies.request_constraints(text))
+
+		self.assertEqual(problems, ['The request says to change nothing else, and the change also alters the step "Review request".'])
+
+	def test_the_asked_change_alone_passes(self):
+		text = 'Rename "Record leave" to "Record leave in HR". Do not change anything else.'
+		new = self._new().replace("Record leave", "Record leave in HR")
+
+		self.assertEqual(tools_replies.unrequested_changes(self.OLD, new, text, tools_replies.request_constraints(text)), [])
+
+
 class TestGenerateNamesTheMissingLane(FrappeTestCase):
 	"""Runs the live Generate Process Server Script; the script reaches a site with the ProsAlly map by export."""
 
