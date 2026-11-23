@@ -1,5 +1,5 @@
 <template>
-	<details class="rounded-lg border border-gray-200 bg-white text-xs">
+	<details class="overflow-x-auto rounded-lg border border-gray-200 bg-white text-xs">
 		<summary class="cursor-pointer select-none px-3 py-2 font-medium text-gray-700">
 			{{ __("Names this script can use without importing") }}
 		</summary>

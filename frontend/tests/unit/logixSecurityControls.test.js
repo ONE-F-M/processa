@@ -39,6 +39,12 @@ describe("Logix script security controls", () => {
 		expect(composable).toMatch(/updating \? UPDATE_URL : REQUEST_URL/);
 	});
 
+	it("enables Update request only when the request is out of date", () => {
+		const panel = read("LogixSecurityPanel/LogixSecurityPanel.vue");
+		expect(panel).toMatch(/updatable\.value && !latestRequest\.value\.has_changes/);
+		expect(panel).toMatch(/already lists everything this script needs approved/);
+	});
+
 	it("never offers approval for a syntax error", () => {
 		const panel = read("LogixSecurityPanel/LogixSecurityPanel.vue");
 		expect(panel).toMatch(/if \(blockingError\.value\) return blockingError\.value\.category;/);
@@ -52,5 +58,14 @@ describe("Logix script security controls", () => {
 		expect(canvas).not.toMatch(/Instead: \$\{/);
 		expect(canvas).toMatch(/Use \$\{alt\.charAt\(0\)\.toLowerCase\(\)\}/);
 		expect(canvas).toMatch(/To keep \$\{name\}, request approval in Security\./);
+	});
+
+	it("stacks the chat above the editor on a phone so Security stays reachable", () => {
+		const canvas = read("LogixCanvas/LogixCanvas.vue");
+		expect(canvas).toMatch(/<style scoped src="\.\/LogixCanvas\.css"><\/style>/);
+		const css = read("LogixCanvas/LogixCanvas.css");
+		const phone = css.slice(css.indexOf("@media (max-width: 768px)"));
+		expect(phone).toMatch(/\.lc-root \{\s*flex-direction: column;/);
+		expect(phone).toMatch(/\.lc-chat-panel \{\s*width: 100%;/);
 	});
 });

@@ -197,6 +197,8 @@ const blockedReason = computed(() => {
 	if (props.dirty || !props.saved)
 		return "Save the script first: the request is made from the saved script.";
 	if (!needsApproval.value.length) return "Nothing in this script needs approval.";
+	if (updatable.value && !latestRequest.value.has_changes)
+		return `${latestRequest.value.name} already lists everything this script needs approved.`;
 	if (updatable.value) return "";
 	if (props.lint?.open_request)
 		return `Only the requester of ${props.lint.open_request} can update it, and only before review. Request the rest after it is decided.`;
