@@ -27,4 +27,11 @@ describe("Logix script security controls", () => {
 		expect(script).toMatch(/Not in \$\{open\}/);
 		expect(script).not.toMatch(/\$\{props\.lint\.open_request\} is open/);
 	});
+
+	it("tells the author what to use instead in a full sentence", () => {
+		const canvas = read("LogixCanvas/LogixCanvas.vue");
+		expect(canvas).not.toMatch(/Instead: \$\{/);
+		expect(canvas).toMatch(/Use \$\{alt\.charAt\(0\)\.toLowerCase\(\)\}/);
+		expect(canvas).toMatch(/To keep \$\{name\}, request approval in Security\./);
+	});
 });
