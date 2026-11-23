@@ -86,8 +86,8 @@
 						<pre>{{ JSON.stringify(item.value, null, 2) }}</pre>
 					</details>
 				</div>
-				<!-- Every stamped entry shows when it happened -->
-				<div v-if="showsTime(transcriptItems, i, formatTime)" class="acp-time" :class="{ 'acp-time--user': item.kind === 'user' }">{{ formatTime(item.ts) }}</div>
+				<!-- A reply shows its time once, under its last piece -->
+				<div v-if="showsTime(transcriptItems, i)" class="acp-time" :class="{ 'acp-time--user': item.kind === 'user' }">{{ formatTime(item.ts) }}</div>
 			</template>
 
 			<div

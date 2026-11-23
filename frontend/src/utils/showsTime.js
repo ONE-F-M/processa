@@ -3,12 +3,13 @@
 
 import { dayjs } from "@/dayjs";
 
-// True when the transcript item at index shows its time; format is how a time is shown.
-export function showsTime(items, index, format) {
+// True when the transcript item at index shows its time: the last piece of a reply in that minute.
+export function showsTime(items, index) {
 	const item = items[index];
 	const next = items[index + 1];
 	if (!item.ts) return false;
-	return !next || item.kind === "user" || next.kind === "user" || format(next.ts) !== format(item.ts);
+	if (!next?.ts || item.kind === "user" || next.kind === "user") return true;
+	return formatTime(next.ts) !== formatTime(item.ts);
 }
 
 // Live entries take the client clock; restored entries keep the stored creation time as-is.

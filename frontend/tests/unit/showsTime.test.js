@@ -4,23 +4,23 @@ import { formatTime, restoredItems, showsTime } from "@/utils/showsTime.js"
 
 test("one reply shows its time once, under its last piece, and every message of yours keeps its own", () => {
 	const items = [
-		{ kind: "user", ts: "11:38" },
-		{ kind: "agent", ts: "11:38" },
-		{ kind: "choice", ts: "11:38" },
-		{ kind: "user", ts: "11:40" },
-		{ kind: "agent", ts: "11:41" },
+		{ kind: "user", ts: "2026-11-23 11:38:05" },
+		{ kind: "agent", ts: "2026-11-23 11:38:05" },
+		{ kind: "choice", ts: "2026-11-23 11:38:05" },
+		{ kind: "user", ts: "2026-11-23 11:40:00" },
+		{ kind: "agent", ts: "2026-11-23 11:41:00" },
 		{ kind: "routed" },
 	]
-	const shown = items.map((_item, i) => showsTime(items, i, (ts) => ts))
+	const shown = items.map((_item, i) => showsTime(items, i))
 	assert.deepEqual(shown, [true, false, true, true, true, false])
 })
 
 test("a reply that runs into the next minute shows the time of each minute", () => {
 	const items = [
-		{ kind: "agent", ts: "11:38" },
-		{ kind: "custom", ts: "11:39" },
+		{ kind: "agent", ts: "2026-11-23 11:38:05" },
+		{ kind: "custom", ts: "2026-11-23 11:39:10" },
 	]
-	assert.deepEqual(items.map((_item, i) => showsTime(items, i, (ts) => ts)), [true, true])
+	assert.deepEqual(items.map((_item, i) => showsTime(items, i)), [true, true])
 })
 
 test("formatTime shows a valid time and nothing for a missing one", () => {
