@@ -113,16 +113,16 @@ class TestRelayoutReply(FrappeTestCase):
 		self.assertIn("cannot set a gap of my own", out["response"])
 
 	def test_only_layout_words_count_as_layout_asks(self):
-		self.assertEqual(tools_review.layout_asks("Add a review step after approval"), [])
-		self.assertEqual(tools_review.layout_asks("Line them up"), ["alignment"])
-		self.assertEqual(tools_review.layout_asks("the lines criss-cross"), ["crossings"])
+		self.assertEqual(tools_replies.layout_asks("Add a review step after approval"), [])
+		self.assertEqual(tools_replies.layout_asks("Line them up"), ["alignment"])
+		self.assertEqual(tools_replies.layout_asks("the lines criss-cross"), ["crossings"])
 
 	def test_a_change_with_a_layout_ask_reports_it_and_one_without_says_nothing(self):
-		with patch.object(tools_review, "audit_layout", side_effect=[{**CLEAN, "crossings": 2}, CLEAN]):
-			note = tools_review.layout_note("<old />", "<new />", "add a step and remove the crossing lines")
+		with patch.object(tools_replies, "audit_layout", side_effect=[{**CLEAN, "crossings": 2}, CLEAN]):
+			note = tools_replies.layout_note("<old />", "<new />", "add a step and remove the crossing lines")
 
 		self.assertEqual(note, " Crossing lines: 2 before, 0 now.")
-		self.assertEqual(tools_review.layout_note("<old />", "<new />", "add a step"), "")
+		self.assertEqual(tools_replies.layout_note("<old />", "<new />", "add a step"), "")
 
 
 class TestConvergingLines(FrappeTestCase):
