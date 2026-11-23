@@ -52,21 +52,21 @@
 							<div
 								v-for="item in category.items"
 								:key="item.name"
-								class="flex items-center gap-2 px-3 py-1.5 transition-colors"
+								class="flex items-start gap-2 px-3 py-1.5 transition-colors"
 								:class="itemRowClass(item)"
 							>
 								<!-- Status icon -->
 								<Icon
 									:icon="itemIcon(item)"
-									class="w-4 h-4 shrink-0"
+									class="w-4 h-4 shrink-0 mt-0.5"
 									:class="itemIconClass(item)"
 								/>
 								<!-- Label -->
-								<span class="text-sm text-gray-800 flex-1 truncate" :title="item.name">{{ item.name }}</span>
+								<span class="text-sm text-gray-800 flex-1 min-w-0 break-words">{{ item.name }}</span>
 								<!-- Detail for warnings / call activity refs -->
 								<span
 									v-if="item.detail"
-									class="text-xs max-w-[180px] truncate"
+									class="text-xs max-w-[200px] shrink-0 break-words text-right"
 									:class="item.type === 'call_activity_ref' ? 'text-blue-700' : 'text-amber-700'"
 									:title="item.detail"
 								>

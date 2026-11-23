@@ -142,10 +142,16 @@ def lint_script(code: str, script_name: str = "", process: str = "", script_task
 	latest = on_task and frappe.get_list(
 		"Script Approval Request",
 		filters={"process_name": process, "script_task": script_task, "server_script": script_name},
-		fields=["name", "status", "decision_note"],
+		fields=["name", "status", "decision_note", "requested_by"],
 		order_by="creation desc",
 		limit=1,
 	)
+	for request in latest or []:
+		request["can_update"] = (
+			request.name == open_request
+			and request.status == "Pending Review"
+			and request.requested_by == frappe.session.user
+		)
 	return {
 		"findings": findings,
 		"open_request": open_request,
@@ -245,7 +251,8 @@ def collect_script_security_violations(
 ) -> list:
 	"""Every finding on the diagram's script tasks that no Approved request on ``process`` covers.
 
-	Each is ``{"label", "message", "category", "request"}``; request is the open request for the task, if any.
+	Each is ``{"label", "message", "category", "request", "name", "server_script"}``; request is the open
+	request for the task, if any.
 	"""
 	findings: list = []
 	sources = script_task_sources(bpmn_xml, process)
@@ -254,7 +261,14 @@ def collect_script_security_violations(
 		request = _open_request(process, bpmn_id, server_script)
 		for finding in inspect_script(code, allowed) + library_findings(code, allowed, map_scripts, bpmn_id):
 			findings.append(
-				{"label": label, "message": finding["message"], "category": finding["category"], "request": request}
+				{
+					"label": label,
+					"message": finding["message"],
+					"category": finding["category"],
+					"request": request,
+					"name": finding["name"],
+					"server_script": server_script,
+				}
 			)
 	return findings
 
