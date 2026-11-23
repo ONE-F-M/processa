@@ -85,13 +85,8 @@ class ProcessaSettings(Document):
 		sandbox_job_processa_url: DF.Data | None
 		sandbox_job_project: DF.Data | None
 		sandbox_job_region: DF.Data | None
-		script_binop_multiply_threshold: DF.Int
-		script_block_all_imports: DF.Check
-		script_block_functiondef: DF.Check
-		script_block_lambda: DF.Check
-		script_block_while: DF.Check
-		script_strict_builtins: DF.Check
-		script_strict_frappe_attrs: DF.Check
+		script_security_approver: DF.Link | None
+		script_security_reviewer: DF.Link | None
 		staging_api_key: DF.Password | None
 		staging_api_secret: DF.Password | None
 		staging_site_url: DF.Data | None
@@ -101,6 +96,18 @@ class ProcessaSettings(Document):
 	def validate(self):
 		self._validate_embedding_model()
 		self._validate_push_token_source()
+		self._validate_script_security_approver()
+
+	def _validate_script_security_approver(self):
+		if self.script_security_approver and "Application Manager" not in frappe.get_roles(
+			self.script_security_approver
+		):
+			frappe.throw(
+				_("{0} cannot approve scripts because they do not have the Application Manager role.").format(
+					self.script_security_approver
+				),
+				title=_("Script Security Approver"),
+			)
 
 	def _validate_push_token_source(self):
 		"""Refuse token source fields that the Token DocType does not have."""

@@ -30,7 +30,6 @@ from processa.processa_engine.compiler.deploy_warnings import (
 	check_eval_suite_gating,
 	check_notification_senders,
 	check_script_tasks_have_a_script,
-	check_scripts_pending_review,
 	check_shape_config_drift,
 )
 from processa.processa_engine.compiler.doc_status import validate_doc_status_transitions
@@ -193,7 +192,10 @@ def compile_model(model) -> dict:
 
 	from processa.ai_agent_security.code_checks.script_gate import validate_process_model_scripts
 
-	validate_process_model_scripts(sanitized_xml)
+	called_scripts = frozenset(
+		cfg.get("serverScript") for cfg in called_script_extensions.values() if cfg.get("serverScript")
+	)
+	validate_process_model_scripts(sanitized_xml, model.get("process_name"), called_scripts)
 
 	user_extensions = extract_user_task_config(sanitized_xml)
 	if user_extensions:
@@ -219,7 +221,7 @@ def compile_model(model) -> dict:
 
 	enforce_eval_pass_rate(model_name)
 
-	deploy_warnings.extend(check_scripts_pending_review(activate_deployed_model(model, script_extensions)))
+	activate_deployed_model(model, script_extensions)
 
 	model.flags.skip_editability_check = True
 	model.flags.skip_script_security_check = True

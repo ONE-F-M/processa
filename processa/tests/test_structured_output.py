@@ -223,6 +223,21 @@ class TestTheRequestCarriesTheSchema(FrappeTestCase):
 		self.assertIn("cut off", result.error_message)
 		self.assertEqual(len(sent), 1)
 
+	def test_a_refused_reply_is_asked_again_and_can_still_answer(self):
+		refused = _anthropic_body("", stop_reason="refusal")
+		result, sent = self._run(
+			"Anthropic", True, [refused, _anthropic_body(json.dumps(GOOD))], max_retries=1, retry_backoff_ms=0
+		)
+		self.assertEqual(result.output, GOOD)
+		self.assertEqual(len(sent), 2)
+
+	def test_a_reply_refused_on_every_attempt_ends_with_model_refused(self):
+		refused = _anthropic_body("", stop_reason="refusal")
+		result, sent = self._run("Anthropic", True, [refused], max_retries=1, retry_backoff_ms=0)
+		self.assertEqual(result.error_code, ErrorCode.MODEL_REFUSED)
+		self.assertIn("declined", result.error_message)
+		self.assertEqual(len(sent), 2)
+
 	def test_an_unrelated_question_still_returns_the_declared_object(self):
 		reply = {"bible_verse": "", "answer": "Paris."}
 		result, _sent = self._run("OpenAI", True, [_openai_body(json.dumps(reply))])

@@ -14,7 +14,13 @@ from processa.ai_agent_registry.provisioning.agent_config_resolver import CONFIG
 from processa.processa_engine.agent_runtime.step_loop import run_agent_loop
 from processa.processa_engine.agent_runtime.tool_bounds import salvage_leaked_delimiters
 from processa.processa_engine.agent_runtime.llm_anthropic import AnthropicAdapter
-from processa.processa_engine.agent_runtime.llm_types import LLMTruncatedError, StepResult, StepToolCall, ToolSpec
+from processa.processa_engine.agent_runtime.llm_types import (
+	LLMRefusedError,
+	LLMTruncatedError,
+	StepResult,
+	StepToolCall,
+	ToolSpec,
+)
 from processa.processa_engine.agent_runtime.llm_gemini import GeminiAdapter
 from processa.processa_engine.agent_runtime.llm_openai import OpenAIAdapter
 from processa.ai_agent_observability.observability import SUB_CALL_TURN_FLAG
@@ -242,6 +248,11 @@ class TestAnthropicControls(FrappeTestCase):
 	def test_a_reply_cut_at_max_tokens_raises(self):
 		adapter, _ = _anthropic("claude-sonnet-4-5", stop_reason="max_tokens")
 		with self.assertRaises(LLMTruncatedError):
+			asyncio.run(adapter.step("s", [{"role": "user", "content": "u"}]))
+
+	def test_a_refusal_with_no_content_raises_instead_of_an_empty_answer(self):
+		adapter, _ = _anthropic("claude-sonnet-5-5", stop_reason="refusal", content=[])
+		with self.assertRaises(LLMRefusedError):
 			asyncio.run(adapter.step("s", [{"role": "user", "content": "u"}]))
 
 	def test_the_user_context_prefix_is_cached_before_the_first_tool_result(self):

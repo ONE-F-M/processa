@@ -2,6 +2,7 @@
 """The shared ProsAlly helpers behave as the inlined copies did; the routed replies, the lost reply and the confirmed briefs."""
 
 import json
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -19,6 +20,7 @@ from processa.patches.v1_0 import (
 )
 from processa.patches.v1_0.prosally_merge_classify_and_confirm import CLASSIFY_INTENT
 from processa.ai_agent_security.code_checks.script_validator import deep_inspect_script
+from processa.tests.processa_imports import processa_imports
 from processa.tests.site_scripts import as_deployed
 
 OLD_XML = """<?xml version="1.0" encoding="UTF-8"?>
@@ -486,7 +488,8 @@ class TestTheEngineValidatorAcceptsThePatchedBuildContext(FrappeTestCase):
 	def test_both_script_shapes_have_no_findings_after_the_patch(self):
 		for label, script in (("assigned", REAL_BUILD_CONTEXT), ("in the dict", OLDER_BUILD_CONTEXT)):
 			with self.subTest(shape=label):
-				self.assertEqual(deep_inspect_script(build_context_patch.rewrite(script)), [])
+				rewritten = build_context_patch.rewrite(script)
+				self.assertEqual(deep_inspect_script(rewritten, processa_imports(rewritten)), [])
 
 
 CONV = "zz-prosally-route"
@@ -612,7 +615,7 @@ class TestFinalizeRunsTheRoutedTool(FrappeTestCase):
 
 
 class TestConfirmedBriefCases(FrappeTestCase):
-	def test_five_cases_are_seeded_once_with_the_brief_and_the_card(self):
+	def test_each_brief_is_seeded_once_with_the_brief_and_the_card(self):
 		if not frappe.db.get_value("AI Eval Suite", {"title": seed.SUITE_TITLE}, "name"):
 			self.skipTest("the ProsAlly Baseline suite is not on this site")
 
@@ -623,7 +626,7 @@ class TestConfirmedBriefCases(FrappeTestCase):
 		cases = frappe.get_all(
 			"AI Eval Case", filters={"title": ["in", titles]}, fields=["name", "input_context"]
 		)
-		self.assertEqual(len(cases), 5)
+		self.assertEqual(len(cases), 7)
 		context = json.loads(cases[0].input_context)
 		self.assertEqual([m["message_type"] for m in context["conversation_messages"]], ["User", "Bot"])
 		self.assertEqual(context["conversation_messages"][1]["metadata"]["intent"], "CONFIRM")
@@ -632,3 +635,9 @@ class TestConfirmedBriefCases(FrappeTestCase):
 		self.assertEqual(
 			[c.tool_name for c in case.expected_tool_calls], ["classify_intent", "generate_process"]
 		)
+		residency = frappe.get_doc(
+			"AI Eval Case", {"title": "A Residency brief is drawn as a residency map, never a Leave Request map"}
+		)
+		checks = [json.loads(a.value)["expected"] for a in residency.assertions if a.assertion_type == "tool_artifact"]
+		self.assertIn(r"(?i)^(?![\s\S]*leave request)", checks)
+		self.assertFalse(re.search(checks[-1], '<bpmn:participant name="Leave Request" />'))

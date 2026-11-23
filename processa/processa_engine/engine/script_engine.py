@@ -1,7 +1,10 @@
 # Copyright (c) 2026, one-fm and contributors
 """FrappeScriptEngine: runs BPMN Script Tasks and their Server Scripts."""
 
+from collections import namedtuple
 from datetime import datetime
+from functools import cached_property
+from types import FunctionType
 
 from SpiffWorkflow.bpmn.script_engine import PythonScriptEngine, TaskDataEnvironment
 
@@ -15,14 +18,73 @@ def evaluate_condition(expression: str, names: dict):
 	return eval(expression, {"__builtins__": __builtins__, **names})
 
 
-def check_server_script(script_doc) -> None:
-	"""Validate a Server Script before it runs, opening only what its approval lists."""
-	from processa.ai_agent_security.code_checks.script_gate import approved_names
+def check_server_script(script_doc, process: str | None = None, script_task: str | None = None) -> None:
+	"""Refuse a Server Script before it runs unless Approved requests for its script task cover its findings.
 
-	_check_script_permissions(script_doc.script, script_doc.name, approved_names(script_doc))
+	Without a Process and script task only the categories allowed by default apply.
+	"""
+	from processa.ai_agent_security.code_checks.script_gate import approved_request_names, library_findings
+
+	allowed = approved_request_names(process, script_task, script_doc.name) if process and script_task else frozenset()
+	libraries = [f["message"] for f in library_findings(script_doc.script, allowed)]
+	_check_script_permissions(script_doc.script, script_doc.name, allowed, libraries)
 
 
-def _check_script_permissions(script_text: str, label: str, allowed: frozenset = frozenset()) -> None:
+def process_of(instance) -> str | None:
+	"""The Process of the instance's map, which script approvals are keyed by."""
+	import frappe
+
+	process_model = getattr(instance, "process_model", None)
+	return process_model and frappe.db.get_value("BPMN Process Model", process_model, "process_name")
+
+
+def make_import_script(instance, script_task_extensions: dict):
+	"""The import_script callable for one engine run; each library runs at most once."""
+	process_scripts = {cfg.get("serverScript"): bpmn_id for bpmn_id, cfg in script_task_extensions.items()}
+	loaded = {}
+
+	def import_script(script_name: str):
+		if script_name not in loaded:
+			loaded[script_name] = _load_library(instance, process_scripts, script_name)
+		return loaded[script_name]
+
+	return import_script
+
+
+def _load_library(instance, process_scripts: dict, script_name: str):
+	import frappe
+	from frappe import _
+
+	if script_name not in process_scripts:
+		frappe.throw(_("Script '{0}' is not part of process '{1}'").format(script_name, process_of(instance)))
+	if not frappe.db.exists("Server Script", script_name) or frappe.db.get_value(
+		"Server Script", script_name, "disabled"
+	):
+		frappe.throw(_("Library script '{0}' is missing or disabled").format(script_name))
+
+	script_doc = frappe.get_doc("Server Script", script_name)
+	check_server_script(script_doc, process_of(instance), process_scripts[script_name])
+
+	namespace = {"frappe": frappe, "__builtins__": __builtins__, "import_script": _refuse_nested_import}
+	exec(script_doc.script, namespace)  # nosemgrep: frappe-semgrep-rules.rules.security.frappe-codeinjection-eval
+
+	functions = {
+		name: value
+		for name, value in namespace.items()
+		if isinstance(value, FunctionType) and value is not _refuse_nested_import and not name.startswith("_")
+	}
+	return namedtuple("Library", functions)(**functions)
+
+
+def _refuse_nested_import(script_name: str):
+	import frappe
+	from frappe import _
+
+	frappe.throw(_("A library script cannot import another script ('{0}')").format(script_name))
+
+def _check_script_permissions(
+	script_text: str, label: str, allowed: frozenset = frozenset(), library_violations: list | None = None
+) -> None:
 	"""Run the save-time AST validator again right before exec() and throw on any violation.
 
 	Shared by Server Script tasks, inline <bpmn:script> tasks, conditions and run_logix_test_case.
@@ -34,7 +96,7 @@ def _check_script_permissions(script_text: str, label: str, allowed: frozenset =
 
 	from processa.ai_agent_security.code_checks.script_validator import deep_inspect_script
 
-	violations = deep_inspect_script(script_text or "", allowed=allowed)
+	violations = deep_inspect_script(script_text or "", allowed=allowed) + (library_violations or [])
 	if violations:
 		_f.log_error(
 			title=f'BPMN Script "{label}": execution blocked',
@@ -163,6 +225,10 @@ class FrappeScriptEngine(PythonScriptEngine):
 			_frappe.flags.ignore_permissions = False
 			_frappe.flags.in_processa_script = saved_in_script
 
+	@cached_property
+	def _import_script(self):
+		return make_import_script(self._instance, self._script_task_extensions)
+
 	def _agent_for_script(self, script_name: str) -> str:
 		"""The agent whose map runs this Server Script, or "" for an ordinary process.
 
@@ -253,7 +319,7 @@ class FrappeScriptEngine(PythonScriptEngine):
 			)
 			return
 
-		check_server_script(script_doc)
+		check_server_script(script_doc, process_of(self._instance), getattr(task.task_spec, "bpmn_id", None))
 
 		# Build locals: workflow variables + framework context
 		#
@@ -270,6 +336,7 @@ class FrappeScriptEngine(PythonScriptEngine):
 		local_vars.update(
 			{
 				"frappe": _frappe,
+				"_": _frappe._,
 				# which agent this script belongs to, if any.
 				#
 				# A script task inside an agent's own map IS the agent acting, and
@@ -293,6 +360,7 @@ class FrappeScriptEngine(PythonScriptEngine):
 				# - without resorting to locals()/globals() (blocked by the
 				# script-security validator).
 				"task_data": dict(task.data),
+				"import_script": self._import_script,
 			}
 		)
 		if self._context_doctype and self._context_docname:
