@@ -5,40 +5,45 @@ Every non-text thing a chat agent may send to a screen, defined once, as data.
 ## The layering
 
 The AG-UI protocol (`ag-ui-protocol==0.1.10`) defines **26 standard event
-types** — run lifecycle, text messages, thinking, tool calls, state — and
+types** - run lifecycle, text messages, thinking, tool calls, state - and
 **no UI components**. Everything ONE-FM-specific rides in `CustomEvent` with
 a name from the `onefm.*` namespace, defined in `schemas/events.json`.
 
 Rules that keep uniformity from drifting:
 
-1. **Non-text information travels only as typed `onefm.*` CustomEvents** —
+1. **Non-text information travels only as typed `onefm.*` CustomEvents** -
    never as JSON inside message text, never as bare named SSE lines.
 2. **Cards render and request; the host surface applies.** A card's action
    goes through the panel event bus; the host (editor, canvas, builder,
    form) performs the mutation. That is what makes every card testable from
    a recorded fixture.
 3. **Errors surface only as the standard `RunError`.** Keep-alives are SSE
-   comments — transport, not events.
-4. **An unknown `onefm.*` name fails the conformance build**
-   and renders as a safe fallback in the panel — never a broken transcript.
+   comments - transport, not events.
+4. **An unknown `onefm.*` name fails the conformance tests**
+   (`ai_agent_conversations/tests/test_agui_conformance.py`) and renders as a
+   safe fallback in the panel (`frontend/src/utils/cardRegistry.js`), never a
+   broken transcript.
 
 ## The events
 
-See `schemas/events.json` — each entry carries its producers, JSON Schema,
+See `schemas/events.json` - each entry carries its producers, JSON Schema,
 a recorded example, and rendering notes. Summary:
 
 | Event | Producer | Rendered as |
 |---|---|---|
 | `onefm.choice` | any agent | option buttons (panel) |
-| `onefm.proposed_config` / `onefm.proposed_update` | AI Assistant | ProposalCard |
-| `onefm.script_diff` | Logix | ScriptDiffCard |
+| `onefm.proposed_config` | AI Assistant | ProposalCard |
+| `onefm.proposed_update` | AI Assistant, or any agent with Artifact Type Record | ProposalCard (field-values variant) |
+| `onefm.created_config` | AI Assistant | no card; hosts listen for it |
+| `onefm.script_diff` | Logix, or any agent with Artifact Type Script | ScriptDiffCard |
 | `onefm.test_cases` | Logix | TestCaseCard |
-| `onefm.bpmn_preview` | ProsAlly | DiagramPreviewCard |
-| `onefm.doctype_schema` | Docu | DocTypeSchemaCard |
+| `onefm.bpmn_preview` | ProsAlly, or any agent with Artifact Type Diagram | DiagramPreviewCard |
+| `onefm.doctype_schema` | Docu, or any agent with Artifact Type Schema | DocTypeSchemaCard |
 | `onefm.table` | any agent | DataTable |
 | `onefm.conversation_title` | any agent | header title (panel chrome) |
+| `onefm.progress` | ProsAlly (through `turn_signal.publish_progress`) | one live progress line under the transcript (panel chrome) |
 | `onefm.mode_transition` | Lumina modes | mode chip (panel chrome) |
-| `onefm.lucrusher_result` | LuCrusher | one-ai surface |
+| `onefm.lucrusher_result` | LuCrusher | LuCrusherResultCard, one panel per intent |
 
 Explicitly **not** contract events: heartbeats (transport comments) and
 `get_page_snapshot` (becomes a standard AG-UI client-side tool call).
@@ -60,7 +65,7 @@ Type** (AI Agent Configuration → Chat Surface):
 `artifact` is either the bare content or `{"content": ..., "name": ...,
 "mode": ...}`. A reply's own `artifact_type` key overrides the configured
 one. Replies already carrying a bespoke key (`modified_script`, `bpmn_xml`,
-`doctype_ir`, `proposed_update`…) are left to their own translators — one
+`doctype_ir`, `proposed_update`…) are left to their own translators - one
 reply never renders two cards for the same thing.
 
 ## Using it
@@ -73,6 +78,5 @@ agui_contract.validate_event("onefm.choice", value)   # [] when valid
 agui_contract.validate_examples()                     # contract self-check
 ```
 
-`translators.py` derives these events from the legacy per-agent reply dicts
-at the shared-stream boundary, so the panel consumes only contract events
-even before each agent's migration story lands.
+`translators.py` derives these events from the per-agent reply dicts at the
+shared-stream boundary, so the panel consumes only contract events.

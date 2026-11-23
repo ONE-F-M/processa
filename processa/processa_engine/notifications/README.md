@@ -19,16 +19,27 @@ The sender is the Email Account named on the task (`notifyAssigneeAccount` or `e
 - `comment_fields.py`: the Custom Fields on Comment.
 - `fields.py`: the fact and detail rows shown in a card.
 - `sanitizer.py`: cleans HTML for the AMP part.
+- `push_notification.py`: mobile push notifications for Push Notification service tasks.
 - Templates: `processa/templates/emails/` (`amp_shell.html`, `html_fallback.html`, `layout_shell.html`, `layout_fallback.html`, `layouts/`, `partials/`).
 
 Until Google approves the sender, every recipient outside the developer allowlist sees the HTML fallback, so treat the fallback as a deliverable in its own right.
 
 ## Endpoints the AMP part calls
 
-- `processa.api.email_actions.handle_amp_action`: completes a BPMN task from a button.
-- `processa.api.email_actions.submit_comment`: posts a comment.
+All in `processa/api/email_actions.py`:
 
-Gmail's AMP requests carry no Frappe session; the signed token is the only trust anchor. CORS for these requests is set by `processa/templates/deployment/amp_cors_nginx.conf`, which must be included in the site's nginx config, with `Access-Control-Allow-Origin` reflecting `https://mail.google.com`.
+- `handle_amp_action`: completes a BPMN task from a button.
+- `submit_comment`: posts a comment.
+- `get_amp_task_status`: the task's current state, shown in the card.
+- `get_amp_thread`, `post_amp_reply`, `post_amp_note`: the conversation thread in the card.
+- `download_attachment`: attachment links in the card's detail rows.
+
+Gmail's AMP requests carry no Frappe session; the signed token is the only trust anchor.
+
+CORS has two halves:
+
+- **Preflight (OPTIONS).** Frappe answers every OPTIONS request itself before it reaches an endpoint, so the OPTIONS branches in `email_actions.py` never run. For `handle_amp_action`, `processa/templates/deployment/amp_cors_nginx.conf` answers the preflight at nginx instead; it must be included in the site's nginx config. It reflects the request's `Origin`, whatever it is.
+- **POST responses.** `Access-Control-Allow-Origin` comes from Frappe's `allow_cors` in `site_config.json`, which must include `https://mail.google.com` (and `https://amp.gmail.dev` for the Playground). `actions.set_amp_cors_headers` adds the AMP-specific headers.
 
 ## Validating AMP
 
