@@ -309,3 +309,25 @@ class TestFinalizeSelfReview(FrappeTestCase):
 		)
 
 		self.assertIn("uses a ScriptTask for a signal", raised)
+
+	def test_elements_numbered_without_a_dot_are_counted_and_checked(self):
+		block = "\n".join(
+			[
+				"A. HEADER",
+				"B. LANES",
+				"C. ELEMENTS",
+				"1 StartEvent 'Asked' lane1",
+				"2 ScriptTask 'Broadcast returned signal' lane1 src=a.py:b",
+				"D. SEQUENCE FLOWS",
+				"E. ANTI-LINTING",
+			]
+		)
+		prompts = {"processes": [{**_process(), "prompt_block": block, "source": "Client Event"}]}
+		output, raised = _review(
+			{"intent": "PROSALLY_PROMPT_DRAFT", "response": "ok", "prosally_prompts": prompts},
+			{"finalize_reviewed": True},
+		)
+
+		self.assertEqual(raised, "")
+		self.assertEqual(output["prosally_prompts"]["processes"][0]["element_count"], 2)
+		self.assertIn("uses a ScriptTask for a signal", output["response"])
