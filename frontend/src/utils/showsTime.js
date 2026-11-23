@@ -11,6 +11,7 @@ export function showsTime(items, index, format) {
 	return !next || item.kind === "user" || next.kind === "user" || format(next.ts) !== format(item.ts);
 }
 
+// Live entries take the client clock; restored entries keep the stored creation time as-is.
 export function stampNow() {
 	return new Date();
 }
@@ -20,6 +21,7 @@ export function formatTime(ts) {
 	return t.isValid() ? t.short() : "";
 }
 
+// Stored turns as transcript items; restored cards are concluded, the newest reply's options stay live.
 export function restoredItems(history, isNewestPage) {
 	const out = [];
 	history.forEach((m, index) => {
@@ -27,8 +29,7 @@ export function restoredItems(history, isNewestPage) {
 			out.push({ kind: "user", text: m.content, ts: m.timestamp });
 			return;
 		}
-		// a stored rate-limit refusal carries role "system" —
-		// restore it as a system notice, same as when it first streamed.
+		// A stored rate-limit refusal carries role "system"; restore it as a system notice.
 		if (m.role === "system") {
 			if (m.content) out.push({ kind: "system", text: m.content, ts: m.timestamp });
 			return;
@@ -46,8 +47,7 @@ export function restoredItems(history, isNewestPage) {
 				out.push({
 					kind: "choice",
 					value,
-					// What the user said next, when it was one of the options —
-					// so a reopened conversation shows which way it went.
+					// What the user said next when it was one of the options, so a reopened chat shows the answer.
 					answered: answeredWith(history, index, value.options || []),
 					restored: !(isNewestPage && isLastOfPage),
 					ts: m.timestamp,

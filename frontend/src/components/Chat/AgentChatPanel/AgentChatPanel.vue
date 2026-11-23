@@ -235,7 +235,6 @@
 import MarkdownIt from "markdown-it";
 import { Badge, Button, Dialog, FileUploadHandler, frappeRequest } from "frappe-ui";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { dayjs } from "@/dayjs";
 import { streamAgentTurn } from "@/utils/aguiClient";
 import { chatDraftKey, useChatDraft } from "@/composables/useChatDraft";
 import ProposedFieldsTray from "../ProposedFieldsTray/ProposedFieldsTray.vue";
@@ -490,9 +489,6 @@ function renderMarkdown(text) {
 	return md.render(text || "");
 }
 
-// Transcript timestamps. Live entries are stamped with the client
-// clock as they land; resumed entries carry the row's `creation` from
-// conversation_history, displayed as-is (site timezone, no conversion).
 function scrollDown() {
 	nextTick(() => {
 		if (log.value) log.value.scrollTop = log.value.scrollHeight;
@@ -799,14 +795,6 @@ const hasOlder = ref(false);
 const loadingOlder = ref(false);
 const oldestMessage = ref("");
 
-// Turn stored turns into transcript items: the words, then the cards and
-// option buttons the reply produced when it first streamed.
-//
-// Restored cards do not act. Nothing records whether an apply succeeded, and
-// re-applying a diagram or a schema is destructive — so a card that came back
-// from history is shown concluded. An unanswered question is different: the
-// only thing its buttons do is send a sentence, so the newest reply's options
-// stay live and the conversation can carry on where it stopped.
 async function loadOlder() {
 	if (loadingOlder.value || !oldestMessage.value) return;
 	loadingOlder.value = true;
