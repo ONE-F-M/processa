@@ -18,7 +18,7 @@ from processa.ai_agent_observability import observability
 from processa.processa_engine.agent_runtime.llm_types import ToolSpec
 
 
-def compile_shape_tools(tool_shapes, instance) -> list:
+def compile_shape_tools(tool_shapes, instance, process_data: dict | None = None) -> list:
 	"""
 	Compile an AI Agent Task's tool-shape descriptors into callable ``ToolSpec``s.
 
@@ -90,7 +90,7 @@ def compile_shape_tools(tool_shapes, instance) -> list:
 		description = (shape.get("description") or "").strip() or bpmn_id
 		tools.append(
 			ToolSpec(
-				fn=_make_shape_fn(instance, bpmn_id, shape),
+				fn=_make_shape_fn(instance, bpmn_id, shape, process_data),
 				name=bpmn_id,
 				description=description,
 				parameters=shape.get("parameters") or {},
@@ -165,9 +165,9 @@ def _make_human_stub(bpmn_id: str):
 	return fn
 
 
-def _make_shape_fn(instance, bpmn_id: str, task_cfg: dict):
+def _make_shape_fn(instance, bpmn_id: str, task_cfg: dict, process_data: dict | None = None):
 	def fn(**kwargs):
-		return execute_shape(instance, bpmn_id, task_cfg, kwargs)
+		return execute_shape(instance, bpmn_id, task_cfg, kwargs, process_data)
 
 	return fn
 
@@ -262,7 +262,7 @@ def _announce(instance, event_type: str, bpmn_id: str) -> None:
 		pass
 
 
-def execute_shape(instance, bpmn_id: str, task_cfg: dict | None, kwargs: dict) -> str:
+def execute_shape(instance, bpmn_id: str, task_cfg: dict | None, kwargs: dict, process_data: dict | None = None) -> str:
 	"""
 	Execute a single shape as a function tool and return a JSON string result.
 
@@ -290,7 +290,7 @@ def execute_shape(instance, bpmn_id: str, task_cfg: dict | None, kwargs: dict) -
 
 	try:
 		with turn_signal.mask_live_text():
-			return _execute_shape_body(instance, bpmn_id, task_cfg, kwargs)
+			return _execute_shape_body(instance, bpmn_id, task_cfg, kwargs, process_data)
 	except ToolDeferred:
 		# Waiting, not finished: an end here would clear a live status line.
 		still_running = True
@@ -301,11 +301,11 @@ def execute_shape(instance, bpmn_id: str, task_cfg: dict | None, kwargs: dict) -
 			_announce(instance, "TOOL_CALL_END", bpmn_id)
 
 
-def _execute_shape_body(instance, bpmn_id: str, task_cfg: dict | None, kwargs: dict) -> str:
+def _execute_shape_body(instance, bpmn_id: str, task_cfg: dict | None, kwargs: dict, process_data: dict | None = None) -> str:
 	try:
 		if task_cfg is None:
 			task_cfg = (getattr(instance, "_service_task_extensions", {}) or {}).get(bpmn_id, {})
-		task = _synthetic_task(bpmn_id, kwargs)
+		task = _synthetic_task(bpmn_id, kwargs, process_data)
 		server_script = task_cfg.get("serverScript", "")
 		service_type = task_cfg.get("serviceType", "")
 
@@ -552,13 +552,16 @@ def _waiting_marker(task) -> dict | None:
 	return None
 
 
-def _synthetic_task(bpmn_id: str, kwargs: dict):
+def _synthetic_task(bpmn_id: str, kwargs: dict, process_data: dict | None = None):
 	"""A minimal task-like object the script/dispatch paths accept: carries the
-	LLM arguments in ``data`` and the bpmn_id on ``task_spec``. A ``workflow``
+	LLM arguments in ``data`` and the bpmn_id on ``task_spec``. ``process_data`` is the calling agent
+	task's variables, kept apart from ``data`` so a connector's templates can read them without them
+	being mistaken for what the tool produced. A ``workflow``
 	stub with its own ``data`` satisfies handlers (e.g. send tasks) that peek at
 	the containing scope."""
 	return frappe._dict(
 		data=dict(kwargs),
+		process_data=process_data if isinstance(process_data, dict) else None,
 		task_spec=frappe._dict(bpmn_id=bpmn_id, name=bpmn_id, description=bpmn_id),
 		workflow=frappe._dict(data={}),
 	)
@@ -571,6 +574,7 @@ def _run_server_script(instance, script_name: str, task, bpmn_id: str, shape_con
 	but invoked directly so the agent can call it as a tool. LLM-supplied
 	arguments are visible to the script as locals.
 	"""
+	from processa.processa_engine.dispatch.common import merge_task_data
 	from processa.processa_engine.engine import check_server_script
 
 	script_doc = frappe.get_doc("Server Script", script_name)
@@ -592,9 +596,10 @@ def _run_server_script(instance, script_name: str, task, bpmn_id: str, shape_con
 			# Diagram-set spiffworkflow:aiAgentConfig override; empty when unset.
 			"ai_agent_config": (shape_config or {}).get("aiAgentConfig", ""),
 			# Same convention as the engine's FrappeScriptEngine: scripts may
-			# read their inputs bundled under `task_data` (the LLM-supplied
-			# arguments, here) instead of as bare locals.
-			"task_data": dict(task.data),
+			# read their inputs bundled under `task_data` instead of as bare
+			# locals. That is the calling task's variables with the LLM-supplied
+			# arguments on top, so a value the model passed wins unless it was empty.
+			"task_data": merge_task_data(getattr(task, "process_data", None), task.data),
 			# WHICH shape is running. The tool name the LLM called IS the shape's
 			# bpmn_id, so a family of same-shaped tools can share ONE Server
 			# Script and dispatch on this instead of duplicating a body per tool
