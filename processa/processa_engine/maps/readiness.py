@@ -112,14 +112,29 @@ def check_readiness(xml_content: str, model_name: str = None) -> dict:
 		collect_script_security_violations,
 		model_scripts,
 	)
+	from processa.ai_agent_security.code_checks.script_validator import NOT_APPROVABLE
 
 	process = model_name and frappe.db.get_value("BPMN Process Model", model_name, "process_name")
 	security_items = []
 	called_scripts = frozenset(model_scripts(model_name)) if model_name else frozenset()
+	requested = {}
 	for finding in collect_script_security_violations(xml_content, process, called_scripts):
-		request = _(", request {0} is open").format(finding["request"]) if finding["request"] else ""
+		request = finding["request"]
+		if request and request not in requested:
+			requested[request] = set(
+				frappe.get_all("Script Approval Request Item", filters={"parent": request}, pluck="item_name")
+			)
+		if finding["category"] in NOT_APPROVABLE:
+			detail = _("Fix it: it cannot be approved")
+		elif request and finding["name"] in requested[request]:
+			detail = _("Waiting on {0}").format(request)
+		elif request:
+			detail = _("Not in {0}: request it after {0} is decided").format(request)
+		else:
+			detail = _("Request approval in Logix, under Security")
 		security_items.append({
-			"name": f"{finding['label']}: {finding['message']}{request}",
+			"name": _("{0}: {1}").format(finding["server_script"] or finding["label"], finding["message"]),
+			"detail": detail,
 			"exists": False,
 			"type": "check",
 		})

@@ -204,16 +204,27 @@ class TestApprovalGates(FrappeTestCase):
 
 	def test_readiness_lists_what_needs_approval_and_the_open_request(self):
 		request = self._request()
-		items = {
-			item["name"]
+		items = self._security_items()
+		self.assertEqual(len(items), 1)
+		(item,) = items
+		for part in (SCRIPT, "requests", "Network", "needs approval"):
+			self.assertIn(part, item["name"])
+		self.assertEqual(item["detail"], f"Waiting on {request.name}")
+
+	def test_readiness_says_an_item_added_after_the_request_is_not_in_it(self):
+		request = self._request()
+		frappe.db.set_value("Server Script", SCRIPT, "script", "import requests\nimport socket\nresult['ok'] = 1")
+		details = {item["name"].split(": ", 1)[1]: item["detail"] for item in self._security_items()}
+		self.assertEqual(details["requests needs approval (Network)"], f"Waiting on {request.name}")
+		self.assertTrue(details["socket needs approval (Network)"].startswith(f"Not in {request.name}"))
+
+	def _security_items(self):
+		return [
+			item
 			for category in check_readiness(_bpmn_with_server_script(SCRIPT, TASK), MODEL)["categories"]
 			if category["label"] == "Script Security"
 			for item in category["items"]
-		}
-		self.assertEqual(len(items), 1)
-		(item,) = items
-		for part in (TASK, "requests", "Network", "needs approval", request.name):
-			self.assertIn(part, item)
+		]
 
 	def test_deploy_is_refused_naming_each_flagged_task_and_passes_once_approved(self):
 		xml = _bpmn_with_server_script(SCRIPT, TASK)
