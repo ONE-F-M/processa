@@ -77,6 +77,25 @@ STEP_TAGS = tuple(
 )
 
 DIAGRAM_REPLIES = ("BPMN_MODIFIED", "BPMN_GENERATED")
+IR_NODE_TYPES = frozenset(
+	{
+		"startEvent",
+		"endEvent",
+		"intermediateThrowEvent",
+		"intermediateCatchEvent",
+		"task",
+		"userTask",
+		"scriptTask",
+		"serviceTask",
+		"manualTask",
+		"businessRuleTask",
+		"exclusiveGateway",
+		"parallelGateway",
+		"inclusiveGateway",
+		"subProcess",
+		"callActivity",
+	}
+)
 DIAGRAM_VERSION_SUFFIX = re.compile(r"\s+-\s+v\d+\s*$", re.I)
 MEMORY_NOTES_LIMIT = 8
 MEMORY_NOTES_HEADER = "Notes from earlier work on this process:"

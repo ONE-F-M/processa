@@ -1,4 +1,4 @@
-"""ProsAlly answers without a redraw: diagnose an error, compare with a spec, tidy the layout, type plain tasks."""
+"""ProsAlly answers without a redraw: diagnose an error, compare with a spec, tidy the layout, type plain tasks, edit the diagram."""
 
 import html
 import json
@@ -10,6 +10,7 @@ from frappe import _
 
 from processa.ai_agent_memory.text_clean import strip_html
 from processa.ai_agent_registry.definitions.prosally.helpers import (
+	IR_NODE_TYPES,
 	NS,
 	REQUEST_STOPWORDS,
 	STEP_TAGS,
@@ -18,6 +19,12 @@ from processa.ai_agent_registry.definitions.prosally.helpers import (
 	prosally_config,
 	quoted,
 	register_namespaces,
+)
+from processa.ai_agent_registry.definitions.prosally.tools_operations import (
+	add_subprocess_output,
+	add_workflow_state_output,
+	reroute_arrow_output,
+	switch_gateways_output,
 )
 from processa.ai_agent_registry.definitions.prosally.tools_pipeline import (
 	audit_layout,
@@ -39,13 +46,6 @@ DIAGNOSE_SCRIPT_CHARS = 4000
 DIAGNOSE_MIN_NAME_CHARS = 3
 DIAGNOSE_ORIGINS = frozenset({"map", "server_script", "unknown"})
 
-IR_NODE_TYPES = frozenset(
-	{
-		"startEvent", "endEvent", "intermediateThrowEvent", "intermediateCatchEvent", "task", "userTask", "scriptTask",
-		"serviceTask", "manualTask", "businessRuleTask", "exclusiveGateway", "parallelGateway", "inclusiveGateway",
-		"subProcess", "callActivity",
-	}
-)  # fmt: skip
 IR_SKIPPED_TAGS = frozenset({"laneSet", "extensionElements", "incoming", "outgoing", "documentation"})
 
 
@@ -385,6 +385,23 @@ def unsupported_kinds(xml: str) -> list[str]:
 		if scope.tag in (bpmn + "process", bpmn + "subProcess"):
 			kinds |= {e.tag.rsplit("}", 1)[-1] for e in scope} - allowed
 	return sorted(re.sub(r"(?<!^)(?=[A-Z])", " ", kind).lower() for kind in kinds)
+
+
+def diagram_edit_output(xml: str, text: str) -> dict | None:
+	"""The reply to a message that only asks for one edit ProsAlly makes in code, or None to leave it to the model."""
+	if not (xml or "").strip():
+		return None
+	for operation in (
+		move_to_lane_output,
+		add_subprocess_output,
+		add_workflow_state_output,
+		switch_gateways_output,
+		reroute_arrow_output,
+	):
+		reply = operation(xml, text)
+		if reply:
+			return reply
+	return None
 
 
 LANE_MOVE_VERBS = r"\b(?:move|put|bring|shift|place|drag|relocate)\b"
