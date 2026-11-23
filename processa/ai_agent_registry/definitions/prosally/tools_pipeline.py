@@ -376,6 +376,19 @@ def compile_ir(ir: dict) -> dict:
     return out
 
 
+def audit_layout(xml: str) -> dict:
+    """How the drawing of xml measures: crossings, lines through shapes, lines on top of each other, label clashes."""
+    result = subprocess.run(
+        [find_node(), _pipeline_path()],
+        input=json.dumps({"audit": xml}),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    return json.loads(result.stdout)
+
+
 # ── Diagram reading (pure string parsing) ────────────────────────────────────
 def extract_process_name(bpmn_xml: str) -> str:
     """Extract the human-readable process name from BPMN XML.

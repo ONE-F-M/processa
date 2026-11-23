@@ -58,10 +58,19 @@ class TestCrossingNote(FrappeTestCase):
 		)
 
 
+CLEAN = {"crossings": 0, "throughShape": 0, "overlaps": 0}
+
+
 class TestRelayoutReply(FrappeTestCase):
+	def _reply(self, relaid, audits, text=""):
+		with (
+			patch.object(tools_review, "relayout", return_value=relaid),
+			patch.object(tools_review, "audit_layout", side_effect=audits),
+		):
+			return tools_review.relayout_output("<old />", text)
+
 	def test_a_redrawn_diagram_says_what_the_person_can_do_about_layout(self):
-		with patch.object(tools_review, "relayout", return_value=("<xml />", "")):
-			out = tools_review.relayout_output("<old />")
+		out = self._reply(("<xml />", ""), [CLEAN, CLEAN])
 
 		self.assertEqual(out["action_intent"], "RELAYOUT")
 		self.assertIn("Layout is computed automatically", out["response"])
@@ -69,13 +78,69 @@ class TestRelayoutReply(FrappeTestCase):
 			self.assertIn(thing, out["response"])
 
 	def test_an_unchanged_layout_still_names_the_two_things(self):
-		with patch.object(tools_review, "relayout", return_value=(None, "same")):
-			out = tools_review.relayout_output("<xml />")
+		out = self._reply((None, "same"), [CLEAN])
 
 		self.assertEqual(out["intent"], "CLARIFY")
-		self.assertIn("already the best", out["response"])
+		self.assertIn("came out where it already is", out["response"])
 		for thing in TWO_THINGS:
 			self.assertIn(thing, out["response"])
+
+	def test_each_ask_is_answered_with_what_was_measured(self):
+		out = self._reply(
+			("<xml />", ""),
+			[{**CLEAN, "crossings": 4}, {**CLEAN, "crossings": 1}],
+			"Fix the spacing, align the steps, untangle the crossing lines and make the lines converge",
+		)
+
+		self.assertIn("Crossing lines: 4 before, 1 now.", out["response"])
+		self.assertIn("sized to the lines they carry", out["response"])
+		self.assertIn("layout grid", out["response"])
+		self.assertIn("meet at one point", out["response"])
+
+	def test_a_layout_with_more_crossings_is_not_shown(self):
+		out = self._reply(
+			("<xml />", ""), [{**CLEAN, "crossings": 2}, {**CLEAN, "crossings": 9}], "fewer crossings"
+		)
+
+		self.assertEqual(out["intent"], "CLARIFY")
+		self.assertNotIn("bpmn_xml", out)
+		self.assertIn("9 crossing line(s) where yours has 2", out["response"])
+
+	def test_an_unchanged_layout_says_why_each_ask_cannot_be_met(self):
+		out = self._reply((None, "same"), [{**CLEAN, "crossings": 3}], "more space between the steps please")
+
+		self.assertIn("fewer than 3 crossing line(s)", out["response"])
+		self.assertIn("cannot set a gap of my own", out["response"])
+
+	def test_only_layout_words_count_as_layout_asks(self):
+		self.assertEqual(tools_replies.layout_asks("Add a review step after approval"), [])
+		self.assertEqual(tools_replies.layout_asks("Line them up"), ["alignment"])
+		self.assertEqual(tools_replies.layout_asks("the lines criss-cross"), ["crossings"])
+
+	def test_a_change_with_a_layout_ask_reports_it_and_one_without_says_nothing(self):
+		with patch.object(tools_replies, "audit_layout", side_effect=[{**CLEAN, "crossings": 2}, CLEAN]):
+			note = tools_replies.layout_note("<old />", "<new />", "add a step and remove the crossing lines")
+
+		self.assertEqual(note, " Crossing lines: 2 before, 0 now.")
+		self.assertEqual(tools_replies.layout_note("<old />", "<new />", "add a step"), "")
+
+
+class TestConvergingLines(FrappeTestCase):
+	def test_lines_through_an_added_gateway_meet_at_its_centre(self):
+		def edge(*points):
+			return "".join(f'<di:waypoint x="{x}" y="{y}" />' for x, y in points)
+
+		flows = {"a": ("t1", "g"), "b": ("t2", "g"), "c": ("g", "t3")}
+		drawn = {
+			"a": edge((0, 0), (90, 0), (90, 25), (100, 25)),
+			"b": edge((0, 50), (100, 50)),
+			"c": edge((150, 25), (200, 25)),
+			"g": '<dc:Bounds x="100" y="0" width="50" height="50" />',
+		}
+
+		route = tools_review._route("a", flows, drawn, {"g"})
+
+		self.assertEqual(route, [("0", "0"), ("90", "0"), ("90", "25"), ("125", "25"), ("200", "25")])
 
 
 class TestRegressionCases(FrappeTestCase):
@@ -88,7 +153,7 @@ class TestRegressionCases(FrappeTestCase):
 			self.skipTest("ProsAlly and its Regressions suite are not on this site")
 		return suite
 
-	def test_the_three_instructions_expect_relayout_and_no_drawing_tool(self):
+	def test_each_instruction_expects_relayout_and_no_drawing_tool(self):
 		suite = self._suite()
 
 		seed.execute()
@@ -101,7 +166,8 @@ class TestRegressionCases(FrappeTestCase):
 		self.assertEqual(sorted(c.title for c in cases), sorted(titles))
 		case = frappe.get_doc("AI Eval Case", cases[0].name)
 		self.assertEqual([a.assertion_type for a in case.assertions], ["regex", "no_tool_call"])
-		self.assertIn("RELAYOUT", case.assertions[0].value)
+		self.assertRegex("Shall I lay the diagram out again?", case.assertions[0].value)
+		self.assertNotRegex("Shall I add the step?", case.assertions[0].value)
 		self.assertIn("modify_process", case.assertions[1].value)
 		self.assertEqual([c.tool_name for c in case.expected_tool_calls], ["classify_intent"])
 		self.assertIn("current_xml", case.input_context)

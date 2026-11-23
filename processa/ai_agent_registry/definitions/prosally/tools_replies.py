@@ -18,7 +18,12 @@ from processa.ai_agent_registry.definitions.prosally.helpers import (
 	prosally_config,
 	quoted,
 )
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import element_names
+from processa.ai_agent_registry.definitions.prosally.tools_pipeline import (
+	audit_layout,
+	check_topology,
+	element_names,
+	flow_pairs_from_xml,
+)
 from processa.ai_agent_registry.definitions.prosally.tools_prompts import dms_answer_output
 from processa.ai_agent_registry.definitions.shared.helpers import extract_json, format_history
 from processa.processa_engine.agent_runtime.turn_state import get_turn, update_turn
@@ -452,3 +457,93 @@ def no_stage_reply(conversation: str) -> dict:
 		"error_code": NO_STAGE_REPLY,
 		"retryable": False,
 	}
+
+
+def layout_note(old_xml: str, new_xml: str, text: str) -> str:
+	"""What a change did for the layout asks in text, measured on both drawings; "" when text makes none."""
+	asks = layout_asks(text)
+	return layout_change_summary(audit_layout(old_xml), audit_layout(new_xml), asks) if asks else ""
+
+
+def layout_change_summary(before: dict, after: dict, asks: list[str]) -> str:
+	"""The measured change for each layout ask, each sentence led by a space."""
+	said = ""
+	if "crossings" in asks or before["crossings"] != after["crossings"]:
+		said += " " + _("Crossing lines: {0} before, {1} now.").format(
+			before["crossings"], after["crossings"]
+		)
+	if before["throughShape"] != after["throughShape"]:
+		said += " " + _("Lines through a shape: {0} before, {1} now.").format(
+			before["throughShape"], after["throughShape"]
+		)
+	if before["overlaps"] != after["overlaps"]:
+		said += " " + _("Lines on top of each other: {0} before, {1} now.").format(
+			before["overlaps"], after["overlaps"]
+		)
+	if "spacing" in asks:
+		said += " " + _("The gaps between columns and lanes are sized to the lines they carry.")
+	if "alignment" in asks:
+		said += " " + _("Every step sits on the layout grid of columns and lanes.")
+	if "convergence" in asks:
+		said += " " + _("Lines that join meet at one point before the step they lead to.")
+	return said
+
+
+def layout_limits(xml: str, audit: dict, asks: list[str]) -> str:
+	"""Why a layout that came out the same cannot meet each ask, each sentence led by a space."""
+	said = ""
+	if audit["crossings"]:
+		topology = check_topology(flow_pairs_from_xml(xml))
+		if topology["planar"] is False:
+			names = {
+				e.get("id"): e.get("name") or e.get("id") for e in ET.fromstring(xml).iter() if e.get("id")
+			}
+			who = ", ".join(quoted(names.get(n, n)) for n in topology["obstruction"][:5])
+			said += " " + _(
+				"{0} crossing line(s) stay because the paths through {1} cannot all be laid flat."
+			).format(audit["crossings"], who)
+		else:
+			said += " " + _("I could not draw it with fewer than {0} crossing line(s).").format(
+				audit["crossings"]
+			)
+	elif "crossings" in asks:
+		said += " " + _("No lines cross.")
+	if "spacing" in asks:
+		said += " " + _(
+			"I cannot set a gap of my own: the gaps are sized to the lines each column and lane carries."
+		)
+	if "alignment" in asks:
+		said += " " + _("Every step already sits on the layout grid.")
+	if "convergence" in asks:
+		said += " " + _("Lines that join already meet where they join.")
+	return said
+
+
+LAYOUT_ASKS = (
+	(
+		"spacing",
+		re.compile(r"\b(?:spac(?:e|ed|ing)|spread|cramped|crowded|squashed|too close|apart|gaps?)\b", re.I),
+	),
+	(
+		"alignment",
+		re.compile(r"\b(?:align\w*|misaligned|line[sd]? (?:them )?up|lined up|straighten\w*)\b", re.I),
+	),
+	(
+		"crossings",
+		re.compile(r"\b(?:cross(?:ing|es|ed)?|criss-?cross\w*|tangl\w*|untangle|overlap\w*)\b", re.I),
+	),
+	("convergence", re.compile(r"\b(?:converg\w*|come together|meet at)\b", re.I)),
+)
+
+
+def layout_asks(text: str) -> list[str]:
+	"""Which layout asks text makes: spacing, alignment, crossings, convergence."""
+	return [ask for ask, pattern in LAYOUT_ASKS if pattern.search(text)]
+
+
+def layout_is_automatic() -> str:
+	"""What a person can do about the layout, since no single arrow, label or colour is placed by hand."""
+	return _(
+		"Layout is computed automatically, so I cannot place one arrow, label or colour by hand. "
+		"You can drag shapes on the canvas, or change the flow structure and I will lay it out again."
+	)
