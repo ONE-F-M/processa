@@ -7,9 +7,9 @@ from processa.patches.v1_0.seed_lucrusher_eval_suite import (
 	IN_ORDER,
 	LUCID_DOC_ID,
 	PARSED_DOC,
-	_call,
-	_judge,
-	_state,
+	judge_rubric,
+	tool_call,
+	turn_state,
 )
 from processa.patches.v1_0.seed_lucrusher_prosally_grounding_eval_cases import READ_THEN_DRAFT
 from processa.patches.v1_0.seed_lucrusher_skill_eval_cases import NO_REFETCH, seed_cases
@@ -73,7 +73,7 @@ def _context(user_text: str, bot_text: str, state: dict, summary: str) -> dict:
 
 
 def _approve_accept_case() -> dict:
-	state = _state(
+	state = turn_state(
 		"CODEBASE_SCAN_RESULT",
 		confirmed_process={"name": "Client Event", "process_name": "Client Event"},
 		document={"document_id": LUCID_DOC_ID, "title": "Client Event", "page_count": 1},
@@ -90,11 +90,11 @@ def _approve_accept_case() -> dict:
 		"skill": TOPOLOGY_SKILL,
 		"prompt": "analyse the topology for this process",
 		"context": context,
-		"calls": [_call(1, "finalize", "intent", "equals", "TOPOLOGY_PROPOSAL")],
+		"calls": [tool_call(1, "finalize", "intent", "equals", "TOPOLOGY_PROPOSAL")],
 		"assertions": [
 			IN_ORDER,
 			NO_REFETCH,
-			_judge(
+			judge_rubric(
 				"The topology proposes ONE process for the Client Event in which creating, approving and "
 				"accepting the Client Event are steps or workflow states of that one process. Approve and "
 				"Accept are NOT proposed as separate processes, and no process is split off only because "
@@ -105,7 +105,7 @@ def _approve_accept_case() -> dict:
 
 
 def _signal_case() -> dict:
-	state = _state(
+	state = turn_state(
 		"MIGRATION_TASKS_CONFIRMED",
 		confirmed_process={"name": "Pre Employment Check", "process_name": "Pre Employment Check"},
 		document={"document_id": LUCID_DOC_ID, "title": "Pre-Employment Check", "page_count": 1},
@@ -134,7 +134,7 @@ def _signal_case() -> dict:
 		"skill": PROSALLY_SKILL,
 		"prompt": "now write the ProsAlly prompts",
 		"context": context,
-		"calls": [*READ_THEN_DRAFT, _call(2, "finalize", "prosally_prompts", "regex", SIGNAL_DRAWN)],
+		"calls": [*READ_THEN_DRAFT, tool_call(2, "finalize", "prosally_prompts", "regex", SIGNAL_DRAWN)],
 		"assertions": [IN_ORDER],
 	}
 
