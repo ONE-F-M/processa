@@ -412,3 +412,5 @@ processa.patches.v1_0.logix_classifier_routes_revert_vague_and_debug_questions #
 processa.patches.v1_0.logix_baseline_judges_use_an_enabled_model #22-11-2026 Logix Baseline judges that name a disabled model grade with the Logix classifier's model
 processa.patches.v1_0.logix_finalize_explains_a_writer_refusal #22-11-2026 Logix finalize explains a writer the AI model declined instead of asking what the script should do
 processa.patches.v1_0.logix_writer_reads_doctype_fields #22-11-2026 Logix Build Context loads the request's DocType fields, its import is approved and the writer prompt lists them
+processa.patches.v1_0.seed_prosally_diagram_edit_cases
+processa.patches.v1_0.seed_prosally_route_and_constraint_cases #23-11-2026 ProsAlly Baseline gains one case per route (explain, targeted edit, create) and per request constraint
