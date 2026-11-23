@@ -6,6 +6,10 @@ class LLMTruncatedError(RuntimeError):
 	"""The model stopped because it hit its output-token ceiling."""
 
 
+class LLMRefusedError(RuntimeError):
+	"""The provider's safety system stopped the reply before it gave any answer."""
+
+
 @dataclass
 class ToolSpec:
 	"""Provider-agnostic tool definition. A human tool suspends the loop and its fn is never called."""

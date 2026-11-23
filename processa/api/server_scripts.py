@@ -12,6 +12,7 @@ from frappe.utils import cint, escape_html, now_datetime
 
 from processa.processa_engine.agent_runtime import turn_signal
 from processa.processa_engine.agent_runtime.executor import ErrorCode
+from processa.ai_agent_registry.definitions.logix import helpers as logix_helpers
 from processa.ai_agent_security.rate_limit import RateLimited
 from processa.api.common import shape_reply
 from processa.utils.session import as_user
@@ -420,6 +421,11 @@ def _stopped_reason(error_code: str | None, error_message: str | None) -> str:
 		return _("The model timed out before it answered. Please try again.")
 	if error_code == "BUDGET_EXCEEDED":
 		return _("The agent stopped because this request went over its budget. Try a smaller request.")
+	if error_code == "MODEL_REFUSED":
+		return _(
+			"The AI model declined this request. It does this for code that runs whatever text it is given "
+			"or wipes data in bulk. Ask for the result you need without that step instead."
+		)
 	known_codes = {code.value for code in ErrorCode}
 	if error_code and (error_code == "UNEXPECTED_ERROR" or error_code not in known_codes):
 		# The traceback is in the Error Log; the raw exception text is not for the user.
@@ -513,7 +519,6 @@ def create_server_script(
 	doc.__newname = script_name
 	doc.script_type = script_type
 	doc.script = script
-	doc.disabled = doc.processa_pending_review = 1  # a System Manager reviews and enables it
 	if reference_doctype:
 		doc.reference_doctype = reference_doctype
 	if doctype_event:
@@ -539,7 +544,6 @@ def create_server_script(
 			doc = frappe.get_doc("Server Script", script_name)
 			doc.script_type = script_type
 			doc.script = script
-			doc.disabled = doc.processa_pending_review = 1
 			if reference_doctype is not None:
 				doc.reference_doctype = reference_doctype
 			if doctype_event is not None:
@@ -596,7 +600,6 @@ def update_server_script(
 	try:
 		doc = frappe.get_doc("Server Script", script_name)
 		doc.script = script
-		doc.disabled = doc.processa_pending_review = 1
 		if script_type:
 			doc.script_type = script_type
 		if reference_doctype is not None:
@@ -651,7 +654,7 @@ def check_server_script_exists(script_name: str) -> dict:
 
 
 @frappe.whitelist()
-def run_logix_test_case(script_name: str, inputs: str = "{}") -> dict:
+def run_logix_test_case(script_name: str, inputs: str = "{}", process: str = "", script_task: str = "") -> dict:
 	"""Execute a Server Script the way the BPMN engine runs a Script Task and
 	return a plain-English pass/fail result.
 
@@ -676,9 +679,6 @@ def run_logix_test_case(script_name: str, inputs: str = "{}") -> dict:
 		if script_doc.script_type != "API":
 			return {"passed": False, "result": None, "summary": "This script is not an API-type script and cannot be run as a test."}
 
-		from processa.processa_engine.engine import check_server_script
-		check_server_script(script_doc)
-
 		context_doctype = str(test_inputs.get("context_doctype") or "")
 		context_docname = str(test_inputs.get("context_docname") or "")
 		doc_obj = frappe._dict()
@@ -697,7 +697,7 @@ def run_logix_test_case(script_name: str, inputs: str = "{}") -> dict:
 		result_dict = {}
 		# ONE namespace for globals and locals, same as the engine — separate
 		# dicts break scripts whose top-level functions call each other.
-		exec_ns = {"frappe": frappe, "__builtins__": __builtins__}
+		exec_ns = {"frappe": frappe, "_": _, "__builtins__": __builtins__}
 		exec_ns.update(task_data)
 		exec_ns.update(
 			{
@@ -710,8 +710,11 @@ def run_logix_test_case(script_name: str, inputs: str = "{}") -> dict:
 			}
 		)
 
+		failure = ""
 		frappe.db.savepoint("logix_check")
 		try:
+			from processa.processa_engine.engine import check_server_script
+			check_server_script(script_doc, process or None, script_task or None)
 			exec(script_doc.script, exec_ns)  # noqa: S102
 			summary = "It worked — the script ran without any problems."
 			if result_dict:
@@ -730,14 +733,17 @@ def run_logix_test_case(script_name: str, inputs: str = "{}") -> dict:
 					"result": None,
 					"summary": f"The script stopped and said: \"{error_msg}\"",
 				}
+			failure = frappe.get_traceback()
 			return {
 				"passed": False,
 				"result": None,
-				"summary": "Something went wrong while running the script. You can ask Logix \"why did this test fail?\" for help.",
+				"summary": f"The script failed with this error: {type(exc).__name__}: {error_msg}",
 			}
 		finally:
 			# Dry run: whatever the script inserted or updated is undone.
 			frappe.db.rollback(save_point="logix_check")
+			if failure:
+				frappe.log_error(title=logix_helpers.CHECK_ERROR_TITLE.format(script_name), message=failure)
 
 	except Exception:
 		frappe.log_error(title="Logix Test Runner error", message=frappe.get_traceback())
@@ -788,7 +794,7 @@ def toggle_server_script(script_name: str, disabled: int) -> dict:
 	frappe.db.set_value(
 		"Server Script",
 		script_name,
-		{"disabled": 1} if cint(disabled) else {"disabled": 0, "processa_pending_review": 0},
+		{"disabled": cint(disabled)},
 		update_modified=True
 	)
 
@@ -802,19 +808,7 @@ def toggle_server_script(script_name: str, disabled: int) -> dict:
 # left. The Server Script CRUD and test-runner endpoints in this module are
 # Logix TOOLING, not chat, and stay exactly where they are.
 def build_logix_turn_context(context: dict) -> dict:
-	"""Load the linked script's content for a Logix turn (context builder for
-	the AG-UI endpoint). The legacy process_logix_message did this inline —
-	permission-checked — before invoking; through the shared endpoint the
-	panel sends only the script NAME, and without the content the map's
-	prompt renders empty and the model asks the user to paste their script
-	(observed live, 2026-08-08).
-
-	The reply contract is appended on EVERY turn, linked script or not: the
-	agent's seeded system prompt does not carry it, and the CREATE-from-
-	scratch turn (no script linked yet) is exactly where the model must know
-	to answer in JSON — an early return here left it replying in prose, so
-	no onefm.script_diff card and no Apply button (observed live,
-	2026-08-09)."""
+	"""Add the linked script and the library scripts on the map to a Logix turn."""
 	out = dict(context or {})
 	script = out.get("current_script") or ""
 	content = None
@@ -831,24 +825,18 @@ def build_logix_turn_context(context: dict) -> dict:
 			content = frappe.get_doc("Server Script", script).script or ""
 			out["original_script_content"] = content
 
-	# Two map generations exist: the purpose-built Logix map renders the
-	# original_script_content variable directly, while a generic
-	# chat-template clone renders only {{ dialog_context }}. Folding the
-	# script and the reply contract into dialog_context serves both — the
-	# purpose-built map just sees it twice, harmlessly.
+	# The purpose-built map reads original_script_content; a generic chat-template clone reads only dialog_context.
 	parts = []
 	if content is not None:
 		parts.append("CURRENT SERVER SCRIPT ('%s'):\n```python\n%s\n```" % (script, content))
-	parts.append(
-		"LOGIX REPLY CONTRACT: respond ONLY with a JSON object: "
-		'{"intent": "CREATE"|"MODIFY"|"DISAMBIGUATE"|"GENERAL", '
-		'"response": "<short human explanation>", '
-		'"modified_script": "<the full updated script when intent is CREATE or MODIFY>", '
-		'"suggested_name": "<script name for CREATE>", '
-		'"options": ["..."] }. '
-		"Never claim you saved or applied anything — the designer applies your "
-		"proposal from a review card in the UI."
-	)
+	process_model = (out.get("process_context") or {}).get("process_model")
+	libraries = out.get("library_scripts") or logix_helpers.library_scripts(process_model)
+	if libraries:
+		out["library_scripts"] = libraries
+		parts.append(logix_helpers.library_text(libraries))
+	states = out.get("workflow_states") or logix_helpers.workflow_states(process_model)
+	if states:
+		out["workflow_states"] = states
 	existing = out.get("dialog_context") or ""
 	out["dialog_context"] = (existing + "\n\n" + "\n\n".join(parts)).strip()
 	return out

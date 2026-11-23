@@ -10,6 +10,7 @@ from unittest.mock import patch
 from frappe.tests.utils import FrappeTestCase
 
 from processa.processa_engine.agent_runtime import step_loop
+from processa.processa_engine.agent_runtime.llm_types import LLMRefusedError
 
 
 class ProviderError(Exception):
@@ -106,6 +107,11 @@ class TestStepRetries(FrappeTestCase):
 		with self.assertRaises(step_loop.LLMTruncatedError):
 			_run(adapter, max_retries=5)
 		self.assertEqual(adapter.calls, 1)
+
+	def test_a_refusal_is_asked_again_within_the_limit(self):
+		adapter = Adapter(LLMRefusedError("refused"), "ok")
+		result, _ = _run(adapter, max_retries=2)
+		self.assertEqual((result, adapter.calls), ("ok", 2))
 
 	def test_a_success_needs_no_wait(self):
 		result, waits = _run(Adapter("ok"), max_retries=3)

@@ -375,6 +375,150 @@ class TestCreatingSourceForADoctypeTheRepoLacks(FrappeTestCase):
             self.assertNotIn("patches", path)
 
 
+def _row(name):
+    return {"fieldname": name, "fieldtype": "Data"}
+
+
+def _json(order, rows=None):
+    return json.dumps(
+        {"doctype": "DocType", "name": "Demo", "field_order": list(order),
+         "fields": [_row(n) for n in (rows or order)]},
+        indent=1,
+    ) + "\n"
+
+
+def _schema(order, doctype_level=None):
+    return {"doctype_level": doctype_level or {}, "fields": [_row(n) for n in order],
+            "added_fields": []}
+
+
+class TestAFieldMovedOnTheSiteReachesTheFile(FrappeTestCase):
+    """A move made directly on the site lives only in DocField idx, so _fold must carry it."""
+
+    def test_a_new_order_rewrites_field_order_and_fields_and_says_so(self):
+        text, notes = source.merge_into_source(
+            _json(["a", "b", "c", "d"]), OURS, _schema(["a", "c", "d", "b"])
+        )
+        after = json.loads(text)
+
+        self.assertEqual(after["field_order"], ["a", "c", "d", "b"])
+        self.assertEqual([r["fieldname"] for r in after["fields"]], ["a", "c", "d", "b"])
+        self.assertEqual(notes, ["field order"])
+
+    def test_the_same_order_writes_nothing(self):
+        self.assertEqual(
+            source.merge_into_source(_json(["a", "b", "c"]), OURS, _schema(["a", "b", "c"])),
+            (None, []),
+        )
+
+    def test_a_field_only_in_the_json_stays_right_after_its_neighbour(self):
+        text, notes = source.merge_into_source(
+            _json(["a", "b", "only_json", "c"]), OURS, _schema(["a", "c", "b"])
+        )
+        after = json.loads(text)
+
+        self.assertEqual(after["field_order"], ["a", "c", "b", "only_json"])
+        self.assertEqual([r["fieldname"] for r in after["fields"]], after["field_order"])
+        self.assertEqual(notes, ["field order"])
+
+    def test_a_field_only_in_the_json_at_the_front_stays_at_the_front(self):
+        text, _notes = source.merge_into_source(
+            _json(["only_json", "a", "b"]), OURS, _schema(["b", "a"])
+        )
+
+        self.assertEqual(json.loads(text)["field_order"], ["only_json", "b", "a"])
+
+    def test_a_field_order_property_setter_still_wins(self):
+        level = {"field_order": ["d", "c", "b", "a"]}
+        text, notes = source.merge_into_source(
+            _json(["a", "b", "c", "d"]), OURS, _schema(["a", "c", "b", "d"], level)
+        )
+
+        self.assertEqual(json.loads(text)["field_order"], ["d", "c", "b", "a"])
+        self.assertNotIn("field order", notes)
+
+
+def _version(dt, removed=(), added=()):
+    """Insert the Version Frappe writes when a DocType is saved on the site."""
+    data = {
+        "changed": [], "row_changed": [],
+        "added": [["fields", {"fieldname": n, "fieldtype": "Data"}] for n in added],
+        "removed": [["fields", {"fieldname": n, "fieldtype": "Data"}] for n in removed],
+    }
+    frappe.get_doc({
+        "doctype": "Version", "ref_doctype": "DocType", "docname": dt, "data": json.dumps(data),
+    }).insert()
+
+
+class TestAFieldDeletedOnTheSiteIsFound(FrappeTestCase):
+    """AC1, AC3, AC4. A Version that removed a field and did not add it back."""
+
+    GHOST = "ZZ Deleted Fields Demo"
+
+    def test_a_field_an_inserted_version_removed_is_deleted(self):
+        _version(self.GHOST, removed=["gone_field"])
+
+        self.assertEqual(source.deleted_fieldnames(self.GHOST), {"gone_field"})
+
+    def test_a_field_removed_and_re_added_in_the_same_version_is_not(self):
+        _version(self.GHOST, removed=["gone_field", "moved_field"], added=["moved_field"])
+
+        self.assertEqual(source.deleted_fieldnames(self.GHOST), {"gone_field"})
+
+    def test_a_field_the_doctype_has_today_is_not(self):
+        present = frappe.get_all("DocField", filters={"parent": OURS}, pluck="fieldname")[0]
+        _version(OURS, removed=[present])
+
+        self.assertNotIn(present, source.deleted_fieldnames(OURS))
+
+    def test_a_field_no_version_removed_is_not_deleted(self):
+        """BA behind the code never received it, so nothing was ever removed."""
+        self.assertEqual(source.deleted_fieldnames("ZZ Never Edited Demo"), set())
+
+    def test_site_schema_carries_the_sorted_deleted_fields(self):
+        _version(OURS, removed=["zz_gone_b", "zz_gone_a"])
+
+        deleted = source.site_schema(OURS)["deleted_fields"]
+
+        self.assertEqual(deleted, sorted(deleted))
+        self.assertIn("zz_gone_a", deleted)
+        self.assertIn("zz_gone_b", deleted)
+
+
+class TestADeletedFieldLeavesTheFile(FrappeTestCase):
+    """AC2, AC5. _fold removes it from fields and field_order and says so."""
+
+    def test_the_field_is_removed_from_fields_and_field_order_and_noted(self):
+        schema = dict(_schema(["a", "c"]), deleted_fields=["b"])
+
+        text, notes = source.merge_into_source(_json(["a", "b", "c"]), OURS, schema)
+        after = json.loads(text)
+
+        self.assertEqual(after["field_order"], ["a", "c"])
+        self.assertEqual([r["fieldname"] for r in after["fields"]], ["a", "c"])
+        self.assertEqual(notes, ["removed field b"])
+
+    def test_a_field_only_in_the_json_and_not_deleted_is_kept(self):
+        schema = dict(_schema(["a"]), deleted_fields=["b"])
+
+        text, notes = source.merge_into_source(_json(["a", "only_json", "b"]), OURS, schema)
+        after = json.loads(text)
+
+        self.assertEqual(after["field_order"], ["a", "only_json"])
+        self.assertEqual([r["fieldname"] for r in after["fields"]], ["a", "only_json"])
+        self.assertEqual(notes, ["removed field b"])
+
+    def test_a_deleted_field_the_file_never_had_writes_nothing(self):
+        schema = dict(_schema(["a", "b"]), deleted_fields=["never_there"])
+
+        self.assertEqual(source.merge_into_source(_json(["a", "b"]), OURS, schema), (None, []))
+
+    def test_no_deleted_fields_writes_nothing(self):
+        schema = dict(_schema(["a", "b"]), deleted_fields=[])
+
+        self.assertEqual(source.merge_into_source(_json(["a", "b", "only_json"]), OURS, schema), (None, []))
+
+
 class TestTheArtefactSetFollowsOwnership(FrappeTestCase):
     """AC1, AC7, AC8."""
 
