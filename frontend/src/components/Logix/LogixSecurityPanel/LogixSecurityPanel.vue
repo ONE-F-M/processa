@@ -91,6 +91,15 @@
 					:link="`/app/script-approval-request/${latestRequest.name}`"
 				/>
 				<Button
+					v-if="updatable"
+					variant="solid"
+					label="Update request"
+					:loading="requesting"
+					:disabled="Boolean(blockedReason)"
+					@click="emit('request', '')"
+				/>
+				<Button
+					v-else
 					variant="solid"
 					label="Request approval"
 					:disabled="Boolean(blockedReason)"
@@ -166,11 +175,15 @@ const otherCategories = computed(() =>
 		.map((c) => c.name),
 );
 
+// The requester can refresh the open request from the saved script until the Reviewer acts on it.
+const updatable = computed(() => Boolean(latestRequest.value?.can_update));
 const blockedReason = computed(() => {
 	if (props.dirty || !props.saved)
 		return "Save the script first: the request is made from the saved script.";
 	if (!needsApproval.value.length) return "Nothing in this script needs approval.";
-	if (props.lint?.open_request) return `Request ${props.lint.open_request} is already open.`;
+	if (updatable.value) return "";
+	if (props.lint?.open_request)
+		return `Only the requester of ${props.lint.open_request} can update it, and only before review. Request the rest after it is decided.`;
 	return "";
 });
 
@@ -188,7 +201,9 @@ function itemNote(item) {
 	if (!open) return `${where}.`;
 	return item.in_open_request
 		? `${where}. In ${open}, which is open.`
-		: `${where}. Not in ${open}: request it after ${open} is decided.`;
+		: updatable.value
+			? `${where}. Not in ${open} yet: press Update request to add it.`
+			: `${where}. Not in ${open}: request it after ${open} is decided.`;
 }
 
 function send() {

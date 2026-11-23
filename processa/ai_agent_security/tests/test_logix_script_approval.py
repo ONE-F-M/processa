@@ -8,7 +8,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_security.code_checks.script_categories import clear_category_cache
 from processa.ai_agent_security.code_checks.script_validator import validate_script
-from processa.api.script_approvals import lint_server_script, request_script_approval
+from processa.api.script_approvals import lint_server_script, request_script_approval, update_script_approval
 from processa.patches.v1_0 import logix_review_passes_items_needing_approval as p
 from processa.patches.v1_0 import seed_script_import_categories
 
@@ -116,6 +116,35 @@ class TestLogixScriptApproval(FrappeTestCase):
 		self.assertEqual(result["open_request"], request["name"])
 		self.assertTrue(self._finding(result, "requests")["in_open_request"])
 		self.assertFalse(self._finding(result, "socket")["in_open_request"])
+
+	def test_update_refreshes_a_pending_review_request_from_the_saved_script(self):
+		request = request_script_approval(SCRIPT, PROCESS, TASK, "Fetches exchange rates")
+		_server_script(SCRIPT, CODE + "\nimport socket")
+		update_script_approval(request["name"])
+		doc = frappe.get_doc("Script Approval Request", request["name"])
+		self.assertEqual(sorted(d.item_name for d in doc.requested_items), ["requests", "socket"])
+		self.assertEqual(doc.script_at_time_of_request, CODE + "\nimport socket")
+		self.assertEqual(doc.status, "Pending Review")
+		self.assertTrue(
+			self._finding(lint_server_script(CODE + "\nimport socket", SCRIPT, PROCESS, TASK), "socket")[
+				"in_open_request"
+			]
+		)
+
+	def test_update_is_refused_once_the_request_left_pending_review(self):
+		request = request_script_approval(SCRIPT, PROCESS, TASK, "Fetches exchange rates")
+		frappe.db.set_value("Script Approval Request", request["name"], "status", "Pending Approval")
+		with self.assertRaises(frappe.ValidationError) as caught:
+			update_script_approval(request["name"])
+		self.assertIn("can no longer be updated", str(caught.exception))
+
+	def test_update_is_refused_for_anyone_but_the_requester(self):
+		request = request_script_approval(SCRIPT, PROCESS, TASK, "Fetches exchange rates")
+		self.assertTrue(lint_server_script(CODE, SCRIPT, PROCESS, TASK)["latest_request"]["can_update"])
+		frappe.db.set_value("Script Approval Request", request["name"], "requested_by", READER)
+		self.assertFalse(lint_server_script(CODE, SCRIPT, PROCESS, TASK)["latest_request"]["can_update"])
+		with self.assertRaises(frappe.PermissionError):
+			update_script_approval(request["name"])
 
 	def test_request_approval_needs_a_reason(self):
 		with self.assertRaises(frappe.ValidationError) as caught:

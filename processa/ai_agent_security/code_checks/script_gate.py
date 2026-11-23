@@ -142,10 +142,16 @@ def lint_script(code: str, script_name: str = "", process: str = "", script_task
 	latest = on_task and frappe.get_list(
 		"Script Approval Request",
 		filters={"process_name": process, "script_task": script_task, "server_script": script_name},
-		fields=["name", "status", "decision_note"],
+		fields=["name", "status", "decision_note", "requested_by"],
 		order_by="creation desc",
 		limit=1,
 	)
+	for request in latest or []:
+		request["can_update"] = (
+			request.name == open_request
+			and request.status == "Pending Review"
+			and request.requested_by == frappe.session.user
+		)
 	return {
 		"findings": findings,
 		"open_request": open_request,

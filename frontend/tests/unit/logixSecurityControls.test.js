@@ -28,6 +28,17 @@ describe("Logix script security controls", () => {
 		expect(script).not.toMatch(/\$\{props\.lint\.open_request\} is open/);
 	});
 
+	it("offers Update request for an open request still in review", () => {
+		const panel = read("LogixSecurityPanel/LogixSecurityPanel.vue");
+		expect(panel).toMatch(/v-if="updatable"[\s\S]*?label="Update request"/);
+		expect(panel).toMatch(/latestRequest\.value\?\.can_update/);
+		const composable = readFileSync(
+			new URL("../../src/composables/Logix/useLogixScriptSecurity.js", import.meta.url),
+			"utf8",
+		);
+		expect(composable).toMatch(/updating \? UPDATE_URL : REQUEST_URL/);
+	});
+
 	it("tells the author what to use instead in a full sentence", () => {
 		const canvas = read("LogixCanvas/LogixCanvas.vue");
 		expect(canvas).not.toMatch(/Instead: \$\{/);
