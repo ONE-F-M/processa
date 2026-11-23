@@ -12,6 +12,15 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_TEXT_CHARS = 50_000
 
 
+def task_files(task) -> list:
+	"""The files attached to the turn: on the task itself, or on the calling task when the step runs as a tool."""
+	return (
+		(getattr(task, "data", None) or {}).get("files")
+		or (getattr(task, "process_data", None) or {}).get("files")
+		or []
+	)
+
+
 def read_attachments(file_urls: list | None) -> tuple[list, str]:
 	"""The images to send with the prompt, and a text block with the text files and the files not read."""
 	images, parts = [], []

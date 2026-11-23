@@ -56,6 +56,13 @@ class TestReadAttachments(FrappeTestCase):
 		self.assertEqual(images, [])
 		self.assertIn("big.png was not read", text)
 
+	def test_a_step_run_as_a_tool_reads_the_turns_files(self):
+		as_tool = frappe._dict(data={"request": "x"}, process_data={"files": ["/files/a.png"]})
+		self.assertEqual(attachments.task_files(as_tool), ["/files/a.png"])
+		own = frappe._dict(data={"files": ["/files/b.png"]}, process_data={"files": ["/files/a.png"]})
+		self.assertEqual(attachments.task_files(own), ["/files/b.png"])
+		self.assertEqual(attachments.task_files(frappe._dict(data={})), [])
+
 	def test_no_files_gives_nothing(self):
 		self.assertEqual(attachments.read_attachments([]), ([], ""))
 		self.assertEqual(attachments.read_attachments(None), ([], ""))

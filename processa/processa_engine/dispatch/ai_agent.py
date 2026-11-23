@@ -331,9 +331,9 @@ def dispatch_ai_agent(instance, task, task_cfg: dict, bpmn_id: str, resume_run: 
 
 	images = []
 	if not resume_payload:
-		from processa.processa_engine.dispatch.attachments import read_attachments
+		from processa.processa_engine.dispatch.attachments import read_attachments, task_files
 
-		images, attached_text = read_attachments((getattr(task, "data", None) or {}).get("files"))
+		images, attached_text = read_attachments(task_files(task))
 		if attached_text:
 			user_prompt = f"{user_prompt}\n\n{attached_text}"
 
