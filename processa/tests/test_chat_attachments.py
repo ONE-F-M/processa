@@ -9,10 +9,13 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from processa.ai_agent_registry.definitions.prosally import helpers as prosally_helpers
 from processa.processa_engine.agent_runtime.direct_api import DirectApiExecutor
 from processa.processa_engine.agent_runtime.executor import ExecutorConfig, ExecutorContext
 from processa.processa_engine.agent_runtime.llm_anthropic import AnthropicAdapter
+from processa.processa_engine.agent_runtime.llm_base import BaseLLMAdapter
 from processa.processa_engine.agent_runtime.llm_gemini import GeminiAdapter
+from processa.processa_engine.agent_runtime.llm_types import StepResult
 from processa.processa_engine.agent_runtime.llm_openai import OpenAIAdapter
 from processa.processa_engine.dispatch import attachments
 from processa.tests.test_adapter_tool_controls import _OpenAICompletions
@@ -122,3 +125,42 @@ class TestImagesTakeTheAdapterPath(FrappeTestCase):
 		with patch.object(DirectApiExecutor, "_run_with_tools", return_value="adapter path") as adapter_path:
 			self.assertEqual(DirectApiExecutor().run(config, ExecutorContext()), "adapter path")
 		self.assertEqual(adapter_path.call_args.args[0].images, [IMAGE])
+
+
+class TestSubCallsSendImages(FrappeTestCase):
+	def tearDown(self):
+		frappe.db.rollback()
+		super().tearDown()
+
+	def test_complete_puts_the_images_on_the_first_user_message(self):
+		sent = []
+
+		class Adapter(BaseLLMAdapter):
+			async def step(self, system, transcript, **kwargs):
+				sent.append(list(transcript))
+				return StepResult(content="done")
+
+		result = asyncio.run(Adapter().complete(system="s", user="draw this", images=[IMAGE]))
+		self.assertEqual(result.text, "done")
+		self.assertEqual(sent[0][0], {"role": "user", "content": "draw this", "images": [IMAGE]})
+
+	def test_a_prosally_step_sends_the_turns_files_with_its_model_call(self):
+		calls = []
+
+		class Adapter:
+			async def complete(self, **kwargs):
+				calls.append(kwargs)
+				return SimpleNamespace(text="reply")
+
+		image = _file("process.png", PNG)
+		note = _file("steps.txt", "Submit, Review, Approve")
+		cfg = {"sub_prompts": {"modifier": {"prompt": "You modify BPMN."}}}
+		with patch.object(prosally_helpers, "get_llm_adapter_from_settings", return_value=Adapter()):
+			prosally_helpers.complete_sub_prompt(
+				cfg, "modifier", "copy this", files=[image.file_url, note.file_url]
+			)
+			prosally_helpers.complete_sub_prompt(cfg, "modifier", "no files", files=[])
+		self.assertEqual(calls[0]["images"], [IMAGE])
+		self.assertTrue(calls[0]["user"].startswith("copy this\n\n"))
+		self.assertIn("Submit, Review, Approve", calls[0]["user"])
+		self.assertEqual(calls[1], {"system": "You modify BPMN.", "user": "no files"})
