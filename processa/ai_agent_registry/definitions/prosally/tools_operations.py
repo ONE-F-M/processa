@@ -1,5 +1,5 @@
 # Copyright (c) 2026, one-fm and contributors
-"""ProsAlly edits a map by applying a short list of operations to its IR, so what they do not name stays as it was."""
+"""ProsAlly's map edits: operations applied to a map's IR, and the single edits it makes on the XML."""
 
 import copy
 import re

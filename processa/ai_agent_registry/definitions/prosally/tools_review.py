@@ -41,6 +41,7 @@ DIAGNOSE_SCRIPT_CHARS = 4000
 DIAGNOSE_MIN_NAME_CHARS = 3
 DIAGNOSE_ORIGINS = frozenset({"map", "server_script", "unknown"})
 
+
 def xml_to_ir(xml: str) -> dict | None:
 	"""The IR that draws xml again, or None when xml has an element the IR cannot hold."""
 	bpmn = "{" + NS["bpmn"] + "}"
@@ -298,7 +299,6 @@ def diagram_edit_output(xml: str, text: str) -> dict | None:
 		if reply:
 			return reply
 	return None
-
 
 
 LANE_MOVE_VERBS = r"\b(?:move|put|bring|shift|place|drag|relocate)\b"
