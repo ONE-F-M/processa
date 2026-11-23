@@ -103,7 +103,7 @@ class TestDocuBaselineMatchesTheAgent(FrappeTestCase):
 		display = self._case(DISPLAY)
 		display.set(
 			"expected_tool_calls",
-			[seed._call(1, "classify_intent"), seed._call(2, "edit_field_property"), seed._call(3, "finalize")],
+			[seed.tool_call(1, "classify_intent"), seed.tool_call(2, "edit_field_property"), seed.tool_call(3, "finalize")],
 		)
 		display.save(ignore_permissions=True)
 		frappe.db.set_value("AI Eval Case", self._case(UNTOUCHED).name, "input_user_prompt", "edited by a person")
