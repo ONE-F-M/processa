@@ -115,12 +115,12 @@
 						</svg>
 						Copy
 					</button>
-					<button
-						class="lc-file-btn"
-						:class="{ 'lc-file-btn--active': showSecurity }"
-						title="Security"
+					<Button
+						size="sm"
+						:variant="showSecurity ? 'outline' : 'ghost'"
+						label="Security"
 						@click="showSecurity = !showSecurity; showVersionHistory = false"
-					>Security</button>
+					/>
 					<button
 						class="lc-file-btn"
 						:class="{ 'lc-file-btn--active': showVersionHistory }"
@@ -324,7 +324,7 @@
 import { ref, computed, nextTick, onMounted, watch } from "vue";
 import CodeMirrorEditor from "@/components/Editor/CodeMirrorEditor/CodeMirrorEditor.vue";
 import ScriptNamesHint from "@/components/Editor/ScriptNamesHint/ScriptNamesHint.vue";
-import { frappeRequest } from "frappe-ui";
+import { Button, frappeRequest } from "frappe-ui";
 import { useLogixTestRun } from "@/composables/Logix/useLogixTestRun.js";
 import { useLogixScriptSecurity } from "@/composables/Logix/useLogixScriptSecurity.js";
 import LogixSecurityPanel from "@/components/Logix/LogixSecurityPanel/LogixSecurityPanel.vue";
