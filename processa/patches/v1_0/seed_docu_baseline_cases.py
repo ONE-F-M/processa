@@ -9,7 +9,7 @@ import json
 
 import frappe
 
-from processa.patches.v1_0.seed_lucrusher_eval_suite import _call
+from processa.patches.v1_0.seed_lucrusher_eval_suite import tool_call
 
 AGENT_ID = "docu_agent"
 SHAPE = "run_docu_agent"
@@ -24,19 +24,19 @@ SUITE_DESCRIPTION = (
 )
 
 DESIGN_TRACE = [
-	_call(1, "classify_intent"),
-	_call(2, "write_schema"),
-	_call(3, "review_schema"),
-	_call(4, "finalize"),
+	tool_call(1, "classify_intent"),
+	tool_call(2, "write_schema"),
+	tool_call(3, "review_schema"),
+	tool_call(4, "finalize"),
 ]
 # clarify writes the reply and marks the turn done, so a finalize after it is optional.
-CLARIFY_TRACE = [_call(1, "classify_intent"), _call(2, "clarify")]
+CLARIFY_TRACE = [tool_call(1, "classify_intent"), tool_call(2, "clarify")]
 ON_TODO = {"doctype": "ToDo"}
 # The case that changes a field's display condition writes it, so it runs on a DocType of its own.
 PROBE = "Docu Eval Probe"
 ON_PROBE = {"doctype": PROBE}
 # edit_field_property writes the reply and marks the turn done, so a finalize after it is optional.
-PROPERTY_TRACE = [_call(1, "classify_intent"), _call(2, "edit_field_property")]
+PROPERTY_TRACE = [tool_call(1, "classify_intent"), tool_call(2, "edit_field_property")]
 
 
 def _judge(rubric):

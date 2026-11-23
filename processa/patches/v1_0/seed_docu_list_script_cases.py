@@ -18,9 +18,9 @@ from processa.patches.v1_0.seed_docu_baseline_cases import (
 	ensure_probe_doctype,
 	upsert_case,
 )
-from processa.patches.v1_0.seed_lucrusher_eval_suite import _call
+from processa.patches.v1_0.seed_lucrusher_eval_suite import tool_call
 
-LIST_SCRIPT_TRACE = [_call(1, "classify_intent"), _call(2, "write_list_script")]
+LIST_SCRIPT_TRACE = [tool_call(1, "classify_intent"), tool_call(2, "write_list_script")]
 PROBE_SCRIPT = (
 	f'frappe.listview_settings["{PROBE}"] = {{ add_fields: ["status"], '
 	'get_indicator: function(doc) { return [__(doc.status), "blue", "status,=," + doc.status]; } };'

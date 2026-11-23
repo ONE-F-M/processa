@@ -19,10 +19,10 @@ from processa.patches.v1_0.seed_lucrusher_eval_suite import (
 	STATE_TEXT,
 	SUITE_TITLE,
 	TOPOLOGY,
-	_call,
-	_judge,
-	_state,
 	judge_for,
+	judge_rubric,
+	tool_call,
+	turn_state,
 )
 from processa.patches.v1_0.seed_lucrusher_skills import PROSALLY_SKILL, TASKS_SKILL, TOPOLOGY_SKILL
 
@@ -70,11 +70,11 @@ CASES = [
 		"context": _turn(
 			"scan the codebase for the Visa process",
 			"The scan found 2 apps and 2 DocTypes: Visa and Residency Permit.",
-			_state("CODEBASE_SCAN_RESULT", document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY),
+			turn_state("CODEBASE_SCAN_RESULT", document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY),
 		),
 		"calls": [
-			_call(1, "load_skill", "skill_name", "equals", TOPOLOGY_SKILL),
-			_call(2, "finalize", "intent", "equals", "TOPOLOGY_PROPOSAL"),
+			tool_call(1, "load_skill", "skill_name", "equals", TOPOLOGY_SKILL),
+			tool_call(2, "finalize", "intent", "equals", "TOPOLOGY_PROPOSAL"),
 		],
 		"assertions": [IN_ORDER, NO_REFETCH],
 	},
@@ -85,11 +85,13 @@ CASES = [
 		"context": _turn(
 			"yes, the topology looks good",
 			"Topology confirmed: Visa Request and Visa Renewal. Next I can generate the migration tasks.",
-			_state("TOPOLOGY_CONFIRMED", document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY, topology=TOPOLOGY),
+			turn_state(
+				"TOPOLOGY_CONFIRMED", document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY, topology=TOPOLOGY
+			),
 		),
 		"calls": [
-			_call(1, "load_skill", "skill_name", "equals", TASKS_SKILL),
-			_call(2, "finalize", "intent", "equals", "MIGRATION_TASKS_DRAFT"),
+			tool_call(1, "load_skill", "skill_name", "equals", TASKS_SKILL),
+			tool_call(2, "finalize", "intent", "equals", "MIGRATION_TASKS_DRAFT"),
 		],
 		"assertions": [IN_ORDER, NO_REFETCH],
 	},
@@ -100,7 +102,7 @@ CASES = [
 		"context": _turn(
 			"approved",
 			"Migration tasks confirmed. Next I can write the ProsAlly prompts.",
-			_state(
+			turn_state(
 				"MIGRATION_TASKS_CONFIRMED",
 				document=DOC_SUMMARY,
 				codebase_scan=SCAN_SUMMARY,
@@ -109,13 +111,13 @@ CASES = [
 			),
 		),
 		"calls": [
-			_call(1, "load_skill", "skill_name", "equals", PROSALLY_SKILL),
-			_call(2, "finalize", "intent", "equals", "PROSALLY_PROMPT_DRAFT"),
+			tool_call(1, "load_skill", "skill_name", "equals", PROSALLY_SKILL),
+			tool_call(2, "finalize", "intent", "equals", "PROSALLY_PROMPT_DRAFT"),
 		],
 		"assertions": [
 			IN_ORDER,
 			NO_REFETCH,
-			_judge(
+			judge_rubric(
 				"prosally_prompts holds exactly two processes, Visa Request and Visa Renewal, and each "
 				"prompt_block has a header, lanes, elements, sequence flows and an anti-linting section."
 			),
@@ -128,7 +130,7 @@ CASES = [
 		"context": _turn(
 			"generate the migration tasks",
 			"I drafted 2 tasks across 2 processes. Do they look right?",
-			_state(
+			turn_state(
 				"MIGRATION_TASKS_DRAFT",
 				document=DOC_SUMMARY,
 				codebase_scan=SCAN_SUMMARY,
@@ -136,7 +138,7 @@ CASES = [
 				migration_tasks=MIGRATION_TASKS,
 			),
 		),
-		"calls": [_call(1, "finalize", "intent", "equals", "MIGRATION_TASKS_CONFIRMED")],
+		"calls": [tool_call(1, "finalize", "intent", "equals", "MIGRATION_TASKS_CONFIRMED")],
 		"assertions": [IN_ORDER, {"assertion_type": "no_tool_call", "value": "load_skill"}],
 	},
 ]
