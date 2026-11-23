@@ -73,6 +73,12 @@ class TestDescribeChanges(FrappeTestCase):
 		'<bpmn:sequenceFlow id="f2" name="No" sourceRef="dsot" targetRef="ok" />'
 	)
 
+	def test_settings_written_with_other_entities_are_not_a_change(self):
+		old = '<bpmn:serviceTask id="t" name="Set Inactive" spiffworkflow:updateFieldRows="[{&#34;fieldname&#34;: &#34;status&#34;}]" />'
+		new = '<bpmn:serviceTask id="t" name="Set Inactive" spiffworkflow:updateFieldRows="[{&quot;fieldname&quot;: &quot;status&quot;}]" />'
+
+		self.assertIn("could not find any change", tools_replies.describe_changes(old, new))
+
 	def test_added_removed_and_renamed_are_listed(self):
 		text = tools_replies.describe_changes(self.OLD, self.NEW)
 		self.assertIn('Added the decision "DSOT possible?".', text)

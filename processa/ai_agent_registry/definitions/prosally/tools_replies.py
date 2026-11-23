@@ -1,5 +1,6 @@
 """ProsAlly's replies that say what a redraw changed, or why nothing changed."""
 
+import html
 import re
 from collections import Counter
 from xml.etree import ElementTree as ET
@@ -121,7 +122,7 @@ def _settings(xml: str) -> dict:
 	found = {}
 	for attrs in re.findall(r"<bpmn:\w+\s([^>]*?)/?>", xml or ""):
 		values = dict(re.findall(r'([\w.-]+:[\w.-]+)="([^"]*)"', attrs))
-		values = {key: val for key, val in values.items() if not key.startswith("xmlns")}
+		values = {key: html.unescape(val) for key, val in values.items() if not key.startswith("xmlns")}
 		elem_id = re.search(r'\bid="([^"]+)"', attrs)
 		if values and elem_id:
 			found[elem_id.group(1)] = values
