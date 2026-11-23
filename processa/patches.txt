@@ -362,13 +362,26 @@ processa.patches.v1_0.repath_observability_module_imports #10-11-2026 stored Ser
 processa.patches.v1_0.repath_docu_notification_server_script_imports #10-11-2026 stored Server Script imports follow the renamed Docu, notification and Server Script endpoint modules
 processa.patches.v1_0.delete_one_bpmn_module #11-11-2026 the ONE BPMN module is gone; records still in it move to Processa Engine
 processa.patches.v1_0.repath_stored_paths_to_processa #13-11-2026 stored connector handler, Value Transform and Choices From paths follow the app rename to processa
+processa.patches.v1_0.add_agent_sandbox_test_site_operations #15-11-2026 the agent_sandbox connector gets the prepare_site and checkout_pr_head operations the Testing Agent map calls
+processa.patches.v1_0.prepare_site_operation_without_password #15-11-2026 the prepare_site operation drops its password field, which Processa now derives when it dispatches
 processa.patches.v1_0.repath_stored_imports_to_processa_modules #15-11-2026 stored imports and dotted paths follow the modules the refactor moved, and stale maps recompile
+processa.patches.v1_0.add_agent_sandbox_spec_operations #16-11-2026 the agent_sandbox connector gets the run_specs and run_specs_on_base operations the Testing Agent map calls
+processa.patches.v1_0.add_testing_agent_sandbox_tools #16-11-2026 the Sandbox Tool scripts the Testing Agent uses to write a spec, look at a page and run a scheduled job
 processa.patches.v1_0.seed_prosally_layout_regression_cases
+processa.patches.v1_0.fix_browser_snapshot_screenshot_save #16-11-2026 the Browser Snapshot script saves its screenshot with save_file, so the security gate lets it be linked to a map
 processa.patches.v1_0.seed_logix_refusal_regression_cases
+processa.patches.v1_0.add_agent_sandbox_upload_videos_operation #16-11-2026 the agent_sandbox connector gets the upload_videos operation the Testing Agent map calls
 processa.patches.v1_0.seed_prosally_confirmed_brief_cases
 processa.patches.v1_0.seed_logix_pagination_case
+processa.patches.v1_0.add_testing_agent_seed_tools #16-11-2026 the Sandbox Tool scripts the Testing Agent uses to seed test data and read what a DocType needs
+processa.patches.v1_0.add_agent_sandbox_fast_operations #16-11-2026 the agent_sandbox connector gets the fast Testing Agent operations a map can call
 processa.patches.v1_0.repair_digit_leading_process_ids
+processa.patches.v1_0.seed_github_connector #16-11-2026 the github connector with the post_pr_comment operation the Testing Agent publishes its verdict through
+processa.patches.v1_0.seed_github_video_upload_connector #16-11-2026 the github_video_upload connector that holds the machine user token for upload_videos, without the token
 processa.patches.v1_0.repath_a2a_remote_agent_endpoints #16-11-2026 A2A Remote Agent endpoints that call the old one_bpmn rpc method call processa's
+processa.patches.v1_0.add_github_connector_operations #16-11-2026 the github connector gets get_pull_request, list_pr_files and request_reviewers
 processa.patches.v15_0.processa_sync_doctype_sync___v1_0f7e7c #2026-11-16 Processa sync: Process Implementation
 processa.patches.v1_0.docu_defaults_to_processa_engine #16-11-2026 Docu's scripts, prompt and map default to the Processa Engine module
 processa.patches.v1_0.rename_on_cancel_request_trigger #17-11-2026 cancellation maps start On Cancel instead of On Cancel Request
+processa.patches.v1_0.sandbox_tools_fall_back_to_base_branch #18-11-2026 sandbox tool scripts fall back to the map's base_branch when the model passes no git_branch
+processa.patches.v1_0.submit_assertions_reads_one_review #18-11-2026 Submit Assertions reads the checker's one review variable, so approved lines are no longer duplicated and rejected

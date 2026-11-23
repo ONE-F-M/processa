@@ -170,9 +170,18 @@ def classify_failure(status: str, payload: dict) -> str:
 	return "env" if status in ("tests_failed", "failed") else "infra"
 
 
+# The status the sandbox reports when each test-site command worked. Neither opens a pull request.
+TEST_SITE_SUCCESS = {"prepare_site": "prepared", "checkout_pr_head": "ready", "run_specs": "specs_run", "run_specs_on_base": "specs_run", "upload_videos": "videos_uploaded"}
+
+
 def _settled_fields(action: str, status: str, pr_url: str, payload: dict) -> dict:
 	"""The state a finished run settles to. run_tests never opens a PR, so for
 	it tests_passed is completion; every other shape still needs a pr_url."""
+	if action in TEST_SITE_SUCCESS:
+		if status == TEST_SITE_SUCCESS[action]:
+			return {"state": "completed"}
+		error = payload.get("error") or status or "sandbox run failed"
+		return {"state": "failed", "failure_class": "env", "error_message": bounded_error(error)}
 	if status == "tests_passed":
 		if action == "run_tests":
 			return {"state": "completed"}
@@ -419,6 +428,8 @@ def _sandbox_run_answer(run) -> str:
 	with the sandbox's own output so the agent can tell its change from the
 	environment, and a PR is mentioned on either branch."""
 	prefix = _retry_prefix(run)
+	if _run_action(run) in TEST_SITE_SUCCESS:
+		return prefix + _test_site_answer(run)
 	if _run_action(run) == "run_tests":
 		verdict = "Tests passed." if run.state == "completed" else f"Tests failed ({run.error_message or 'no reason given'})."
 		return prefix + verdict + _output_tail(run)
@@ -431,6 +442,50 @@ def _sandbox_run_answer(run) -> str:
 	elif _run_action(run) == "open_pull_request":
 		reason += " No pull request exists."
 	return prefix + reason + _output_tail(run)
+
+
+def _test_site_answer(run) -> str:
+	"""What the agent is told prepare_site or checkout_pr_head returned: the sandbox's own result, without timings.
+	A failure names the step and carries the tail of the output so the agent can tell what broke."""
+	action = _run_action(run)
+	result = {k: v for k, v in (frappe.parse_json(run.result or "{}") or {}).items() if k != "timings_ms"}
+	if run.state == "completed" and action in ("run_specs", "run_specs_on_base"):
+		return _specs_answer(action, result)
+	if action == "upload_videos":
+		return _videos_answer(run, result)
+	if run.state == "completed":
+		return f"{action} succeeded: {frappe.as_json(result)}"
+	text = f"{action} failed at step {result.get('step') or 'unknown'}: {run.error_message or 'no reason given'}"
+	tail = result.get("migration_tail") or result.get("build_tail") or result.get("detail") or ""
+	return text + (f"\n\nOutput (tail):\n{tail[-1500:]}" if tail else "")
+
+
+def _videos_answer(run, result: dict) -> str:
+	"""What the agent is told upload_videos returned: one URL per criterion, or what failed for which criterion."""
+	lines = [f"{u.get('criterion')} | {u.get('url')}" for u in result.get("uploads") or []]
+	if run.state == "completed":
+		if result.get("path") == "gh_pr_comment":
+			return f"upload_videos: the upload endpoint refused the token, so the machine user posted the comment itself: {result.get('comment_url') or 'no link returned'}"
+		return "upload_videos uploaded one video per criterion:\n" + "\n".join(lines)
+	text = f"upload_videos failed at step {result.get('step') or 'unknown'}: {run.error_message or 'no reason given'}"
+	errors = [f"{e.get('criterion')} | {e.get('error')}" for e in result.get("errors") or []]
+	return text + ("\nUploaded:\n" + "\n".join(lines) if lines else "") + ("\nFailed:\n" + "\n".join(errors) if errors else "") + (
+		f"\n{(result.get('detail') or '')[-500:]}" if result.get("detail") else "")
+
+
+def _specs_answer(action: str, result: dict) -> str:
+	"""A spec run as the agent reads it: the counts and one line per spec. The full JSON stays on the run record, where the
+	verdict step reads it; it can be close to 1 MB and is not something to hand a model."""
+	rows = result.get("results") or []
+	lines = [
+		f"{r.get('criterion') or '?'} | {r.get('viewport')} | {r.get('status')} | {r.get('file')}"
+		+ (f" | {(r.get('failing_assertion') or '')[:200]}" if r.get("failing_assertion") else "")
+		+ (f" | video {r.get('video')}" if r.get("video") else "")
+		for r in rows
+	]
+	head = f"{action} ran on the {result.get('code')} code: {frappe.as_json(result.get('summary') or {})}"
+	text = head + ("\n" + "\n".join(lines) if lines else "\nNo spec matched.")
+	return text[:6000] + ("\n(more specs on the run record)" if len(text) > 6000 else "")
 
 
 def _retry_prefix(run) -> str:
