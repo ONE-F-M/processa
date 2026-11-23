@@ -9,6 +9,7 @@ import frappe
 from frappe.model.document import Document
 
 from processa.ai_agent_registry.definitions.logix.helpers import BPMN_NS, ERROR_CHARS, SERVER_SCRIPT_ATTR
+from processa.ai_agent_security.code_checks.script_gate import approved_request_names
 from processa.ai_agent_security.code_checks.script_validator import deep_inspect_script
 from processa.processa_engine.engine.script_engine import make_import_script
 
@@ -35,12 +36,15 @@ def dry_run(code: str, turn: dict) -> dict:
 	The run is inside a savepoint that is rolled back, as the person who asked, with email and HTTP calls stubbed.
 	"""
 	context = turn.get("process_context") or {}
-	model = _process_model(context.get("process_name"))
+	model = _process_model(context)
 	doctype = model and model.trigger_doctype
 	names = frappe.get_all(doctype, pluck="name", order_by="creation desc", limit=1) if doctype else []
 	if not names:
 		return {"ran": False, "summary": "I did not run the script: this process has no record to try it on."}
-	if deep_inspect_script(code, allowed=frozenset(OUTBOUND)):
+	approved = approved_request_names(
+		context.get("process") or "", context.get("element_id") or "", turn.get("current_script") or ""
+	)
+	if deep_inspect_script(code, allowed=frozenset(OUTBOUND) | frozenset(approved)):
 		return {"ran": False, "summary": "I did not run the script: it needs approval before it can run."}
 	docname = names[0]
 
@@ -95,12 +99,14 @@ def _namespace(model, context: dict, doc, result: dict) -> dict:
 	}
 
 
-def _process_model(process_id: str | None):
-	if not process_id:
-		return None
-	name = frappe.db.get_value(
-		"BPMN Process Model", {"process_id": process_id}, "name", order_by="modified desc"
-	)
+def _process_model(context: dict):
+	"""The map open in the editor, or the newest map whose process id is the given process name."""
+	name = context.get("process_model")
+	if not (name and frappe.db.exists("BPMN Process Model", name)):
+		process_id = context.get("process_name")
+		name = process_id and frappe.db.get_value(
+			"BPMN Process Model", {"process_id": process_id}, "name", order_by="modified desc"
+		)
 	return name and frappe.db.get_value(
 		"BPMN Process Model", name, ["name", "trigger_doctype", "bpmn_xml"], as_dict=True
 	)
