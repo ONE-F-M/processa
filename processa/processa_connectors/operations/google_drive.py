@@ -82,6 +82,7 @@ def revoke_permissions(params, ctx):
 		scope=(params.get("scope") or "all").strip(),
 		match=(params.get("match") or "").strip() or None,
 		email_address=(params.get("emailAddress") or "").strip() or None,
+		role=(params.get("role") or "").strip() or None,
 	)
 	# skipped is reported because some Shared Drive grants cannot be removed on the item.
 	return {

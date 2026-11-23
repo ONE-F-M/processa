@@ -195,6 +195,31 @@ class TestDocsSlidesConnectors(FrappeTestCase):
 
 
 
+class TestRevokeRoleField(FrappeTestCase):
+	def test_the_patch_adds_an_optional_role_and_dispatch_passes_it_on(self):
+		from processa.patches.v1_0 import add_role_to_drive_revoke_operation as patch_module
+
+		if not frappe.db.exists("BPMN Connector Operation", patch_module.OPERATION):
+			self.skipTest("no google_drive revokePermissions operation on this site")
+		op = frappe.get_doc("BPMN Connector Operation", patch_module.OPERATION)
+		op.set("fields", [f for f in op.fields if f.field_name != "role"])
+		op.save()
+
+		patch_module.execute()
+		patch_module.execute()
+
+		roles = [f for f in frappe.get_doc("BPMN Connector Operation", patch_module.OPERATION).fields if f.field_name == "role"]
+		self.assertEqual(len(roles), 1)
+		self.assertFalse(roles[0].required)
+		task = SimpleNamespace(data={})
+		with patch(f"{_GD}.revoke_permissions", return_value={"removed": [], "skipped": []}) as revoke:
+			dispatch_connector(_instance(), task, {
+				"connectorId": "google_drive", "operation": "revokePermissions", "resultVariable": "out",
+				"connectorParams": '{"file": "FILE123ABCDEF", "scope": "user", "role": "writer"}',
+			}, "t_role")
+		self.assertEqual(revoke.call_args.kwargs["role"], "writer")
+
+
 class TestContentRestriction(FrappeTestCase):
 	"""Lock and unlock are one PATCH on the file; readOnly must reach Drive as a JSON boolean."""
 
