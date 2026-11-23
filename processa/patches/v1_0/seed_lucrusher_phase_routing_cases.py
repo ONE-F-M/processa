@@ -11,9 +11,9 @@ from processa.patches.v1_0.seed_lucrusher_eval_suite import (
 	PARSED_DOC,
 	SCAN_SUMMARY,
 	TOPOLOGY,
-	_call,
-	_judge,
-	_state,
+	judge_rubric,
+	tool_call,
+	turn_state,
 )
 from processa.patches.v1_0.seed_lucrusher_skill_eval_cases import MIGRATION_TASKS, NO_REFETCH, seed_cases
 from processa.patches.v1_0.seed_lucrusher_skills import TASKS_SKILL, TOPOLOGY_SKILL
@@ -22,7 +22,7 @@ from processa.patches.v1_0.seed_lucrusher_skills import TASKS_SKILL, TOPOLOGY_SK
 def _context(bot_text, intent, **parts):
 	state = {
 		k: v
-		for k, v in _state(intent, document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY, **parts).items()
+		for k, v in turn_state(intent, document=DOC_SUMMARY, codebase_scan=SCAN_SUMMARY, **parts).items()
 		if v
 	}
 	return {
@@ -46,7 +46,7 @@ CASES = [
 		"skill": TASKS_SKILL,
 		"prompt": "give me the migration list",
 		"context": PROPOSED,
-		"calls": [_call(1, "finalize", "intent", "equals", "MIGRATION_TASKS_DRAFT")],
+		"calls": [tool_call(1, "finalize", "intent", "equals", "MIGRATION_TASKS_DRAFT")],
 		"assertions": [IN_ORDER, NO_REFETCH],
 	},
 	{
@@ -54,12 +54,12 @@ CASES = [
 		"skill": TASKS_SKILL,
 		"prompt": "which code should we remove for this process?",
 		"context": PROPOSED,
-		"calls": [_call(1, "finalize", "intent", "equals", "MIGRATION_TASKS_DRAFT")],
+		"calls": [tool_call(1, "finalize", "intent", "equals", "MIGRATION_TASKS_DRAFT")],
 		# The seeded scan holds DocType names only, so naming files to delete may rerun the scan.
 		"assertions": [
 			IN_ORDER,
 			{"assertion_type": "no_tool_call", "value": "fetch_lucidchart_document"},
-			_judge(
+			judge_rubric(
 				"Every task in migration_tasks has the category CODE REMOVAL, and no topology is proposed."
 			),
 		],
@@ -74,7 +74,7 @@ CASES = [
 			topology=TOPOLOGY,
 			migration_tasks=MIGRATION_TASKS,
 		),
-		"calls": [_call(1, "finalize", "intent", "equals", "TOPOLOGY_PROPOSAL")],
+		"calls": [tool_call(1, "finalize", "intent", "equals", "TOPOLOGY_PROPOSAL")],
 		"assertions": [IN_ORDER, NO_REFETCH],
 	},
 	{
@@ -82,7 +82,7 @@ CASES = [
 		"skill": TASKS_SKILL,
 		"prompt": "what should we do next?",
 		"context": PROPOSED,
-		"calls": [_call(1, "finalize", "intent", "equals", "CLARIFY")],
+		"calls": [tool_call(1, "finalize", "intent", "equals", "CLARIFY")],
 		"assertions": [IN_ORDER, NO_REFETCH, {"assertion_type": "regex", "value": "(?i)topolog"}],
 	},
 ]
