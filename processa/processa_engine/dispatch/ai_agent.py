@@ -77,7 +77,7 @@ def resume_ai_agent(instance, task, task_cfg: dict, bpmn_id: str, human_result=N
 def dispatch_ai_agent(instance, task, task_cfg: dict, bpmn_id: str, resume_run: str = None) -> None:
 	"""Render the prompts, run the executor and write the results, AI Agent Run and memory for one AI Agent Task.
 
-	A failure sets error variables and the task still completes. A human tool suspends the run; resume_run continues it.
+	A failure sets error variables; with aiStopOnError it also raises. A human tool suspends the run; resume_run continues it.
 	"""
 	from processa.processa_engine.agent_runtime import checkpoint as _checkpoint
 	from processa.processa_engine.agent_runtime.executor import (
@@ -773,7 +773,7 @@ def dispatch_ai_agent(instance, task, task_cfg: dict, bpmn_id: str, resume_run: 
 		# Without aiStopOnError the flow continues, so gateways still find both output names, as None.
 		_record_ai_failure(task, task_cfg, bpmn_id, error_code_name, result.error_message)
 
-		# aiStopOnError raises so the engine loop halts and the instance is marked Errored.
+		# aiStopOnError raises; a parked job is re-queued up to its retry cap before the instance is marked Errored.
 		if task_cfg.get("aiStopOnError"):
 			raise Exception(
 				f"AI Agent Task '{bpmn_id}' failed: "

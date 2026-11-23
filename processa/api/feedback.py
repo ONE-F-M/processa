@@ -3,12 +3,10 @@
 """
 What a user thought of an agent reply, and what to do with it (WI-001641).
 
-Three whitelisted calls, and one rule running through all of them: the client
-names the MESSAGE and nothing else. Conversation, run and agent configuration
-are all read back from that message here. A browser that could name its own
-agent_run could attach a complaint to somebody else's turn, and the join to
-cost and latency — the only reason the run is recorded at all — would be worth
-nothing.
+Eight whitelisted calls. The three rating calls name the MESSAGE and nothing
+else; conversation, run and agent configuration are read back from that message
+here, so a browser cannot attach a complaint to somebody else's turn. The rest
+act on an AI Response Feedback row or a conversation.
 
 Feedback is deliberately not an AG-UI event. The `onefm.*` contract is what an
 agent sends to a screen; this travels the other way, after the turn has already
@@ -477,13 +475,9 @@ def get_my_pending_task(feedback: str) -> dict | None:
 def _resolve_regression_suite(agent_configuration: str) -> str:
 	"""The agent's regression suite, created on first use.
 
-	Deliberately NOT the provisioned "<agent> — Baseline" suite. That one is
-	rebuilt from the agent's sample prompts every time the agent is
-	re-provisioned, and rebuilding DELETES every case in it
-	(agent_provisioning._generate_baseline_suite). A regression case parked there
-	would survive until the next re-provision and then vanish — silently
-	destroying the very tests this whole feature exists to keep. So complaints
-	get their own suite, which nothing else rewrites.
+	Not the provisioned Baseline suite, which agent_provisioning.generate_eval_suite_for_agent
+	rebuilds from the agent's sample prompts on every re-provision. Complaints get their own
+	suite, which nothing else rewrites.
 
 	eval_type mirrors how the agent actually ran: "Agent" replays the turn
 	through its process map so the tools run too, which is what the production
@@ -545,9 +539,9 @@ def create_eval_case_from_feedback(feedback: str, suite: str = None) -> dict:
 	  correct answer. Auto-converting the raw stream would fill the suite with
 	  noise and quietly destroy trust in it. A person decides.
 
-	The case itself is built by the existing factory, so the permission model,
-	the starter assertion and the source_run linkage are the ones already in use
-	— this only adds the link back to the complaint.
+	The case itself is built by the existing factory with no starter assertion, so the
+	permission model and the source_run linkage are the ones already in use; this only
+	adds the link back to the complaint.
 	"""
 	doc = frappe.get_doc("AI Response Feedback", feedback)
 	doc.check_permission("write")

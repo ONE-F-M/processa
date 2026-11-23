@@ -8,7 +8,7 @@ from frappe import _
 from frappe.utils import cint, flt
 
 
-# BPMN tag of each shape refused in an executable process, with its label and suggested replacement.
+# BPMN tag of each shape refused directly under the first process, with its label and suggested replacement.
 PROHIBITED_SHAPES: dict[str, dict[str, str]] = {
 	"manualTask": {
 		"label": "Manual Task",
@@ -22,7 +22,7 @@ PROHIBITED_SHAPES: dict[str, dict[str, str]] = {
 
 
 def validate_prohibited_shapes(bpmn_xml: str) -> None:
-	"""Refuse a process that holds a shape listed in PROHIBITED_SHAPES."""
+	"""Refuse a map whose first <process> has a direct child listed in PROHIBITED_SHAPES."""
 	if not PROHIBITED_SHAPES:
 		return
 

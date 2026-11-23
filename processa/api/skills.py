@@ -161,9 +161,7 @@ Respond with ONLY the JSON object - no markdown fences, no other text.
     if not skill_name or not body:
         frappe.throw(_("LLM did not return required fields."))
 
-    # Defensive net: the prompt asks for the exact required phrasing, but the
-    # model doesn't always comply. Rather than fail the harvest on a subtle
-    # miss, patch in the missing clause so ai_skill.py's validation passes.
+    # Append the when-to-use and when-not-to-use clauses the prompt asked for if the model left them out.
     desc_lower = description.lower()
     if "use this skill when" not in desc_lower and "when to use" not in desc_lower:
         description = f"{description} Use this skill when a similar task comes up."

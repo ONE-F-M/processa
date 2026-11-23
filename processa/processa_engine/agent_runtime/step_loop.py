@@ -92,7 +92,7 @@ def _budget_note(turns_used: int, max_turns: int, trace: list) -> str:
 
 @dataclass
 class AgentSuspension:
-	"""The loop stopped because the model called a human tool."""
+	"""The loop stopped because the model called a human tool or a tool deferred its result."""
 
 	transcript: list = field(default_factory=list)
 	pending_call: dict = field(default_factory=dict)
@@ -134,8 +134,9 @@ async def run_agent_loop(
 	top_p: float | None = None,
 	images: list | None = None,
 ) -> tuple:
-	"""Drive the tool loop. Returns (CompletionResult, None) when the model produces a final answer or hits
-	the turn cap, or (None, AgentSuspension) when it selects a human tool."""
+	"""Drive the tool loop. Returns (CompletionResult, None) on a final answer, terminal tool, budget stop,
+	repeated tool error or the turn cap, and (None, AgentSuspension) when a human tool is called or a tool defers.
+	Raises RuntimeError when the model refuses a forced tool_choice twice."""
 	tool_map = {t.name: t for t in (tools or [])}
 
 	turns_used = 0
@@ -194,7 +195,7 @@ async def run_agent_loop(
 			budget_notes=budget_notes,
 		)
 	finally:
-		# Reset at the top of every turn so neither flag outlives the turn that set it.
+		# Clear the pause, answered and sub-call flags so none outlives this run.
 		frappe.flags[PAUSE_HELD_FLAG] = False
 		frappe.flags[TURN_ANSWERED_FLAG] = False
 		frappe.flags[SUB_CALL_TURN_FLAG] = None
@@ -348,8 +349,7 @@ async def _run_turns(
 	budget_check=None,
 	budget_notes=False,
 ):
-	"""The turn loop itself. Split out only so run_agent_loop can guarantee the pause flag is cleared however
-	this returns."""
+	"""The turn loop shared by run_agent_loop and run_nested_loop; both reset the turn flags however it returns."""
 	reply_checked = False
 	force_pending = bool(tool_choice) and tool_choice != "auto" and turns_used == 0
 	nudged = False

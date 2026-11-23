@@ -85,7 +85,7 @@ class StepToolCall:
 @dataclass
 class StepResult:
 	"""Return value of BaseLLMAdapter.step(): one model call and the tool calls it asked for.
-	step_loop.py decides whether each call runs inline or, for a human tool, suspends the agent."""
+	step_loop.py runs each call inline, or suspends the agent for a human tool or a tool that defers."""
 
 	content: str = ""
 	tool_calls: list = field(default_factory=list)  # list[StepToolCall]

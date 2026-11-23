@@ -157,8 +157,7 @@ def parse_bpmn(
 	    (spec_dict, sp_specs_dict)
 
 	Raises:
-	    ValidationException: if the BPMN or DMN XML is invalid
-	    frappe.ValidationError: if process_id not found
+	    ValidationException: if the BPMN or DMN XML is invalid or process_id is not found
 	"""
 	# Use BpmnDmnParser instead of plain BpmnParser - it extends the base
 	# parser with DMN loading/correlation and businessRuleTask support.

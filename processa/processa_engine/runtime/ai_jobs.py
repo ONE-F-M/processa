@@ -1,5 +1,5 @@
 # Copyright (c) 2026, one-fm and contributors
-"""Parked AI tasks: an engine pass leaves AI work STARTED and queues one bpmn_ai_agent job per unit to run it."""
+"""Parked AI tasks: an engine pass leaves AI work STARTED and queues one job per unit on its ai_job_queue to run it."""
 
 import json
 
@@ -30,7 +30,7 @@ WAIT_RESUMES = {
 def run_parked_ai_task(
 	instance_name: str, kind: str, task_id: str, run_as_user: str | None = None, attempt: int = 0
 ):
-	"""bpmn_ai_agent job: run one parked AI unit and resume the instance.
+	"""AI job, queued on ai_job_queue: run one parked AI unit and resume the instance.
 
 	A job-level failure re-enqueues with attempt + 1 up to the task's aiMaxRetries, then marks the instance Errored
 	and leaves the task parked for a manual retry. LLM failures are retried inside the executor, not here.
@@ -178,7 +178,7 @@ def enqueue_wait_resume(instance_name: str, wf_task_id: str, row_name: str, doct
 
 
 def ai_parking_active() -> bool:
-	"""Whether an engine pass parks its AI work for the bpmn_ai_agent worker instead of running it inline.
+	"""Whether an engine pass parks its AI work for an AI job worker instead of running it inline.
 
 	Off in tests unless bpmn_force_ai_parking is set, and off for chat delegation, which waits for the reply in the request.
 	"""

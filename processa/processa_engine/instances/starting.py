@@ -249,7 +249,7 @@ def send_message(
 	payload: str = None,
 ) -> dict:
 	"""Deliver a BPMN message to instance_name, or to the one Active instance on the context document.
-	Throws when nothing waits for the message; payload is a JSON string merged into the task data."""
+	A message nothing waits for is buffered or ignored and returns caught False; payload is a JSON string merged into the task data."""
 	if not message_name:
 		frappe.throw(_("message_name is required"))
 

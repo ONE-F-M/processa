@@ -1,11 +1,9 @@
 # Copyright (c) 2026, one-fm and contributors
 """What the desk needs to know at boot.
 
-The ONE AI bundle's version and the Processa-controlled DocTypes. The desk loads that bundle by a bare
-path through ``frappe.require``, so without a version the 12h Cache-Control on
-/assets keeps a browser on whatever build it first saw — the standalone page
-already solved this by stamping the bundle's mtime, and the desk has to do the
-same or a rebuilt chat panel never reaches anyone who opens it from a form.
+The ONE AI bundle's version, the Processa-controlled DocTypes and the DocTypes with a cancellation map.
+The desk loads the bundle by a bare path through ``frappe.require``, so the version
+keeps the 12h Cache-Control on /assets from pinning a browser to an old build.
 """
 
 import os

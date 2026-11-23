@@ -350,7 +350,7 @@ def _maybe_start_instance(doc, model_name: str) -> bool:
 def start_queued_instance(instance_name: str, run_as_user: str = None):
 	"""Run the first engine pass of a Queued instance, inline in the save request.
 
-	Standalone so a job can still start a stranded Queued instance."""
+	Also called by api/server_scripts.py when a chat turn finds its instance still Queued."""
 	instance = frappe.get_doc("BPMN Process Instance", instance_name, for_update=True)
 	if instance.status != "Queued":
 		return  # already started or cancelled elsewhere
@@ -514,8 +514,8 @@ def parse_start_triggers(bpmn_xml: str) -> dict:
 
 
 def guard_bpmn_document(doc, method: str):
-	"""Block native submit, cancel and workflow transitions on a document an Active BPMN Process Instance controls.
-
+	"""Block native submit, cancel and workflow transitions on a document an Active BPMN Process Instance controls,
+	or on any document of a Processa-controlled DocType; a direct cancel on a DocType with a cancellation map is refused.
 	The engine's own service tasks pass through via frappe.flags.bpmn_engine_action."""
 	if doc.doctype in _INTERNAL_DOCTYPES:
 		return

@@ -1,5 +1,5 @@
 # Copyright (c) 2026, one-fm and contributors
-"""Resume a parked AI unit inside its bpmn_ai_agent job, and list the units an instance has parked."""
+"""Resume a parked AI unit inside its AI job, and list the units an instance has parked."""
 
 import uuid
 

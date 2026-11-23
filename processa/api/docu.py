@@ -13,12 +13,12 @@ panel does with the agent's answer.
 - ``apply_doctype``       create / update a real (custom) DocType from a Docu IR,
                           routed by process ownership (see ``_route_change``)
 - ``approve_doctype_change`` / ``reject_doctype_change``  decide a logged
-                          Doctype Change Request (Process Owners only)
+                          Doctype Change Request (its processes' owners, else System Manager)
 
 SECURITY: ``apply_doctype`` re-runs the schema validator server-side and gates on
-the System Manager / DocType-create permission before elevating — the client IR
-is never trusted. Elevation uses the ``server_scripts.create_server_script``
-template (narrow ``set_user('Administrator')`` inside try/finally).
+``_may_change_forms`` (System Manager, a Docu Agent allowed role or any Process Owner)
+before elevating; the client IR is never trusted. Elevation runs as the Docu Agent's
+user through ``as_user(_docu_user())``.
 """
 
 import json
@@ -1497,7 +1497,7 @@ def _mark_decided(req, status: str, reason: str = None) -> None:
 
 @frappe.whitelist()
 def approve_doctype_change(request: str, confirm: int = 0) -> dict:
-	"""Apply a pending Doctype Change Request (a Process Owner of the doctype only)."""
+	"""Apply a pending Doctype Change Request (an owner of a process listing the doctype, else a System Manager)."""
 	req = _load_decidable_request(request)
 	ir_dict = parse_json_or_passthrough(req.requested_ir)
 	if not isinstance(ir_dict, dict):

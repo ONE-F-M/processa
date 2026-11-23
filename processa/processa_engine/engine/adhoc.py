@@ -258,11 +258,10 @@ def adhoc_pending_head_tasks(wf: BpmnWorkflow) -> list:
 # Ad-hoc subprocess "decide" hook
 #
 # The ad-hoc dispatch loop promotes the next inner task in
-# diagram-XML order by default. When an AI Task Selector is configured,
-# bpmn_process_instance installs a decider here for the duration of one
-# run_engine() call, and the gate's promotion step routes its choice
-# through select_next_adhoc_task() - the same loop, a different decision
-# function.
+# diagram-XML order by default. runtime/engine_loop.py run_engine() installs
+# a decider here for the duration of one call; it picks only for an AI Task
+# Selector, and the gate's promotion step routes its choice through
+# select_next_adhoc_task() - the same loop, a different decision function.
 # ─────────────────────────────────────────────────────────────
 
 # Sentinel a decider returns when it made a decision but nothing should be
@@ -309,8 +308,8 @@ def select_next_adhoc_task(sp, pending):
 # Ad-hoc activation audit hook
 #
 # The ad-hoc dispatch loop activates inner tasks one at a
-# time. bpmn_process_instance installs a logger here for the duration of
-# one run_engine() call so every activation lands in BPMN Activity Log
+# time. runtime/engine_loop.py run_engine() installs a logger here for the
+# duration of one call so every activation lands in BPMN Activity Log
 # ("Ad-Hoc Task Activated") regardless of whether the decision came from
 # diagram order or the AI Task Selector.
 # ─────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ from processa.utils.session import as_user
 # ============================================
 # Notification API
 # Creates Notification documents from the BPMN Send Task dialog.
-# New notifications are disabled by default (enabled when deployed).
+# New notifications are disabled, so only the Send Task sends them.
 # ============================================
 
 
@@ -52,8 +52,7 @@ def create_notification(
 	"""
 	Create a Notification document from the BPMN Send Task dialog.
 
-	The notification is created with enabled=0 (disabled by default).
-	It should be enabled when the process is deployed.
+	The notification is created with enabled=0; the Send Task calls notification.send(doc) directly.
 
 	Args:
 		notification_name: Human-readable name for the notification
@@ -99,7 +98,7 @@ def create_notification(
 	doc.channel = channel
 	doc.document_type = document_type
 	doc.event = event or "New"
-	doc.enabled = 0  # Disabled by default — enabled when deployed
+	doc.enabled = 0  # Frappe's own event triggers stay off; the Send Task sends it
 	doc.message_type = message_type or "Markdown"
 
 	if message:

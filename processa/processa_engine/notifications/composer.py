@@ -150,7 +150,7 @@ def resolve_subject_body(
 	subject = task_cfg.get("notifyAssigneeSubject", "") or task_cfg.get("notifySubject", "")
 	body = decode_html_attr(task_cfg.get("notifyAssigneeBody", "")) or task_cfg.get("notifyBody", "")
 
-	# If neither is set, try loading from the Email Template
+	# Fill a missing subject or body from the Email Template.
 	template_name = task_cfg.get("notifyAssigneeTemplate", "") or task_cfg.get("notifyTemplate", "")
 	if template_name and (not subject or not body):
 		try:

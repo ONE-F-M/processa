@@ -20,9 +20,7 @@ from processa.utils.session import as_user
 
 # ============================================
 # Server Script API
-# Uses ignore_permissions so Process Owners without the Script Manager role
-# can still list/create Server Scripts via the BPMN editor.
-# Creation is guarded to System Manager or Script Manager only.
+# Create and update check Server Script permission or System Manager, then save as Administrator.
 # ============================================
 
 
@@ -160,14 +158,8 @@ def _delegate_to_bpmn_instance(
 		return None
 	inst_name = inst.name
 
-	# A brand-new conversation spawns its BPMN instance via a doc-event hook that
-	# enqueues the first engine pass on the bpmn_ai_agent worker (async). The very
-	# first chat turn arrives in THIS request — before the worker has promoted the
-	# instance from "Queued" to "Active" — so the wait gateway isn't armed yet and
-	# the message can't be delivered. Start it inline here to close that race. This
-	# is idempotent with the background job: start_queued_instance() locks the row
-	# (for_update) and no-ops when the status is no longer "Queued", so whichever
-	# runs first wins and the other returns immediately.
+	# An instance still Queued has no armed wait gateway, so start it before delivering the message.
+	# start_queued_instance() locks the row and does nothing once the status is no longer "Queued".
 	if inst.status == "Queued":
 		try:
 			from processa.processa_engine.triggers import start_queued_instance
@@ -484,7 +476,7 @@ def delegate_chat_turn(conversation_name: str, message: str, context: dict = Non
 	Delivers ``ChatConversation_Message_Action`` to the instance parked at its
 	"Waiting for User Message" gateway and returns the result the map produced
 	(``response`` plus ``bpmn_driven=True``). Returns ``None`` when no instance
-	is driving the conversation, so callers can fall back to their own pipeline.
+	is driving the conversation, so callers can surface an error.
 
 	Pass ``context["message_name"]`` when the caller already persisted the user
 	Chat Message — the map's "Save User Message" task then reuses it instead of
@@ -655,17 +647,8 @@ def check_server_script_exists(script_name: str) -> dict:
 
 @frappe.whitelist()
 def run_logix_test_case(script_name: str, inputs: str = "{}", process: str = "", script_task: str = "") -> dict:
-	"""Execute a Server Script the way the BPMN engine runs a Script Task and
-	return a plain-English pass/fail result.
-
-	Logix scripts are written against the engine's injected-variable contract
-	(doc / task_data / result; form_dict always empty — see
-	fix_logix_script_task_injected_vars), so the earlier execute_method()
-	replay failed EVERY check with a NameError on `doc` before the script's
-	logic ever ran. The namespace below mirrors engine._run_server_script;
-	the one deliberate difference is the savepoint — a check is a dry run,
-	so its writes are rolled back instead of landing a real record per click.
-	"""
+	"""Execute a Server Script with the namespace script_engine._run_frappe_server_script injects for a Script Task
+	(doc / task_data / result), inside a rolled-back savepoint, and return a plain-English pass/fail result."""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Authentication required"))
 
@@ -752,14 +735,10 @@ def run_logix_test_case(script_name: str, inputs: str = "{}", process: str = "",
 
 @frappe.whitelist()
 def end_chat_conversation(conversation_name: str) -> dict:
-	"""Close a Logix/ProsAlly chat conversation when its panel is closed.
+	"""Close a chat conversation when its panel is closed.
 
-	Marks the Chat Conversation as Closed and, if a BPMN Process Instance is
-	driving it, delivers ``ChatConversation_Close_Action`` so the diagram runs
-	its close branch (Cleanup → Conversation Ended) and the instance completes.
-
-	Safe to call repeatedly / with an unknown name — it never raises.
-	"""
+	Delivers ``ChatConversation_Close_Action`` to its Active BPMN Process Instance, or marks it Closed when there is none.
+	Throws for Guest; any other failure is logged and returns ok False."""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Authentication required"))
 

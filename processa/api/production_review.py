@@ -15,8 +15,8 @@
 #
 # Consumer endpoints run on the BA site (called by the frontend). The snapshot /
 # apply endpoints are the source-of-truth counterparts executed on Production
-# (reached through processa.api.editability._call_production_api, which falls
-# back to a direct local call in single-site dev).
+# (reached over HTTP through processa.api.editability._call_production_api,
+# which throws when the Production credentials are missing).
 
 import json
 import os
@@ -521,7 +521,7 @@ def sync_doctypes(model_name: str) -> dict:
 def _customization_pr_files(app: str, dts: list, model_name: str, stamp: str, promised: dict = None):
 	"""Build the PR's file set in the customization app's own convention.
 
-	Returns ``(files, build_files, artefacts)``:
+	Returns ``(files, build_files, artefacts, routing)``; ``routing`` holds owned and foreign doctypes and notes:
 	  * ``files``      — paths written whole (the generated data modules + patch).
 	  * ``build_files`` — a callback run once the branch exists, for the paths that
 	    must be READ and appended to: the two setup/ aggregators, patches.txt, and
@@ -882,7 +882,7 @@ def production_review_settings() -> dict:
 	"""Lightweight flags the Processa canvas needs to render the Actions menu.
 
 	``instance_type`` drives which environment-specific actions are shown:
-	"Review Doctypes/Workflow" only on a BA instance, "Reassign User Task" only
+	"Review Doctypes/Workflow" only on a BA instance, "Release Property Panel" only
 	on a Production instance. ``connect_to_production`` is still surfaced for
 	other callers.
 	"""

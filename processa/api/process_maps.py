@@ -11,7 +11,7 @@ from processa.processa_engine.maps import listing, readiness, saving
 def save_process_model(
 	model_name: str, xml_content: str, process: str = None, description: str = None
 ) -> dict:
-	"""Save or update a BPMN process model; returns its name, title, version and is_active."""
+	"""Save or update a BPMN process model; returns its name, model_name, version and is_active."""
 	return saving.save_model(model_name, xml_content, process, description)
 
 

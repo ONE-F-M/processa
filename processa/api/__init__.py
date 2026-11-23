@@ -3,7 +3,6 @@
 #
 #   process_maps       - process map endpoints; the logic is in processa_engine.maps
 #   deploy             - deploy, disable, activate and deactivate process models
-#   workflow_state     — apply workflow states and docstatus transitions
 #   editability        — Process Implementation cross-site editability checks
 #   instances          - process instance endpoints; the logic is in processa_engine.instances
 #   server_scripts  — server script CRUD, Logix/ProSally integration

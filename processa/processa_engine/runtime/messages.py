@@ -19,11 +19,9 @@ from processa.processa_engine.runtime.failures import fail_runtime
 
 
 def receive_message(instance, message_name: str, payload: dict | None = None) -> list:
-	"""Deliver a named BPMN message, merge its payload into the catching task's data and run on.
-
-	A message nothing waits for is buffered or ignored, never raised; instance.flags.bpmn_message_caught says which.
-	Returns the waiting tasks.
-	"""
+	"""Deliver a named BPMN message, merge its payload into the catching task's data and run on; returns the waiting tasks.
+	An uncaught message is buffered or ignored and sets instance.flags.bpmn_message_caught to False.
+	Throws on a Completed, Cancelled or Suspended instance, a missing workflow state or an empty message name."""
 	if instance.status in ("Completed", "Cancelled", "Suspended"):
 		frappe.throw(
 			_('Instance "{0}" is already {1} and cannot receive messages.').format(

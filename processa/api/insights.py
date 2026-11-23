@@ -383,7 +383,7 @@ def list_runs(
 	start: int = 0,
 	page_length: int = 25,
 ) -> dict:
-	"""A page of top-level runs for /processa/runs, with the six tile numbers for the same filter."""
+	"""A page of top-level runs for /processa/runs, with the summary figures for the same filter."""
 	frappe.only_for("System Manager")
 	return runs.list_runs(
 		agent_configuration=agent_configuration,

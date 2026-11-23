@@ -125,7 +125,7 @@ def push_callback() -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def rpc(agent_id: str = None, **kwargs):
-	"""The A2A task endpoint: message/send, tasks/get, tasks/cancel.
+	"""The A2A task endpoint: message/send, tasks/get, tasks/cancel, tasks/pushNotificationConfig/set.
 
 	Just another authenticated door into invoke_agent — not a separate
 	runtime. The caller authenticates natively (its client user's API
@@ -928,9 +928,7 @@ def _run_bpmn_map(config, conversation, message, context, stream=False):
 
 
 def _run_adk_stage_agent(config, conversation, message, context, stream=False):
-	"""ProsAlly / Logix / Docu today. Until their maps drive them (their own
-	migration stories), prefer an already-running instance if one exists,
-	else surface a clear message rather than silently forking execution."""
+	"""Runner for a Google ADK agent with no process_model: hand the turn to its running instance, else throw."""
 	from processa.api.server_scripts import delegate_chat_turn
 
 	result = delegate_chat_turn(conversation, message, context=context)
@@ -942,24 +940,9 @@ def _run_adk_stage_agent(config, conversation, message, context, stream=False):
 
 
 def _run_direct_api(config, conversation, message, context, stream=False):
-	"""Single-shot / general chat. Persists the turn and calls the adapter's
-	own (async) tool-calling loop for one exchange.
+	"""Single-shot chat: persists the turn and makes one adapter.complete call with no tools, recorded as an AI Agent Run.
 
-	With ``stream=True`` the same work runs on a thread and the reply's text
-	is handed back as it is written, then the finished result follows as the
-	handover event the buffered path already understands.
-
-	The system prompt is composed the same way as on the two process paths.
-	This used to send ``config["system_prompt"]`` on its own, which quietly
-	dropped the agent's examples, its skills index and its guard rails: an
-	agent that refused something inside a process map would do it in a chat,
-	and the difference was invisible from the configuration.
-
-	The turn is recorded as an AI Agent Run, like every turn on the two process
-	paths. It used to be recorded nowhere: no run, so no prompt hash, no
-	snapshot, no tokens, no cost and no steps. Every Direct API agent on a site
-	was invisible to Insights, and this path's own guard rails could not be
-	read back off a run.
+	With ``stream=True`` the same work runs on a thread and the reply's text is yielded as it is written.
 	"""
 	if stream:
 		return _stream_direct_api(config, conversation, message, context)
@@ -1108,7 +1091,7 @@ def _begin_direct_run(config: dict, system_prompt: str, message: str):
 				model=config.get("ai_model") or "",
 				system_prompt=system_prompt,
 				user_prompt=message,
-				# Pinned to 0.7 on purpose, not DEFAULT_TEMPERATURE.
+				# Recorded on the run only; the adapter.complete call sends no temperature.
 				temperature=0.7,
 			),
 			bpmn_label=config.get("chat_mode_label") or config.get("agent_id") or "",
