@@ -11,6 +11,7 @@ from processa.ai_agent_registry.definitions.logix import dry_run as trial
 from processa.ai_agent_registry.definitions.logix import tools
 from processa.ai_agent_registry.definitions.logix.helpers import debug_inputs, doctype_inputs, field_findings
 from processa.api.server_scripts import run_logix_test_case
+from processa.patches.v1_0 import logix_review_trial_reads_no_undefined_name as repair
 from processa.patches.v1_0 import logix_tries_drafts_on_a_record as p
 
 MODEL = frappe._dict(name="Trial Model", trigger_doctype="Note", bpmn_xml="")
@@ -114,6 +115,24 @@ class TestLogixTriesDrafts(FrappeTestCase):
 			code = pattern.sub(new, code, count=1)
 		ast.parse(code)
 		self.assertIn("dry_run(code, turn)", code)
+
+
+class TestLogixReviewTrialReadsNoUndefinedName(FrappeTestCase):
+	def _patched(self, code):
+		if not frappe.db.exists("Server Script", p.REVIEW_SCRIPT):
+			self.skipTest("the Logix review script is not on this site")
+		frappe.db.set_value("Server Script", p.REVIEW_SCRIPT, "script", code)
+		repair.execute()
+		return frappe.db.get_value("Server Script", p.REVIEW_SCRIPT, "script")
+
+	def test_a_script_that_never_assigns_the_name_stops_reading_it(self):
+		code = self._patched(p.TRIAL.format(""))
+		self.assertNotIn("_py_block", code)
+		self.assertIn('if _valid and shape_kind == "script_task":', code)
+
+	def test_a_script_that_assigns_the_name_is_left_as_it_is(self):
+		code = "_py_block = True\n" + p.TRIAL.format("")
+		self.assertEqual(self._patched(code), code)
 
 
 class TestLogixReadsTheNewestError(FrappeTestCase):
