@@ -11,9 +11,11 @@ in the desk.
 
 The IR now carries a ``permissions`` array, and docu applies it on create
 AND on update. This patch is the other half: the schema writer has to know the
-key exists, or it will never emit one. Three marker-guarded edits on the
-``schema_writer`` sub-prompt — the shape, the rule, and the tool that lists real
-role names so the model does not invent one and fail the gate.
+key exists, or it will never emit one. Five marker-guarded edits: three on the
+``schema_writer`` sub-prompt (the shape, the rule, and the tool that lists real
+role names so the model does not invent one and fail the gate), one on the
+``intent_classifier`` sub-prompt so a permissions request reaches the writer,
+and one on the agent's system prompt.
 
 Roles are validated server-side against the Role table before anything is
 written, so a hallucinated role is a violation the writer is asked to fix, never

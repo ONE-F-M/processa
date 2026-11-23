@@ -1,6 +1,6 @@
 """Rename the case type "Generation" to "Output".
 
-The six types a case can be were settled as Output, Trajectory, Trigger,
+The seven case types are Output, Trajectory, Trigger Positive, Trigger Negative,
 Adversarial, Co-Load Budget and Memory. "Generation" was the old name for the
 first of those, and it is the only value with rows behind it — everything else
 in the old list was never used.

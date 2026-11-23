@@ -11,7 +11,7 @@ structure, is fully mechanical: the generator prompt already tells the model
 to fall back to "User" + "System (Automatic)" lanes when it names no roles.
 
 ``ProsAlly – Tool Generate Process`` now calls
-``processa.agents.bpmn_ir_pipeline.ensure_default_lanes`` in place of adding a
+``processa.ai_agent_registry.definitions.prosally.tools_pipeline.ensure_default_lanes`` in place of adding a
 repair hint and re-prompting when the IR's lanes are missing. The repair-pass
 path stays as a fallback for the one case the deterministic fix cannot cover,
 an IR with no nodes at all. ``ProsAlly – Tool Modify Process`` has no

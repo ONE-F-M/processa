@@ -1,7 +1,7 @@
 """
 Background agents go Live on save (apply_background_lifecycle).
 
-Re-save every enabled Background-type AI Agent Configuration so the new
+Re-save every Background-type AI Agent Configuration so the new
 controller rule runs on the existing provider grants (Platform Prompt
 Engineer, the earlier backfills). The deployment gate now requires linked
 agents to be Live — without this, the AI Agent Creation Process itself could

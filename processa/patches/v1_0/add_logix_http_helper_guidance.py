@@ -7,7 +7,7 @@ Symptom: when a Logix-generated script needed to call an external service, the
 model reached for `import requests` (or urllib/http/socket) — its only related
 rule was "No external libraries beyond a standard Frappe installation", with no
 positive guidance. The Processa script-security validator
-(processa/security/script_validator.py) lists all of those in FORBIDDEN_MODULES,
+(processa/ai_agent_security/code_checks/script_validator.py) flags all of those,
 so the script was rejected on save: a dead end for "call this API and use the
 result" requests.
 

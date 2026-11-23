@@ -12,12 +12,12 @@ gone. This is the only definition, and it is applied once.
 WHAT THIS IS
 ------------
 A snapshot of a working installation, in the same portable shape that
-``Export JSON`` produces on the connector form: four connectors, 25 operations,
-their fields, and — for the 16 operations that are plain REST — the URL, query,
+``Export JSON`` produces on the connector form: four connectors, 27 operations,
+their fields, and, for the 16 operations that are plain REST, the URL, query,
 body and response mapping that let them run with no Python at all.
 
 It is DATA, not behaviour, and it goes in through the ordinary import path
-(``connectors.seed.import_manifest``) rather than a second bespoke writer. What
+(``processa.processa_connectors.seed.import_manifest``) rather than a second bespoke writer. What
 ships is therefore exactly what an export produces, which is what keeps the
 snapshot honest.
 

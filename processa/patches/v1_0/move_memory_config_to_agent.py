@@ -33,7 +33,7 @@ import re
 import frappe
 
 # Shape attribute -> (config fieldname, coercion). Mirrors _SHAPE_TO_CONFIG in
-# agents/agent_config_resolver.py; kept explicit here so the patch is readable
+# ai_agent_registry/provisioning/agent_config_resolver.py; kept explicit here so the patch is readable
 # on its own and cannot drift silently if that map grows.
 _ATTR_TO_FIELD = {
 	"aiConversationStore": ("conversation_store", lambda v: v.strip()),

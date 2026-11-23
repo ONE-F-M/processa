@@ -18,7 +18,7 @@ closed — every pass silently discarding the diagram they had asked for.
 Two of the three fixes for this live outside a patch:
 
 * the per-turn store now refuses a second terminal write, so a stray tool call
-  can no longer destroy a finished turn (``agents/turn_state.py``);
+  cannot destroy a finished turn (``processa_engine/agent_runtime/turn_state.py``);
 * ``ProsAlly – Tool Modify Process`` no longer reports its removal-confirmation
   branch as ``{"modified": false}`` — that read as "the change did not happen",
   which is what invited the extra ``confirm`` call. Server Scripts travel by

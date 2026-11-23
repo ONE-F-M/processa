@@ -1,8 +1,8 @@
 """The delegate operation gains work_item, pull_request, target_app and git_branch.
 
 seed_a2a_connector carries them for a fresh install; this adds them to sites
-where that patch has already run, because the importer does not overwrite an
-operation a site may have adjusted. Same shape as add_required_capability.
+where that patch has already run, since a patch does not run twice.
+Same shape as add_required_capability_to_a2a_connector.
 """
 
 import frappe

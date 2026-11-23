@@ -9,7 +9,7 @@ Symptom: Logix chat frequently ended a turn with
 The Error Log showed every failure was the same violation —
 `Permission-bypass keyword 'ignore_permissions=...' is not allowed`. The
 script_writer habitually emitted `doc.save(ignore_permissions=True)` /
-`frappe.db.commit()`, which the security gate (processa/security/script_validator.py)
+`frappe.db.commit()`, which the security gate (processa/ai_agent_security/code_checks/script_validator.py)
 ALWAYS blocks. With only 2 regeneration retries the turn exhausted its budget and
 returned the refusal (see the "Logix – Tool Finalize" stage).
 

@@ -15,8 +15,8 @@ body could not see the script's own imports.
 
 They call only shared infrastructure reused across agents: turn_state, the LLM
 adapter factory, get_agent_config, the schema-safety validator, and the DocType
-schema tools in processa.tools.tool_for_server_scripts (the same module the
-Logix map and api/docu.py use).
+schema tools in processa.ai_agent_registry.definitions.docu.tools and
+definitions.shared.tools (api/docu.py uses the same docu module).
 
 Idempotent: only updates a Server Script that exists and whose body differs.
 Ordered after seed_docu_agent_config (which creates the rows) and after the

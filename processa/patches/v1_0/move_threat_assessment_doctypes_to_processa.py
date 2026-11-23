@@ -12,9 +12,7 @@ sibling patch moving the Threat Source Discovery doctypes on the same day.
 This is the doctype-relocation half only. The SITREP/report generation logic
 itself (currently onefm_mcp's threat_assessment_agent LangGraph pipeline)
 stays live and unmodified in onefm_mcp until its replacement BPMN Process
-Model is built and validated in the Processa editor — see
-onefm_mcp/DEPRECATION_PLAN.md and the implementation plan for the
-target design and cutover sequencing.
+Model is built and validated in the Processa editor.
 """
 
 import frappe
