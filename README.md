@@ -166,8 +166,8 @@ All endpoints are `@frappe.whitelist()` methods organized into domain submodules
 | `canvas_comments` | Canvas comments and element assets | `get_canvas_comments`, `post_canvas_comment`, `update_comment_status`, `delete_canvas_element_assets` |
 | `editability` | Cross-site editor lock and edit checks | `check_and_update_editor_lock`, `check_process_editable`, `bulk_check_processes_editable` |
 | `versions` | Diagram and Server Script version history | `get_edit_history`, `restore_version`, `get_diagram_versions`, `get_script_version_history` |
-| `dmn` | DMN decision tables for business rule tasks | `get_dmn_xml`, `save_dmn_xml`, `get_decision_list` |
-| `notifications` | Notification records for Send Tasks | `create_notification`, `preview_notification` |
+| `dmn` | DMN decision tables for business rule tasks | `get_dmn_xml`, `save_dmn_xml` (POST only), `get_decision_list` |
+| `notifications` | Notification records for Send Tasks | `create_notification`, `preview_notification` (POST only) |
 | `lookups` | Field and user lookups for the editor pickers | `get_doctype_fields`, `get_system_users`, `get_context_doctypes`, `get_context_documents` |
 
 Workflow-state transitions for BPMN service tasks are applied by `apply_bpmn_workflow_state` in `processa/processa_engine/audit.py`. It is an internal function, not an endpoint.

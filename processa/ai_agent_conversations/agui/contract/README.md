@@ -48,6 +48,14 @@ a recorded example, and rendering notes. Summary:
 Explicitly **not** contract events: heartbeats (transport comments) and
 `get_page_snapshot` (becomes a standard AG-UI client-side tool call).
 
+Sent but **not declared** in `schemas/events.json` (`validate_event` would
+report them as unknown):
+
+| Event | Producer | Handled by |
+|---|---|---|
+| `onefm.message_persisted` | `agui/stream.py`, when the saved Chat Message name differs from the stream's message id; value `{stream_id, message_name}` | `AgentChatPanel.vue` |
+| `onefm.turn_progress` | `processa_engine/agent_runtime/turn_signal.py` (`STILL_WORKING_EVENT`), during a quiet stretch with no progress line; value `{text}` | `AgentChatPanel.vue` |
+
 ## Generic artifacts (Artifact Type, wired)
 
 An agent **without** a bespoke translator still gets the right preview
