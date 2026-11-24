@@ -10,7 +10,7 @@ from processa.ai_agent_memory.text_clean import strip_html
 from processa.ai_agent_registry.definitions.shared.helpers import format_history
 from processa.ai_agent_registry.doctype.ai_agent_configuration.ai_agent_configuration import get_agent_config
 from processa.processa_engine.agent_runtime.llm_factory import get_llm_adapter_from_settings
-from processa.processa_engine.dispatch.attachments import read_attachments
+from processa.processa_engine.dispatch.attachments import with_attachments
 from processa.processa_engine.agent_runtime.turn_state import run_sync
 
 AGENT_ID = "prosally_agent"
@@ -124,15 +124,9 @@ def complete_sub_prompt(
 	files are the turn's attachments: images go with the prompt, text files are added to it."""
 	if system is None:
 		system = ((cfg.get("sub_prompts") or {}).get(sub_id) or {}).get("prompt") or ""
-	kwargs = {"system": system, "user": user}
+	kwargs = {"system": system, **with_attachments(user, files)}
 	if max_tokens:
 		kwargs["max_tokens"] = max_tokens
-	if files:
-		images, attached_text = read_attachments(files)
-		if attached_text:
-			kwargs["user"] = f"{user}\n\n{attached_text}"
-		if images:
-			kwargs["images"] = images
 	return run_sync(get_llm_adapter_from_settings(cfg).complete(**kwargs)).text
 
 
