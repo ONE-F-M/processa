@@ -180,3 +180,19 @@ class TestFollowUpTurnsKeepTheFiles(FrappeTestCase):
 		self.assertEqual(attachments.conversation_files(conversation, ["/files/b.png"]), ["/files/b.png"])
 		self.assertEqual(attachments.conversation_files(conversation, []), ["/files/b.png"])
 		self.assertEqual(attachments.conversation_files("_Test Other Conversation", []), [])
+
+
+class TestWithAttachments(FrappeTestCase):
+	def tearDown(self):
+		frappe.db.rollback()
+		super().tearDown()
+
+	def test_images_go_as_images_and_text_files_join_the_prompt(self):
+		image = _file("form.png", PNG)
+		note = _file("fields.txt", "Plate Number, Inspection Date")
+		kwargs = attachments.with_attachments("build this", [image.file_url, note.file_url])
+		self.assertEqual(kwargs["images"], [IMAGE])
+		self.assertTrue(kwargs["user"].startswith("build this\n\n"))
+		self.assertIn("Plate Number, Inspection Date", kwargs["user"])
+		self.assertEqual(attachments.with_attachments("no files", []), {"user": "no files"})
+		self.assertEqual(attachments.with_attachments("no files", None), {"user": "no files"})

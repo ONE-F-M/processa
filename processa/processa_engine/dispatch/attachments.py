@@ -30,6 +30,15 @@ def conversation_files(conversation: str, files: list | None) -> list:
 	return frappe.cache.get_value(key) or []
 
 
+def with_attachments(user: str, files: list | None) -> dict:
+	"""complete() arguments for a prompt and the turn's files: text files added to the prompt, images passed as images."""
+	images, attached_text = read_attachments(files) if files else ([], "")
+	kwargs = {"user": f"{user}\n\n{attached_text}" if attached_text else user}
+	if images:
+		kwargs["images"] = images
+	return kwargs
+
+
 def read_attachments(file_urls: list | None) -> tuple[list, str]:
 	"""The images to send with the prompt, and a text block with the text files and the files not read."""
 	images, parts = [], []
