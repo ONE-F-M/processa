@@ -134,14 +134,17 @@ def library_scripts(process_model: str | None) -> list[dict]:
 
 
 def function_signatures(code: str) -> list[str] | None:
-	"""Each function code defines as name(args); None when code does more than define functions."""
+	"""Each function other scripts can call, as name(args); None when code does more than define functions.
+
+	import_script hands over only functions whose names do not start with an underscore.
+	"""
 	try:
 		body = ast.parse(code).body
 	except SyntaxError:
 		return []
 	if any(not isinstance(node, ast.FunctionDef) for node in body):
 		return None
-	return [f"{node.name}({ast.unparse(node.args)})" for node in body]
+	return [f"{node.name}({ast.unparse(node.args)})" for node in body if not node.name.startswith("_")]
 
 
 def workflow_states(process_model: str | None) -> list[str]:

@@ -26,6 +26,7 @@ from processa.ai_agent_security.code_checks.script_validator import (
 	import_error,
 	imported_scripts,
 	inspect_script,
+	private_library_calls,
 	runs_code_on_import,
 	used_categories,
 )
@@ -87,6 +88,9 @@ def library_findings(
 			if finding["category"] not in NOT_APPROVABLE:
 				message = _("{0}, through library {1}").format(finding["message"], library)
 				findings.append({**finding, "line": line, "library": library, "message": message})
+	for library, name, line in private_library_calls(code):
+		message = _("{0} is private to library '{1}'; rename it without the leading underscore").format(name, library)
+		findings.append(import_error(name, line, message))
 	return findings
 
 

@@ -148,5 +148,10 @@ class TestLogixLibraryScripts(FrappeTestCase):
 		self.assertEqual([lib["name"] for lib in out["library_scripts"]], [LIBRARY])
 		self.assertNotIn("step_functions", out)
 
+	def test_a_private_library_function_is_not_offered(self):
+		self._script(LIBRARY, LIBRARY_CODE + "\n\ndef _helper(text):\n\treturn text\n")
+		out = self._turn()
+		self.assertEqual(out["library_scripts"][0]["functions"], ["strip_fences(text)"])
+
 	def test_a_turn_without_a_map_has_no_library_section(self):
 		self.assertNotIn("library_scripts", build_logix_turn_context({"current_script": STEP}))

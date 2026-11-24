@@ -283,6 +283,37 @@ def runs_code_on_import(code: str | None) -> bool:
 	return any(not isinstance(node, ast.FunctionDef) for node in body)
 
 
+def private_library_calls(code: str | None) -> list[tuple[str, str, int]]:
+	"""Each (library, name, line) where code reaches a function starting with _ through import_script."""
+	try:
+		tree = ast.parse(code or "")
+	except SyntaxError:
+		return []
+	libraries = {}
+	for node in ast.walk(tree):
+		if (
+			isinstance(node, ast.Assign)
+			and len(node.targets) == 1
+			and isinstance(node.targets[0], ast.Name)
+			and _imported_name(node.value)
+		):
+			libraries[node.targets[0].id] = _imported_name(node.value)
+	calls = []
+	for node in ast.walk(tree):
+		if not isinstance(node, ast.Attribute) or not node.attr.startswith("_"):
+			continue
+		library = libraries.get(node.value.id) if isinstance(node.value, ast.Name) else _imported_name(node.value)
+		if library:
+			calls.append((library, node.attr, node.lineno))
+	return calls
+
+
+def _imported_name(node: ast.expr) -> str | None:
+	if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "import_script":
+		return _script_name_argument(node)
+	return None
+
+
 def _script_name_argument(node: ast.Call) -> str | None:
 	if len(node.args) == 1 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
 		return node.args[0].value
