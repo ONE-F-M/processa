@@ -17,6 +17,7 @@ from processa.ai_agent_security.code_checks.script_categories import (
 	category_for,
 	category_threshold,
 	needs_approval,
+	syntax_node_category,
 )
 
 MODULE = "Module"
@@ -44,8 +45,6 @@ _DESTRUCTIVE_SQL_RE = re.compile(
 	r"frappe\.db\.sql\s*\(.*?\b(DROP|TRUNCATE|ALTER|CREATE\s+TABLE)\b",
 	re.IGNORECASE | re.DOTALL,
 )
-# Used when the category holding large_multiplication has no Threshold.
-_DEFAULT_MULTIPLY_THRESHOLD = 50000
 _LANGUAGE_CONSTRUCTS = {
 	"while": "`while` loops",
 	"def": "`def` functions",
@@ -79,6 +78,8 @@ class _SecurityVisitor(ast.NodeVisitor):
 
 	def visit(self, node: ast.AST) -> None:
 		parent, self._node = self._node, node
+		if category := syntax_node_category(type(node).__name__):
+			self.report(type(node).__name__, SYNTAX, category=category)
 		super().visit(node)
 		self._node = parent
 
@@ -115,9 +116,7 @@ class _SecurityVisitor(ast.NodeVisitor):
 		from_frappe = module.split(".")[0] == "frappe"
 		for alias in node.names:
 			if alias.name == "*":
-				self.report(
-					f"from {module} import *", SYNTAX, category="Dynamic code and reflection", unlisted=True
-				)
+				self.report("import_star", SYNTAX, detail=f"from {module} import *")
 				continue
 			name = f"{module}.{alias.name}"
 			if from_frappe:
@@ -159,12 +158,12 @@ class _SecurityVisitor(ast.NodeVisitor):
 			and func.attr in _MUTATING_METHODS
 			and _node_name(func.value) in _PROTECTED_STATE_ATTRIBUTES
 		):
-			self.report("session_write", SYNTAX, unlisted=True, detail=f".{_node_name(func.value)}.{func.attr}()")
+			self.report("session_write", SYNTAX, detail=f".{_node_name(func.value)}.{func.attr}()")
 		for kw in node.keywords:
 			if kw.arg is None:
 				self._check_kwargs_unpack(kw.value)
 			elif kw.arg in _PERMISSION_KWARGS:
-				self.report("permission_kwarg", SYNTAX, unlisted=True, detail=f"{kw.arg}=...")
+				self.report("permission_kwarg", SYNTAX, detail=f"{kw.arg}=...")
 		self.generic_visit(node)
 
 	def _check_kwargs_unpack(self, value: ast.expr) -> None:
@@ -172,15 +171,15 @@ class _SecurityVisitor(ast.NodeVisitor):
 			return
 		for key in value.keys:
 			if isinstance(key, ast.Constant) and key.value in _PERMISSION_KWARGS:
-				self.report("permission_kwarg", SYNTAX, unlisted=True, detail=f"**{{'{key.value}': ...}}")
+				self.report("permission_kwarg", SYNTAX, detail=f"**{{'{key.value}': ...}}")
 			elif key is not None and not isinstance(key, ast.Constant):
-				self.report("permission_kwarg", SYNTAX, unlisted=True, detail="A computed keyword in **kwargs")
+				self.report("permission_kwarg", SYNTAX, detail="A computed keyword in **kwargs")
 
 	# ── attribute access ─────────────────────────────────────────────────
 	def visit_Attribute(self, node: ast.Attribute) -> None:
 		attr = node.attr
 		if attr in _OBJECT_GRAPH_ATTRIBUTES:
-			self.report("dunder_attribute", SYNTAX, unlisted=True, detail=f".{attr}")
+			self.report("dunder_attribute", SYNTAX, detail=f".{attr}")
 		self._check_session_write(node)
 		dotted = self._dotted(node)
 		if dotted and category_for(dotted) != UNLISTED:
@@ -194,18 +193,18 @@ class _SecurityVisitor(ast.NodeVisitor):
 
 	def visit_Name(self, node: ast.Name) -> None:
 		if node.id == "__builtins__":
-			self.report("dunder_attribute", SYNTAX, unlisted=True, detail="__builtins__")
+			self.report("dunder_attribute", SYNTAX, detail="__builtins__")
 
 	def _check_session_write(self, node: ast.Attribute | ast.Subscript) -> None:
 		if isinstance(node.ctx, (ast.Store, ast.Del)) and _node_name(node.value) == "session":
-			self.report("session_write", SYNTAX, unlisted=True, detail="Writing to the request session")
+			self.report("session_write", SYNTAX, detail="Writing to the request session")
 
 	# ── subscript string lookup:  frappe["__dict__"], obj["f_back"] ──────
 	def visit_Subscript(self, node: ast.Subscript) -> None:
 		key = node.slice.value if isinstance(node.slice, ast.Constant) else None
 		if isinstance(key, str):
 			if key in _OBJECT_GRAPH_ATTRIBUTES or _is_dunder(key):
-				self.report("dunder_subscript", SYNTAX, unlisted=True, detail=f"['{key}']")
+				self.report("dunder_subscript", SYNTAX, detail=f"['{key}']")
 			elif category := attribute_category(key):
 				self.report(key, FUNCTION, category=category, detail=f"['{key}']")
 		self._check_session_write(node)
@@ -234,9 +233,9 @@ class _SecurityVisitor(ast.NodeVisitor):
 
 	# ── memory-bomb multiplication:  "A" * 999999999 ────────────────────
 	def visit_BinOp(self, node: ast.BinOp) -> None:
-		if isinstance(node.op, ast.Mult):
-			category = category_for("large_multiplication")
-			threshold = category_threshold(category) or _DEFAULT_MULTIPLY_THRESHOLD
+		category = category_for("large_multiplication")
+		threshold = category_threshold(category)
+		if isinstance(node.op, ast.Mult) and threshold:
 			for operand in (node.left, node.right):
 				if (
 					isinstance(operand, ast.Constant)
@@ -248,7 +247,6 @@ class _SecurityVisitor(ast.NodeVisitor):
 						"large_multiplication",
 						SYNTAX,
 						category=category,
-						unlisted=True,
 						detail=f"Multiplying by {operand.value}, above the threshold of {threshold},",
 					)
 					break
@@ -316,7 +314,6 @@ def inspect_script(code: str | None, allowed: frozenset = frozenset()) -> list[d
 		visitor.report(
 			"destructive_sql",
 			SYNTAX,
-			unlisted=True,
 			detail="Destructive SQL (DROP/TRUNCATE/ALTER/CREATE TABLE)",
 			line=code.count("\n", 0, match.start()) + 1,
 		)

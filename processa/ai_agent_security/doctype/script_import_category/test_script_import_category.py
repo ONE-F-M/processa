@@ -90,6 +90,11 @@ class TestScriptImportCategory(FrappeTestCase):
 			doc.insert()
 		self.assertIn("Row 1", str(caught.exception))
 
+	def test_a_python_syntax_node_is_accepted_as_a_syntax_row(self):
+		doc = self._category("Test Syntax", ("Global", "Syntax"))
+		doc.insert()
+		self.assertEqual(doc.names[0].dotted_name, "Global")
+
 	def test_a_kind_that_does_not_fit_the_name_is_refused(self):
 		for row in (
 			("conquer", "Frappe function"),
