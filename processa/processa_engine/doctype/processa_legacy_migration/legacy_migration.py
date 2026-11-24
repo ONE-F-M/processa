@@ -33,6 +33,16 @@ FINISHED_MESSAGE = "processa:legacy_migration:finished"
 
 
 def start(migration_name: str) -> None:
+	"""Queue a migration's batches; a failure before they are queued fails the run with one Error Log row
+	that holds the traceback, so the run never waits for the hourly check."""
+	try:
+		_queue_batches(migration_name)
+	except Exception:
+		frappe.db.rollback()
+		_fail_before_batches(migration_name, frappe.get_traceback(with_context=False))
+
+
+def _queue_batches(migration_name: str) -> None:
 	"""Queue a migration's open old-map instances as run_batch jobs of BATCH_SIZE on the long queue."""
 	plm = frappe.get_doc("Processa Legacy Migration", migration_name)
 	user = plm.run_by or frappe.session.user
@@ -150,6 +160,15 @@ def _fail_if_stalled(name: str) -> None:
 	job_ids = [f"plm::{name}::start", *(f"plm::{name}::{n}" for n in range(1, plm.total_batches + 1))]
 	if any(is_job_enqueued(job_id) for job_id in job_ids):
 		return
+	if not plm.total_batches:
+		_fail_before_batches(
+			name,
+			_(
+				"The run never queued its batches, so no record was moved. The map step that starts it "
+				"failed or never ran: check the Error Log of the Action Processa Legacy Migration script."
+			),
+		)
+		return
 
 	logged = {row.old_instance for row in plm.error_logs}
 	unhandled = [
@@ -170,6 +189,14 @@ def _fail_if_stalled(name: str) -> None:
 	failed = _log_unmoved(name, unhandled, "Timed out", detail, next_idx)
 	frappe.db.set_value("Processa Legacy Migration", name, "failed_count", plm.failed_count + failed)
 	finish(name)
+
+
+def _fail_before_batches(migration_name: str, detail: str) -> None:
+	"""Fail a run that never queued its batches with one Error Log row; no record was touched."""
+	plm = frappe.get_doc("Processa Legacy Migration", migration_name)
+	next_idx = max((row.idx for row in plm.error_logs), default=0) + 1
+	log_error_row(migration_name, frappe._dict(), "Error", detail, next_idx)
+	finish(migration_name)
 
 
 def _log_unmoved(
