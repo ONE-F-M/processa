@@ -25,7 +25,8 @@ export function useProcessSave(pc) {
 	function isEditingShapeProperties() {
 		const el = document.activeElement;
 		if (!el || !el.closest) return false;
-		if (!el.closest(".properties-panel-container")) return false;
+		// A record picker's search box sits in a popover outside the panel.
+		if (!el.closest(".properties-panel-container, .record-picker-body")) return false;
 		const tag = el.tagName;
 		return (
 			tag === "INPUT" ||
