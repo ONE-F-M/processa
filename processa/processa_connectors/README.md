@@ -137,14 +137,14 @@ The shipped Google connectors are defined in `GOOGLE_CONNECTORS` in `patches/v1_
 
 | Connector | Operations | Seeded by |
 |---|---|---|
-| `google_drive` | copyFile, downloadText, createFile, updateFileContent, setPermissions, listFiles, revokePermissions, deleteFile | `seed_google_connectors.py` |
+| `google_drive` | copyFile, downloadText, createFile, updateFileContent, setPermissions, listFiles, revokePermissions, deleteFile, setContentRestriction | `seed_google_connectors.py`; setContentRestriction by `add_drive_content_restriction_operation.py` |
 | `google_docs` | createDocument, insertText, appendText, fillTemplate, fillBrandedTemplate, replaceAllText, getText | `seed_google_connectors.py` |
 | `google_sheets` | createSpreadsheet, getValues, updateValues, appendValues, clearValues, addSheet | `seed_google_connectors.py` |
 | `google_slides` | createPresentation, replaceAllText, createSlide, duplicateSlide, getText, fillBrandedDeck | `seed_google_connectors.py` |
 | `a2a` | delegate_to_local_agent, delegate_task | `seed_a2a_connector.py` |
 | `github`, `github_video_upload`, `url_liveness_check` | see their patches | `seed_github_connector.py`, `seed_github_video_upload_connector.py`, `seed_url_liveness_connector.py` |
 
-All four Google connectors use execution type **HTTP Request**. Of their 27 operations, 16 are plain HTTP calls and 11 set **Python Handler** with an explicit Handler Path.
+All four Google connectors use execution type **HTTP Request**. They have 28 operations: 17 are plain HTTP calls and 11 set **Python Handler** with an explicit Handler Path. `GOOGLE_CONNECTORS` holds 27 of them; `setContentRestriction` is added only by the `add_drive_content_restriction_operation` patch, so a fresh install, where patches are marked as already run, does not get it.
 
 ## Credentials
 
@@ -154,8 +154,8 @@ The Auth section shows only when the connector's execution type is **HTTP Reques
 
 **Google.** Each Google connector is seeded with Auth Type **Service Account JSON** and `Credential Source = On this connector`. Paste the whole JSON key file Google issued into **Secret**. `Secret` is a 10,000-character field because a service-account key is about 2.3 kB and Frappe's Password control otherwise caps input at 140.
 
-- **HTTP operations** (16 of 27): the HTTP executor reads the key with the connector's Credential Source, exchanges it for an access token using the connector's **Scopes**, and caches the token.
-- **Python Handler operations** (11 of 27): `google.common.load_service_account_info` reads the named connector's Secret. If that Secret is empty, it falls back to the `google_drive` connector's Secret. It ignores Credential Source. There is no `site_config.json` or file fallback. With no key at all, it raises an error naming the connector to fix.
+- **HTTP operations** (17 of 28): the HTTP executor reads the key with the connector's Credential Source, exchanges it for an access token using the connector's **Scopes**, and caches the token.
+- **Python Handler operations** (11 of 28): `google.common.load_service_account_info` reads the named connector's Secret. If that Secret is empty, it falls back to the `google_drive` connector's Secret. It ignores Credential Source. There is no `site_config.json` or file fallback. With no key at all, it raises an error naming the connector to fix.
 
 All business config (destination **folders**, files, templates) is entered **on the connector element**, never in settings.
 

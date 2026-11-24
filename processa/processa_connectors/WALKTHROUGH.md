@@ -277,9 +277,9 @@ No Python was written at any point.
 ## Walkthrough B - Python Handler operation
 
 Use this only when an HTTP template genuinely can't express the call: resumable
-uploads, SDK-only APIs, several calls in one step. Of the 27 shipped Google
+uploads, SDK-only APIs, several calls in one step. Of the 28 shipped Google
 operations, 11 work this way (for example `google_drive` → `createFile`); the
-other 16 are plain HTTP operations.
+other 17 are plain HTTP operations.
 
 **Be clear about the split:** the *connector definition* is still 100% desk -
 icon, operations, fields, required flags, choices, conditions. The only code is
