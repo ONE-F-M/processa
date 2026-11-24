@@ -15,7 +15,7 @@ export function useDocuAutosave({
 	emit,
 }) {
 	// Auto-save: changes persist to the system automatically (no "Apply" button).
-	const saveState = ref("idle"); // idle | saving | saved | error
+	const saveState = ref("idle"); // idle | saving | saved | error | placement | question | pending
 	const canChange = ref(false);
 	const saveError = ref("");
 	const listingQuestion = ref("");

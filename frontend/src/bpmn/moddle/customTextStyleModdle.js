@@ -1,8 +1,8 @@
 /**
  * Custom Moddle Extension for Text Styling
  * 
- * Defines a custom namespace for storing text style properties
- * in BPMN XML extension elements.
+ * Defines a custom namespace whose text style properties are XML
+ * attributes on any bpmn:BaseElement.
  */
 
 export default {

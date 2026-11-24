@@ -257,31 +257,9 @@ def build_dynamic_preamble(
 	instructions: str = "",
 	established_block: str = "",
 ) -> str:
-	"""Compose the DYNAMIC layer's opening message.
-
-	Retrieved long-term memory is dynamic — it is searched with this turn's
-	user prompt and differs every turn — so it belongs here, ahead of the user's
-	text, and never in the system prompt.
-
-	The memory block is placed FIRST so the provider-side conversation cache
-	breakpoint (which the Anthropic adapter puts on the context prefix that
-	precedes a "User message:"-style marker) still has a stable prefix to
-	attach to.
-
-	``instructions`` is the turn's standing text — what the map tells the agent
-	to do — and it joins that cacheable prefix, leaving the marker immediately
-	before the part that actually varies: the person's own words. Passed alone
-	it is simply the message, so every existing caller composes as it did.
-
-	Returns the user prompt unchanged when there is no memory to inject, so
-	agents without long-term memory send exactly what they sent before.
-
-	``active_skills`` carries the full BODIES of skills loaded via load_skill
-	this conversation \u2014 not the static index of what is
-	available, which is ``_render_skills_index``'s job in the system prompt.
-	Without this, load_skill's cache write had nothing downstream reading
-	it, so a loaded skill's instructions never reached the model at all.
-	"""
+	"""Join loaded skill bodies, memory, established facts and (when a user prompt is also given) instructions, in that order.
+	The joined blocks precede "User message: <prompt>"; with only instructions or only a prompt, that text is the message.
+	Returns that message unchanged when there are no blocks to prepend."""
 	memory_block = str(memory_block or "").strip()
 	user_prompt = str(user_prompt or "")
 	instructions = str(instructions or "")

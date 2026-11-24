@@ -19,10 +19,8 @@ Two entry points, deliberately separate:
   Context" Server Script currently open-codes, and it returns the same
   ``[{"role", "content"}]`` shape those scripts already produce.
 - ``compact_conversation`` is the WRITE path. It generates a summary and stores
-  it. Nothing in this module calls it automatically: WHEN to compact (count,
-  time, and task-boundary triggers, and running it off the hot path) is a
-  separate story. Until then it is called by hand, from a test, or from a
-  Server Script.
+  it. ``compaction_triggers.run_compaction`` calls it in a background job queued
+  by the Chat Message hooks and the hourly idle-conversation sweep.
 
 Summaries CHAIN. Each new one absorbs the text of the one before it and points
 at it through ``supersedes``, so only the newest summary is ever read and the

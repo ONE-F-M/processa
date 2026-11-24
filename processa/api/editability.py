@@ -148,12 +148,8 @@ def _is_local_dev_mode() -> bool:
 
 
 def _call_production_api(method: str, params: dict) -> dict:
-	"""
-	Call a whitelisted method on the Production site using API key auth.
-
-	Reads `production_url`, `production_api_key`, and
-	`production_api_secret` from Processa Settings DocType.
-	"""
+	"""Call a whitelisted method on the Production site using API key auth.
+	Credentials come from _production_creds: Processa Settings, else frappe.conf."""
 	import requests
 
 	production_url, api_key, api_secret = _production_creds()

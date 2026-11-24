@@ -9,7 +9,7 @@ This exists so "Threat Source Discovery" can check whether its already-approved
 Threat Source URLs are still reachable — the one thing its own process
 documentation named as deliberately dropped rather than ported from onefm_mcp's
 retired source_validator.py, because a plain Script Task can never do this
-itself: processa's security gate (processa.security.script_validator) forbids
+itself: processa's security gate (processa.ai_agent_security.code_checks.script_validator) forbids
 `requests`/`urllib` outright, so any outbound call has to go through a
 Connector, dispatched from a Service Task, not from inside a script's Python.
 

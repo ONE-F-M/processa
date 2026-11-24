@@ -7,7 +7,7 @@ import frappe
 
 
 def execute():
-	# Check if the old column still exists (it will be dropped by migrate)
+	# Skip when the dmn_xml column is not in the table.
 	if not frappe.db.has_column("BPMN Process Model", "dmn_xml"):
 		return
 

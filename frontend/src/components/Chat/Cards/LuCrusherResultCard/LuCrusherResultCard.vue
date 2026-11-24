@@ -17,10 +17,9 @@
 // shows is decided by the payload's `intent`, exactly as
 // handle_lucrusher_result decided it — see luCrusherView.js.
 //
-// Every button is a QUICK-SEND: it puts a literal sentence in the composer
-// and sends it, which is all the legacy data-lcr-send buttons ever did. The
-// sentences are copied verbatim from lumina.js — LuCrusher reads them as
-// intent, so paraphrasing them would silently change the conversation.
+// Every button except Copy prompt is a QUICK-SEND: the panel sends a literal
+// sentence as the user's message. LuCrusher reads the sentences as intent, so
+// they must not be paraphrased.
 import { computed } from "vue";
 import CardShell from "../../Primitives/CardShell/CardShell.vue";
 import LuCrusherResultBody from "../LuCrusherResultBody/LuCrusherResultBody.vue";

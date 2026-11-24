@@ -4,11 +4,8 @@
 
 This is the primary case: an orchestrator handing a task to a specialist
 that lives in the same bench. Nothing crosses a trust boundary, so none
-of the machinery that exists to make an untrusted caller safe applies —
-no registry entry, no approved client, no service-user key, no HTTP hop,
-and no exposure flag on the target. Requiring any of that for two agents
-on one site would be ceremony that buys nothing: you already trust
-yourself.
+of the machinery that exists to make an untrusted caller safe applies:
+no registry entry, no approved client, no service-user key and no HTTP hop.
 
 What DOES still apply, because it is about scope and loops rather than
 authentication:

@@ -10,8 +10,8 @@ This patch removes:
 2. The seed patch:     onefm_mcp/patches/v15_0/seed_ai_model_pricing_data.py
 3. The patch entry:    onefm_mcp/patches.txt (the line referencing seed_ai_model_pricing)
 
-All operations are wrapped in try/except — if onefm_mcp isn't installed or
-file paths differ, the patch silently skips.
+Returns early when onefm_mcp is not installed. A failed file operation writes
+an Error Log entry and the patch continues.
 """
 
 import os

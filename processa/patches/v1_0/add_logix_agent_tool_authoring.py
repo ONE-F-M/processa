@@ -1,8 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 # For license information, please see license.txt
 """
-Teach Logix the Agent Tool authoring standard (see logix-agent.instructions.md,
-"Script Contracts").
+Teach Logix the Agent Tool authoring standard.
 
 A Script Task and an Agent Tool are different execution contexts: a Script
 Task runs through the engine (single exec namespace, workflow variables +

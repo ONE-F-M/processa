@@ -111,10 +111,7 @@ frappe.ui.form.on("AI Agent Configuration", {
 	},
 
 	show_needs_attention_reason(frm) {
-		// Surface WHY the last go-live attempt parked this agent —
-		// as an intro banner, not a field. The reason lives in the hidden
-		// needs_attention_reason field, written by the creation process and
-		// the Background auto-lifecycle, and cleared when the agent moves on.
+		// Show the hidden needs_attention_reason (set by the creation process or the on-save credential revalidation) as an intro banner.
 		frm.set_intro("");
 		if (frm.is_new() || frm.doc.lifecycle_status !== "Needs Attention") return;
 		const reason = frm.doc.needs_attention_reason

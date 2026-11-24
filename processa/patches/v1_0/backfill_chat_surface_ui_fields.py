@@ -13,8 +13,9 @@ the open doctype) stay host-supplied — the panel appends the host's context
 line to the configured greeting, so only the context-free sentence lives here.
 
 Unknown agents are skipped silently: a site that never seeded an agent has
-nothing to backfill. Existing non-empty values are left alone — reruns and
-already-customised sites stay untouched.
+nothing to backfill. Existing non-empty values are left alone, except that
+surface_type and artifact_type are also overwritten when they hold
+"Conversation" or "None".
 """
 
 import frappe

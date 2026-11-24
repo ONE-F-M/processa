@@ -8,8 +8,8 @@ registry row and never a new connector. There is no base URL or
 credential here for the same reason: both live on the registry entry
 whose endpoint is being called.
 
-Goes in through the ordinary import path, and never overwrites: a site
-sets its own allowed_roles on the connector row.
+Goes in through the ordinary import path with overwrite=True. The import does
+not touch allowed_roles, so a site keeps its own roles on the connector row.
 """
 
 import frappe

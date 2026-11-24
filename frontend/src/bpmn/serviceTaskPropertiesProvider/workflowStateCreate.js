@@ -1,4 +1,4 @@
-// Creating a Workflow State from the Apply Workflow panel, kept free of the panel's imports so node --test can load it.
+// Creating a Workflow State from the Apply Workflow panel, kept free of the panel's imports so unit tests can load it.
 
 export const WORKFLOW_STATE_STYLES = ["Primary", "Info", "Success", "Warning", "Danger", "Inverse"];
 

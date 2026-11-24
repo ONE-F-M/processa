@@ -41,8 +41,7 @@
 	</div>
 </template>
 <script setup>
-// Container primitive: header + body + action bar. Every
-// Document/Form card is CardShell[Heading, body, Row[actions]]. Once a
+// Container primitive: header + body + action bar. Once a
 // card's action is taken the buttons retire and a result line takes their
 // place — a decision made cannot be re-made from a stale card.
 //
@@ -51,7 +50,7 @@
 // is a self-contained Teleport, not frappe-ui's Dialog: the one-ai bundle
 // (Desk Chat button, /one-ai) ships no Tailwind, so Dialog renders
 // unstyled there, and in the SPA App.vue pins .dialog-overlay to z-index 50,
-// under DocuCanvas (2000) and LogixChat (9999). #expanded is mounted only
+// under DocuCanvas (2000). #expanded is mounted only
 // while open, so a heavy body (bpmn-js viewer) never exists twice at rest.
 import { onBeforeUnmount, ref, watch } from "vue";
 
@@ -91,8 +90,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown, true));
 .prim-shell-expand { display: grid; place-items: center; width: 24px; height: 24px; flex: none; padding: 0;
 	border: none; border-radius: 6px; background: transparent; color: #7c7c7c; cursor: pointer; }
 .prim-shell-expand:hover { background: #ededed; color: #171717; }
-/* Above every chat host: SPA dialogs (50), one-ai scrim (1050), DocuCanvas
-   (2000), LogixChat (9999) and its apply dialog (10000). */
+/* Above every chat host: SPA dialogs (50), one-ai scrim (1050) and DocuCanvas
+   (2000). */
 .prim-shell-scrim { position: fixed; inset: 0; z-index: 10050; display: flex; align-items: center;
 	justify-content: center; padding: 24px; background: rgba(23, 23, 23, 0.45); }
 .prim-shell-window { display: flex; flex-direction: column; width: min(1280px, 96vw); height: 85vh;

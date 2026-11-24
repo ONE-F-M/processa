@@ -17,7 +17,7 @@ function getAttr(bo, attr) {
  *
  * Returns two entries:
  *   1. DecisionTablePicker — autocomplete dropdown searching by ID and name
- *   2. LaunchEditorButton  — opens the DMN editor dialog
+ *   2. LaunchDmnEditorButton - opens the DMN editor dialog
  */
 export function BusinessRuleTaskProps(props) {
 	const { element } = props;

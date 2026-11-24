@@ -1,29 +1,24 @@
 # Copyright (c) 2026, one-fm and contributors
 # For license information, please see license.txt
 """
-BPMN IR pipeline — shared deterministic infrastructure.
+BPMN IR pipeline: shared deterministic infrastructure.
 
-The non-LLM steps of the process-modelling pipeline, kept as importable Python
-because they cannot live inside a BPMN Script Task body: ``compile_ir`` shells
-out to ``frontend/tools/bpmn-pipeline/pipeline.mjs`` via ``subprocess`` (and ``os``/``shutil`` for node
-discovery), and the security gate (``deep_inspect_script``) bans those modules
-in gated script bodies. The ProsAlly agent's LLM/prompt/routing logic now lives
-inline in its BPMN tool scripts; these transforms are the shared seam those
-scripts import.
+The non-LLM steps of the process-modelling pipeline, kept as importable Python:
+``compile_ir`` shells out to ``frontend/tools/bpmn-pipeline/pipeline.mjs`` via
+``subprocess`` (and ``os``/``shutil`` for node discovery), which a script body may
+use only under an approved Script Import Category. The ProsAlly ``tools_*`` modules
+make the LLM calls through ``helpers.complete_sub_prompt`` and import these transforms.
 
     check_topology        is the flow graph planar (zero crossings possible)?
     flow_pairs_from_xml   (source, target) pairs of an existing diagram
     compile_ir            IR JSON -> BPMN XML via frontend/tools/bpmn-pipeline/pipeline.mjs (subprocess)
     extract_process_name  read the pool/process name out of BPMN XML
     extract_element_ids   the preserve-these-ids table for a modify turn
-    has_lanes             does the diagram use swimlanes/pools
+    has_lanes             does the diagram have a laneSet
     get_diagram_facts     bundle of the three reads above
     translate_problems    pipeline problem dicts -> IR-level fix hints
     translate_violations  validator strings -> IR-level fix hints
     validate_bpmn         semantic lint + fix hints
-
-Previously ``processa/agents/google_adk/prosally_agent/tools.py`` (deleted with
-the rest of the ProsAlly agent package during the per-agent migration).
 """
 
 from __future__ import annotations
@@ -435,7 +430,7 @@ def element_names(xml: str) -> dict[str, tuple[str, str]]:
 
 
 def has_lanes(xml: str) -> bool:
-    """True when the diagram uses swimlanes/pools."""
+    """True when the diagram XML contains a laneSet."""
     return bool(xml) and ("laneSet" in xml or "bpmn:laneSet" in xml)
 
 
@@ -481,7 +476,7 @@ def translate_problems(problems: list) -> list[str]:
 
 
 def translate_violations(violations: list[str]) -> list[str]:
-    """Convert Python bpmn_validator violation strings to IR-level fix hints (deduped)."""
+    """Convert prosally.validators violation strings to IR-level fix hints (deduped)."""
     hints: list[str] = []
     seen: set[str] = set()
     for v in violations:

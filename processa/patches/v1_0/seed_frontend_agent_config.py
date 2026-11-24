@@ -14,7 +14,7 @@ the diagram references. A patch that also wrote the XML or the script bodies wou
 create a second source of truth to drift from the exported one. The configuration
 is the one record no export carries, so it is the one thing a patch is right for.
 
-What DOES ship as code is ``processa/frontend/primitives.py``, and only what the
+What DOES ship as code is ``processa/ai_agent_registry/definitions/frontend_agent/tools.py``, and only what the
 script gate makes impossible: walking the tree, reading a file, running node or
 git, placing an HTTP call. Every rule the agent applies — what it may edit, which
 constructs it refuses, the house style checks, which apps are ours, how a pull

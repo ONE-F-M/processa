@@ -230,7 +230,7 @@ const visibleGroups = computed(() => {
 	return groups.value;
 });
 
-// Group the version groups under date-section headers (Today / date).
+// Group the version groups under date-section headers (Today / Yesterday / date).
 const dateSections = computed(() => {
 	const sections = [];
 	let current = null;

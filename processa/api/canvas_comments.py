@@ -112,7 +112,7 @@ def post_canvas_comment(
 	)
 	doc.insert(ignore_permissions=True)
 
-	# If assigned to someone, create a ToDo
+	# A task comment with an assignee gets a ToDo.
 	if is_task and assigned_to:
 		frappe.get_doc(
 			{
@@ -250,10 +250,7 @@ def delete_canvas_element_assets(model_name: str, element_id: str):
 
 
 def cleanup_process_model_assets(model_name: str):
-	"""
-	Background job to cleanup custom assets when a BPMN Process Model is deleted.
-	Updated to support the standard Comment DocType.
-	"""
+	"""Delete the canvas Comment records of a BPMN Process Model and their ToDos; delete_model calls it inline."""
 	if not model_name:
 		return
 

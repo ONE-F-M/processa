@@ -47,17 +47,9 @@ CACHE_WRITE_MULTIPLIER = 1.25
 
 
 def get_model_pricing(model: str) -> Optional[Dict]:
-	"""
-	Return the active pricing record for *model*, or None.
-
-	Tries an exact model_name match first, then strips a trailing
-	date/version suffix (e.g. "-20251001") and retries.
-
-	Returns:
-	    {"input_cost_per_1k", "output_cost_per_1k", "cache_read_cost_per_1k",
-	     "cache_write_cost_per_1k"} or None. The two cache rates are always
-	    populated — derived from the input rate when not configured.
-	"""
+	"""Per-1k rates for *model* from the AI Model catalog, or None.
+	Tries the AI Model name, then the AI Model whose model_api_name matches, then the name without a trailing date suffix.
+	Returns input, output, cache_read and cache_write cost per 1k; both cache rates are derived from the input rate."""
 	try:
 		result = _lookup(model)
 		if result:
@@ -86,15 +78,8 @@ def get_model_pricing(model: str) -> Optional[Dict]:
 
 
 def _lookup(model_name: str) -> Optional[Dict]:
-	"""Exact lookup against the AI Model catalog.
-
-	A model with no rate returns None rather than a row of zeros, so an
-	unpriced model reports unknown cost instead of free — the same distinction
-	the old rate card made by simply having no row.
-
-	Cache rates are resolved here rather than by callers so every consumer of
-	get_model_pricing() gets the same derived defaults.
-	"""
+	"""Per-1k rates for one AI Model name, or None when the model is missing or has neither input nor output cost.
+	Cache rates are always derived from the input rate by _apply_cache_rate_defaults."""
 	rates = frappe.db.get_value(
 		"AI Model", model_name, ["input_cost", "output_cost"], as_dict=True
 	)
@@ -114,21 +99,8 @@ def _lookup(model_name: str) -> Optional[Dict]:
 
 
 def _apply_cache_rate_defaults(row: Dict) -> None:
-	"""Fill unset cache rates from the input rate, in place.
-
-	"Unset" means falsy (None or 0), NOT just None. Frappe Currency columns are
-	``NOT NULL DEFAULT 0``, so a rate nobody has filled in reads back as 0.0 and
-	is indistinguishable from a deliberately-entered 0 — the form shows an empty
-	box for both. Testing only for None would therefore bill every cached token
-	at zero on every existing pricing row, understating cost as badly as the
-	pre-WI-001643 behaviour overstated it.
-
-	Deriving instead fails safe: an unconfigured model gets the standard ratio
-	rather than a free ride. The cost of this choice is that a genuinely-zero
-	cache rate cannot be expressed — acceptable because the providers that
-	charge nothing for cache writes (OpenAI, Gemini) report no cache-write
-	tokens in the first place, so the write rate is never applied to them.
-	"""
+	"""Fill each zero cache rate from the input rate times its multiplier, in place.
+	A Frappe Currency column reads back 0 when unset, so 0 counts as unset."""
 	input_rate = flt(row.get("input_cost_per_1k"))
 	if not flt(row.get("cache_read_cost_per_1k")):
 		row["cache_read_cost_per_1k"] = input_rate * CACHE_READ_MULTIPLIER

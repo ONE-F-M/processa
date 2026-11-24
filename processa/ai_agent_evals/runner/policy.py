@@ -172,10 +172,8 @@ def assert_agent_evaluatable(agent_cfg: str, eval_type: str, suite_map: str = ""
     needs a process map to run and cannot be invoked standalone. "Direct" evals
     are a plain LLM call and work for any agent.
 
-    ``suite_map`` is the map the suite itself names. When set, the run takes the
-    map path (see ``_run_map_eval``), which starts that map directly instead of
-    going through the agent's own chat map — so the agent not having one of its
-    own is no longer a blocker.
+    ``suite_map`` is the map the suite itself names; when set, the check passes.
+    Which path the run takes is decided by ``_needs_map_eval``.
     """
     if not agent_cfg:
         frappe.throw(_("This suite has no agent configuration. Assign an agent before running evals."))

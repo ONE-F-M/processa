@@ -2,7 +2,7 @@
 """
 Tell every agent, once, that tool output is data.
 
-The markers added in ``security/provenance.py`` are only half the control — a
+The markers added in ``ai_agent_security/screening/provenance.py`` are only half the control - a
 delimiter the model was never told the meaning of buys nothing. This puts the
 other half where behaviour belongs: the agent's frozen static
 context, as a Guard Rail ROW rather than a line of Python, so a site can reword

@@ -1,7 +1,7 @@
 """
 Seed the AI Agent Configuration for the Docu agent.
 
-Docu is the AI DocType-builder embedded in Processa (see processa docu_agent).
+Docu is the AI DocType-builder embedded in Processa.
 This patch upserts the "Docu Agent" AI Agent Configuration (agent_id "docu_agent")
 with Docu's system prompt and sub-prompts, mirroring Logix's non-secret settings
 (framework / provider override / model / temperature / max_tokens / owner).
@@ -11,10 +11,8 @@ It deliberately does NOT seed the per-agent LLM provider/model/API-key row
 carries a secret, so it is configured manually per site (staging set by hand).
 With no per-agent row, the LLM factory falls back to the global provider/key.
 
-The AI Agent Configuration DocType lives in onefm_mcp; this patch ships with
-processa (alongside seed_agent_prompts) because Docu is a processa agent. The prompt
-text is defined in this patch (the single source of truth) and read back at
-runtime via get_agent_config — keeping prompts out of the agent code.
+The AI Agent Configuration DocType lives in processa (ai_agent_registry). The
+prompt text is defined in this patch and read back at runtime via get_agent_config.
 
 Idempotent and safe to re-run.
 """
@@ -22,10 +20,7 @@ Idempotent and safe to re-run.
 import frappe
 
 # ── Prompt text — the single source of truth ────────────────────────────────
-# The system prompt and the four sub-prompts live HERE (not in agent code):
-# this patch seeds them into the AI Agent Configuration, and the runtime
-# (DocuAgent) reads them back via get_agent_config. Edit them here (or in the
-# AI Agent Configuration UI) — never in docu_agent.py.
+# System prompt and four sub-prompts, seeded into AI Agent Configuration and read back via get_agent_config.
 _DEFAULT_MODULE = "ONE BPMN"
 
 _SYSTEM_PROMPT = (
@@ -202,8 +197,7 @@ _SUB_META = [
 
 
 def execute():
-	# AI Agent Configuration / AI Chat Settings are onefm_mcp DocTypes — skip
-	# cleanly if that app isn't installed on this site.
+	# Skip when the AI Agent Configuration DocType is not on this site.
 	if not frappe.db.exists("DocType", "AI Agent Configuration"):
 		return
 	logix_cfg = _get_logix_agent_config()

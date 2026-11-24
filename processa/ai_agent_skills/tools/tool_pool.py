@@ -1,7 +1,5 @@
 # Copyright (c) 2026, one-fm and contributors
-# Tool-pool resolution — the ad-hoc sub-process's
-# own shapes are the tools. The AI Agent Tool registry was removed
-# (both the AI Agent Task and the AI Task Selector are shapes-only now).
+# Tool-pool resolution: the ad-hoc sub-process's own shapes, plus the agent's enabled skill tools.
 
 import json
 from dataclasses import dataclass
@@ -23,8 +21,8 @@ class ToolCandidate:
 	"""One selector candidate: a ToolSpec plus where it came from.
 
 	spec is the exact shape the agent_runtime tool-calling loops consume
-	(name, description, parameters, required); source is DIAGRAM_TASK — the only
-	source now that the registry is gone.
+	(name, description, parameters, required); source is DIAGRAM_TASK for a
+	diagram shape or "PYTHON_FUNCTION" for a skill tool.
 	"""
 
 	spec: ToolSpec
@@ -37,7 +35,7 @@ def resolve_tool_pool(subworkflow, task_cfg: dict = None, process_model: str | N
 	sub-process's own inner head shapes, in diagram order. Each shape's
 	documentation doubles as its tool description (Camunda's model).
 
-	The AI Agent Tool registry was removed — tools are the shapes.
+	When the agent has enabled skills, its skill tools follow with source "PYTHON_FUNCTION".
 	``task_cfg`` carries the compiled ``aiToolShapes`` descriptors, which is
 	where a shape's argument schema comes from. ``process_model`` is retained
 	for signature compatibility.

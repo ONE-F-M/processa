@@ -28,7 +28,7 @@ export function UserTaskProps(props) {
 	const bo           = getBusinessObject(element);
 	const assigneeMode = getAttr(bo, "assigneeMode");
 
-	// DocType is always shown (used by DocField, Load Balancing)
+	// DocType is always shown (used by DocField, Table Field)
 	const entries = [
 		{
 			id: "spiffworkflow-targetDoctype",
@@ -139,8 +139,8 @@ export function UserTaskProps(props) {
 //
 // Mirrors the send_email Service Task's Email Account field, and exists for the
 // same reason: a notification moved from a Service Task onto the User Task it
-// belongs to must be able to keep sending from the same mailbox. Left empty,
-// the site default sender is used.
+// belongs to must be able to keep sending from the same mailbox. Deploy
+// rejects Notify Assignee when it is empty.
 function NotifyAssigneeAccountComponent(props) {
 	const { element, id } = props;
 	const modeling  = useService("modeling");
@@ -170,8 +170,7 @@ function NotifyAssigneeAccountComponent(props) {
 }
 
 // Component 1 — DocType (always visible)
-// Used by DocField mode (which doctype to look up the user field)
-// and by Load Balancing (doctype to count open tasks)
+// Used by DocField and Table Field modes (which doctype holds the user field)
 function TargetDoctypeComponent(props) {
 	const { element, id } = props;
 	const modeling  = useService("modeling");
@@ -214,7 +213,7 @@ function TargetDoctypeComponent(props) {
 }
 
 // Component 2 — Assignment Mode (renamed from Assignee Mode)
-// Options: User | DocField | Round Robin | Load Balancing
+// Options: User | DocField | Round Robin | Load Balancing | Table Field
 function AssignmentModeComponent(props) {
 	const { element, id } = props;
 	const modeling  = useService("modeling");
@@ -371,7 +370,7 @@ function AssigneeDocfieldComponent(props) {
 	});
 }
 
-// Component 4b — Table Field (Table MultiSelect field autocomplete, for
+// Component 4b - Table Field (Table or Table MultiSelect field autocomplete, for
 // "Table Field" mode). Requires a DocType to be selected above. Any user
 // found in any row of this field may complete the task.
 function AssigneeTableFieldComponent(props) {
@@ -616,8 +615,8 @@ function RoundRobinUsersComponent(props) {
 
 // Component 6 — Load Balancing Users (multi-select)
 // Stores as comma-separated user names in spiffworkflow:assigneeUsers.
-// At runtime the engine assigns to the user with the fewest open tasks
-// (same as Frappe's Assignment Rule "Load Balancing"; ties go to first user).
+// At runtime the engine assigns to the user with the fewest Waiting rows of
+// this same task across instances; ties go to the first user.
 function LoadBalancingUsersComponent(props) {
 	const { element, id } = props;
 	const modeling  = useService("modeling");

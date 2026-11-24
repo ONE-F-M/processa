@@ -5,7 +5,7 @@
  * because the XML parser treats angle brackets as tag boundaries, causing
  * parse errors like "unparsable content </p> detected".
  *
- * These helpers encode HTML to URL-safe Base64 before writing it to
+ * These helpers encode HTML to standard Base64 before writing it to
  * `spiffworkflow:*` attributes, and decode it back when reading.
  *
  * Used for:  notifyAssigneeBody, emailBody

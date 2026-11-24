@@ -1,5 +1,5 @@
 # Copyright (c) 2026, one-fm and contributors
-"""Deploy warning for a closing script that reads a turn-store key no script on the map writes."""
+"""Deploy warning for a closing script that reads a turn-store key no tool of its agent writes."""
 
 import ast
 import json
@@ -16,7 +16,7 @@ _TURN_READ_RE = re.compile(r"\b(?:_?turn|_?out)\.get\(\s*['\"]([a-zA-Z_][\w]*)['
 
 
 def validate_turn_store_contract(bpmn_xml: str, service_extensions: dict) -> list:
-	"""Warn when a closing script reads a turn-store key that no script on the map writes."""
+	"""Warn when a closing script reads a turn-store key that no tool script or tool parameter of the agent writes."""
 	agents = ai_agents_with_tools(service_extensions)
 	if not agents:
 		return []
@@ -141,7 +141,7 @@ def _script_bodies(names: set) -> dict:
 
 
 def _agent_script_names(bpmn_xml: str, adhoc_id: str) -> tuple:
-	"""(tool scripts inside the Tools box, scripts everywhere else on the map)."""
+	"""(tool scripts inside this agent's Tools box, {shape id: script} for scripts outside every ad-hoc box)."""
 	import xml.etree.ElementTree as _ET
 
 	BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"

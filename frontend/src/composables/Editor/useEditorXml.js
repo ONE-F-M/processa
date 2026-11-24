@@ -83,9 +83,7 @@ export function useEditorXml(ed) {
 		try {
 			await ed.modeler.importXML(xml);
 
-			// Proactively auto-layout connecting lines (edges) using bpmn-js's native layout engine.
-			// This translates straight-line connectors or missing edge DI elements into standard
-			// orthogonal Manhattan routing paths that avoid node overlapping.
+			// Re-route diagonal two-waypoint edges through bpmn-js's Manhattan layout.
 			try {
 				const elementRegistry = ed.modeler.get("elementRegistry");
 				const modeling = ed.modeler.get("modeling");
@@ -208,7 +206,7 @@ export function useEditorXml(ed) {
 	}
 
 	/**
-	 * Set the `name` attribute on the first <bpmn:process> element.
+	 * Set the `name` attribute on every <bpmn:process> element that has none.
 	 * Uses the ed.modeler's modeling API so the change is reflected
 	 * immediately in the properties panel and serialised into XML on save.
 	 */

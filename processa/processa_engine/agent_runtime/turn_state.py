@@ -31,7 +31,9 @@ TURN_ANSWERED_FLAG = "bpmn_turn_answered"
 
 
 def update_turn(conversation: str, **kwargs) -> dict:
-	"""Merge ``kwargs`` into the turn scratch and persist it. Returns the result."""
+	"""Merge ``kwargs`` into the turn scratch and persist it. Returns the result.
+
+	On a turn already done, output and done are dropped with a warning."""
 	turn = get_turn(conversation)
 	if turn.get("done") and any(k in kwargs for k in _TERMINAL_KEYS):
 		_existing = turn.get("output")

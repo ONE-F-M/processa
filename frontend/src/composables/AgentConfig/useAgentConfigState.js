@@ -124,10 +124,8 @@ export function createAgentConfigContext(props, emit) {
 		aiAgentRoles: [],
 	});
 
-	// True once the linked agent's examples/guard rails have actually been read.
-	// Save only writes the two tables back when this is set: an unread agent leaves
-	// the form arrays empty, and sending those would silently wipe its static
-	// context.
+	// True once the linked agent has been read. Save only writes the skills,
+	// examples, guard rails and roles tables and the tool/sandbox fields when set.
 	const staticContextLoaded = ref(false);
 
 	const configOwnedLimits = ref([]);

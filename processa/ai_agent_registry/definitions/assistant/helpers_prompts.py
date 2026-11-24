@@ -193,7 +193,7 @@ def _update_contract_block() -> str:
 
 
 def _creation_unavailable_block() -> str:
-	"""Tells the assistant that creating an agent is unavailable, because no agent holds the creation grant.
+	"""Tells the assistant that creating an agent is unavailable: no grant holder, or its creation map is missing or inactive.
 
 	It is said up front so the assistant does not gather a full specification it cannot use.
 	"""
@@ -222,7 +222,7 @@ def _creation_unavailable_block() -> str:
 def creation_capability_block() -> str:
 	"""The contract for proposing a new agent with the live prerequisites, plus the update contract.
 
-	When no agent holds the creation grant, the create half says creation is unavailable.
+	When get_creation_process_model returns None, the create half says creation is unavailable.
 	"""
 	from processa.ai_agent_registry.provisioning.agent_config_resolver import get_creation_process_model
 

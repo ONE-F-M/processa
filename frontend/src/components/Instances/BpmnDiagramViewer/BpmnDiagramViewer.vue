@@ -176,7 +176,7 @@ const viewerModdleExtension = {
 		},
 		{
 			// Lets the viewer read the AI Task Selector tag so the
-			// wrench badge renders on selector-configured ad-hoc subprocesses.
+			// AI sparkle renders on selector-configured ad-hoc subprocesses.
 			name: "AdhocAiTaskSelectorExtension",
 			extends: ["bpmn:AdHocSubProcess"],
 			properties: [
@@ -198,11 +198,11 @@ const props = defineProps({
 	activeTasks: { type: Array, default: () => [] },
 	selectedBpmnId: { type: String, default: null },
 	// Toolbox shapes the AI agent called as function-tools —
-	// bpmnId → "Success" | "Error". These shapes never executed as flow,
+	// tool name (shape id) -> { status: "Success" | "Error", count }. These shapes never executed as flow,
 	// so they get the same green treatment as engine-executed shapes.
 	aiCalledTools: { type: Object, default: () => ({}) },
 	// AI units parked "Waiting for AI execution" (or Errored
-	// after retries) — bpmnId → "Waiting" | "Error". Pulsing blue outline.
+	// after retries), or suspended for a person - bpmnId -> "Waiting" | "Error" | "Human".
 	waitingAiTasks: { type: Object, default: () => ({}) },
 })
 

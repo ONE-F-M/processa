@@ -197,8 +197,8 @@ const savingReassign = ref(false)
 const reassignSuite = ref(null)
 const reassignAgent = ref("")
 
-// A suite may currently point at an agent that is no longer Live; keep it in
-// the list so reassigning doesn't silently blank the existing link.
+// A suite may point at an agent missing from agentOptions (deleted, or the load
+// failed); keep it in the list so reassigning doesn't blank the existing link.
 const reassignAgentOptions = computed(() => {
 	const current = reassignAgent.value
 	if (current && !agentOptions.value.some((o) => o.value === current)) {

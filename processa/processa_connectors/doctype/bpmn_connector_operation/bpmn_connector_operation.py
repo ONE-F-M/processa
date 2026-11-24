@@ -2,9 +2,8 @@
 # For license information, please see license.txt
 #
 # An operation row declares both what the modeler sees (its Fields table) and
-# how the runtime executes it (a registered Python handler, or a declarative
-# HTTP request). Everything checked here is checked again by
-# processa_connectors/validator.py, which sees the whole picture across connectors.
+# how the runtime executes it (a Handler Path, or a declarative HTTP request).
+# processa_connectors/validator.py re-checks executability and fields across all connectors.
 
 import json
 import re

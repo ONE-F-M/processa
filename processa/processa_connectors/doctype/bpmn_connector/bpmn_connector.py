@@ -14,9 +14,8 @@ from frappe.model.document import Document
 _CONNECTOR_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _HEX_COLOUR_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
-# Auth types whose secret is presented by the HTTP executor and therefore needs
-# a place to read the secret from. "Service Account JSON" is resolved by the
-# Google clients (google/common.py) instead, so it needs no fields here.
+# Auth types whose settings-DocType secret must be a Password field. "Service Account JSON" is left out of
+# this save check; the HTTP executor still reads its key through operations/http.py.
 _SECRET_AUTH_TYPES = ("Bearer Token", "API Key Header", "API Key Query Param", "Basic", "GitHub App JSON")
 
 

@@ -27,7 +27,7 @@ def download_text(params, ctx):
 
 
 def create_file(params, ctx):
-	"""files.create: upload content into the connector's folder, optionally converting to a native Google type."""
+	"""files.create: upload content into the folder given in params, optionally converting to a native Google type."""
 	folder_id = params.get("folder")
 	if not folder_id:
 		raise gd.GoogleDriveConfigError("createFile requires a Folder (Drive folder link or id).")

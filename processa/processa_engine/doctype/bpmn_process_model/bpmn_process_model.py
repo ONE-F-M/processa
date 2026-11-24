@@ -94,8 +94,8 @@ class BPMNProcessModel(Document):
 		is attached so that per-model editability can later be derived from
 		that implementation's 'Editable' flag.
 
-		Callers that already set process_implementation explicitly (e.g. the
-		'Create BPMN Process Model' engine script) are left untouched.
+		Callers that already set process_implementation explicitly are left
+		untouched.
 		"""
 		if self.process_implementation or not self.process_name:
 			return
@@ -286,7 +286,7 @@ class BPMNProcessModel(Document):
 			return
 
 		if self.is_new():
-			# A pre-set implementation (engine script / before_insert attach)
+			# A pre-set implementation (from the caller or the before_insert attach)
 			# authorises the creation; otherwise an editable implementation
 			# must exist for the process (checked via the Production API in
 			# connected mode, locally otherwise).

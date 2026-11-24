@@ -214,7 +214,7 @@ def empty_script_tasks(root) -> list:
 
 
 def check_shape_config_drift(service_extensions: dict) -> list:
-	"""One warning per AI shape whose prompt, model, temperature or max tokens differ from its linked configuration."""
+	"""One warning per AI shape whose DRIFT_FIELDS differ from its linked configuration."""
 	from processa.ai_agent_registry.provisioning.agent_config_resolver import config_field_map, shape_config_drift
 
 	warnings = []

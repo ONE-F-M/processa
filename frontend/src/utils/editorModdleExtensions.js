@@ -203,8 +203,7 @@ export function registerSpiffExtensions() {
 					{ name: "aiModel", isAttr: true, type: "String" },
 					{ name: "aiSystemPrompt", isAttr: true, type: "String" },
 					{ name: "aiUserPrompt", isAttr: true, type: "String" },
-					// "diagram" | "registry" | "both" - which tool sources
-					// the selector may choose from (defaults to "both")
+					// "diagram" | "registry" | "both" - stored in the diagram; the backend tool pool ignores it
 					{ name: "aiToolSources", isAttr: true, type: "String" },
 				],
 			});

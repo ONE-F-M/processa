@@ -1,20 +1,9 @@
 """
-Write-time memory reconciliation: decide whether a new fact is genuinely new,
-or whether it updates/replaces one or more existing memories in the same scope.
+Write-time memory reconciliation: decide whether a new fact is new, or updates or replaces memories in the same scope.
 
-This is the mechanism that keeps long-term memory coherent instead of drifting
-into near-duplicates. Rather than a string ``dedup_key``, a candidate set of the
-most similar *currently-valid* memories (retrieved by the existing scoped
-keyword/full-text ``memory_search``) is handed to the configured chat model,
-which returns a per-write decision — add / update / replace — plus the names of
-the candidates it supersedes.
-
-It uses ONLY the provider + chat model already configured for the task (the same
-executor stack as :mod:`processa.ai_agent_memory.distill`); there is no embedding
-model and nothing hardcoded. Like the distiller, it NEVER raises: any failure
-degrades to ``{"action": "add", "supersedes": [], "degraded": <reason>}`` so the
-writer just inserts the new fact — the ``degraded`` reason is what lets a caller
-tell that apart from a model genuinely deciding "add".
+The caller passes the most similar currently-valid memories (from the scoped ``memory_search``, which tries hybrid
+semantic-plus-FULLTEXT ranking first) to the task's configured chat model, which returns add, update or replace plus the
+names it supersedes. Never raises: a failure returns ``{"action": "add", "supersedes": [], "degraded": <reason>}``.
 """
 
 from __future__ import annotations

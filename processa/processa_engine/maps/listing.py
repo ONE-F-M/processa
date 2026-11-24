@@ -35,7 +35,7 @@ def model_details(name: str) -> dict:
 
 
 def _sanitize_html_attrs_for_viewer(bpmn_xml: str) -> str:
-	"""Encode raw HTML in spiffworkflow:* attributes to base64."""
+	"""Base64-encode the spiffworkflow notifyAssigneeBody and emailBody attributes that are not already base64."""
 	import base64 as _b64
 
 	SPIFF_NS = "http://spiffworkflow.org/bpmn/schema/1.0/core"

@@ -33,7 +33,7 @@ diagram. The branch is left in place rather than deleted: it costs nothing, it
 keeps the diagram readable against the other chat maps, and it starts working
 again by itself if a JSON contract is ever restored on that shape.
 isinstance is available because the engine's TaskDataEnvironment does not
-restrict __builtins__ (see engine.get_script_engine).
+restrict __builtins__ (see processa_engine/engine/script_engine.py::_make_script_engine).
 
 Only the assistant's own map is touched — Docu, Logix and ProsAlly use a bare
 `needs_tools == True` condition and are unaffected.

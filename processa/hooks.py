@@ -90,16 +90,7 @@ has_permission = {
 # ---------------
 # Override standard doctype classes
 
-# The jobs that WAKE parked agent work get a queue of their own.
-# Frappe derives a scheduled job's queue from its frequency alone, so a Cron job
-# is always on "default" — shared here with 172 other enabled jobs. A long job
-# ahead of them means a finished delegation still reads as running and a passed
-# deadline goes unnoticed until it clears. Agent turns already have their own
-# worker for this reason; this gives the same to the clock that wakes them.
-#
-# Our three methods only. Every other scheduled job on the site falls through to
-# Frappe's own behaviour, and ours fall back to "default" unless the site
-# actually declares the queue — so this is safe to deploy before the worker.
+# Scheduled Job Type puts the CLOCK_METHODS on the bpmn_clock queue when the site declares it; Server Script runs its document events through the Processa runner.
 override_doctype_class = {
 	"Scheduled Job Type": "processa.overrides.scheduled_job_type.ProcessaScheduledJobType",
 	"Server Script": "processa.overrides.server_script.ProcessaServerScript",
@@ -120,13 +111,11 @@ override_whitelisted_methods = {
 
 _BPMN_TRIGGER = "processa.processa_engine.triggers.on_doc_event"
 
-# Guard: blocks native Frappe submit/cancel/workflow-action when a BPMN
-# process instance is actively controlling the document.
-# Documents with NO active BPMN instance are completely unaffected.
+# Guard: blocks native submit/cancel/workflow-action on documents an Active BPMN instance controls and on Processa-controlled DocTypes.
 _BPMN_GUARD   = "processa.processa_engine.triggers.guard_bpmn_document"
 _BPMN_DELETE  = "processa.processa_engine.triggers.delete_linked_bpmn_instances"
 
-# Copies each AI Agent Configuration's prompt, model, temperature and max tokens onto the map shapes that link it.
+# Copies each AI Agent Configuration's DRIFT_FIELDS onto the map shapes that link it.
 after_migrate = [
 	"processa.ai_agent_registry.provisioning.agent_config_resolver.sync_all_shapes_to_configs",
 	"processa.install.grant_process_owner_doctype_access",
@@ -161,9 +150,7 @@ doc_events = {
 	# Creating a chat agent configuration kicks off the
 	# "AI Agent Creation Process" BPMN map via its conditional start event
 	# (handled by the universal _BPMN_TRIGGER above) — no dedicated hook.
-	# Pre-deployment security gate: structurally validate the body of any
-	# Server Script that a BPMN script task references (unrelated Server
-	# Scripts pass through untouched).
+	# Refuses a syntax error in a Server Script a BPMN process model references; other Server Scripts pass through.
 	"Server Script": {
 		"validate": [
 			"processa.ai_agent_security.code_checks.script_gate.validate_server_script_on_save",

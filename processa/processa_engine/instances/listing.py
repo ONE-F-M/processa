@@ -193,7 +193,7 @@ def _instances_pending_on(user: str) -> list:
 	"""Names of process instances holding a Waiting task ``user`` must act on, by the rule complete_task applies.
 	A task reaches a user through assigned_user or other_allowed_users (comma-joined lists, so the LIKE only
 	pre-filters) or, while no user is resolved onto the row, through assigned_role."""
-	# Imported lazily: assignment.py pulls in engine.py, which is fragile across SpiffWorkflow versions.
+	# Imported lazily: assignment.py pulls in the processa_engine.engine package, which is fragile across SpiffWorkflow versions.
 	from processa.processa_engine.assignment import task_actors
 
 	roles = frappe.get_roles(user)

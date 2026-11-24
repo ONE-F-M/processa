@@ -194,11 +194,7 @@ CASES = [
 		],
 	},
 	{
-		# Grounded in a real file (apps/processa/spiff/src/components/ReadinessChecklistDialog.vue,
-		# ~line 140) rather than a fabricated pull_request URL. The first live run showed the agent
-		# correctly trying to verify an invented PR against GitHub and getting stuck when it couldn't
-		# — read_pull_request needs a real target. Pointing the reviewer comment at a real component
-		# the agent's own read_file can check lets it reach "already satisfied" on its own evidence.
+		# Points the reviewer comment at a named component, not a pull_request URL, so read_file can check it.
 		"title": "A review comment already satisfied — nothing left to change",
 		"payload": {
 			"instruction": (

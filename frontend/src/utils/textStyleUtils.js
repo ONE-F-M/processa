@@ -1,8 +1,8 @@
 /**
  * Text Style Utilities for BPMN Elements
  * 
- * These utilities read and write text style properties to BPMN extension elements.
- * Styles are stored in a custom namespace and persist with the BPMN XML.
+ * These utilities read and write text style properties as custom:* attributes
+ * on the business object. They persist with the BPMN XML.
  */
 
 // Default text style values
@@ -17,7 +17,7 @@ export const DEFAULT_TEXT_STYLE = {
 
 /**
  * Get text style from a BPMN element
- * Reads from element's businessObject extensionElements
+ * Reads the custom:* attributes on the element's businessObject
  * 
  * @param {Object} element - BPMN element (shape)
  * @returns {Object} Text style object

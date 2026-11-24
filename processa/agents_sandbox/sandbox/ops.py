@@ -692,9 +692,9 @@ def sandbox_dispatch(action: str, target_app: str, git_branch: str, work_item_de
 	Deliberately as thin as definitions/frontend_agent/tools.py's own functions: this
 	holds no tool policy (that lives in the calling Server Script, visible
 	and editable without a deploy - see that module's own docstring for the
-	same reasoning) - it exists only because Server Scripts cannot import
-	requests/socket/urllib themselves (security/script_validator.py's
-	FORBIDDEN_MODULES). It resolves settings, mints the identity token,
+	same reasoning) - it exists because a Server Script may import
+	requests/socket/urllib only under an approved Script Import Category
+	(ai_agent_security/code_checks). It resolves settings, mints the identity token,
 	makes the one call, and reports what happened.
 
 	NEVER RAISES - every path returns {"ok": True, "response": <the

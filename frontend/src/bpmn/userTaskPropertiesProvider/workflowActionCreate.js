@@ -1,4 +1,4 @@
-// Creating a Workflow Action Master from a User Task's action row, kept free of the panel's imports so node --test can load it.
+// Creating a Workflow Action Master from a User Task's action row, kept free of the panel's imports so unit tests can load it.
 
 // Resolves to the created action's name; the caller passes trimmed, non-blank text.
 export function createWorkflowActionMaster(post, name) {

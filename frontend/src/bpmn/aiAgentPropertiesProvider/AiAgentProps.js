@@ -226,7 +226,7 @@ function AgentConfigComponent(props) {
 }
 
 // ---------------------------------------------------------------------------
-// AI Provider — autocomplete backed by the AI Provider doctype.
+// AI Provider - disabled input showing the shape's aiProvider.
 // ---------------------------------------------------------------------------
 // Read-only. The provider is an agent property, resolved from the
 // linked AI Agent Configuration at run time — raw provider setup is retired.
@@ -291,7 +291,7 @@ function ConfigDriftComponent(props) {
 }
 
 // ---------------------------------------------------------------------------
-// Model override
+// Model - disabled input showing the shape's aiModel.
 // ---------------------------------------------------------------------------
 // Read-only — resolved from the linked configuration's credentials.
 function ModelComponent(props) {

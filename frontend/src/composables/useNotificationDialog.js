@@ -1,5 +1,4 @@
 // composables/useNotificationDialog.js
-// Extracted from Editor.vue to reduce coupling (Review Comment #1)
 
 import { ref, computed } from "vue";
 import { frappeRequest, createResource } from "frappe-ui";

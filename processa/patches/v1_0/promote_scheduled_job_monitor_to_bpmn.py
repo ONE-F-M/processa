@@ -28,12 +28,11 @@ onefm.localhost site before writing this patch.
    will expose. sub_prompts rows are left in place (harmless, historical),
    not deleted.
 
-3. ai_model -> claude-haiku-4-5-20251001, matching the model already
-   chosen for the other two migrated background agents (Threat SITREP
-   Agent, Threat Source Expander/Keyword Generator) — validate_agent_config
+3. ai_model -> claude-haiku-4-5-20251001 (the Threat SITREP and Threat
+   Source migrations set claude-sonnet-5). validate_agent_config
    hard-fails on a blank ai_model, and there is nothing to migrate from the
    old agent (it read Google credentials directly, not the AI Model
-   catalog). max_tokens -> 8192, matching the same precedent (unset today;
+   catalog). max_tokens -> 8192, matching promote_threat_sitrep_agent_to_bpmn (unset today;
    this is a batch of jobs per tick plus a tool-calling loop, not a single
    short reply).
 
@@ -57,7 +56,6 @@ What this patch deliberately does NOT do: it does not set process_model
 manually, same convention as promote_threat_agents_to_bpmn), and it does
 not touch onefm_mcp's scheduled_job_ticket_agent/ code or the Process
 Task/Scheduled Job Type cron driving it today. Those are the cutover step
-(see onefm_mcp's SCHEDULED_JOB_TICKET_AGENT_BPMN_MIGRATION_PLAN.md, Phase 3)
 and only happen once the imported map is validated end-to-end.
 """
 

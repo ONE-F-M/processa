@@ -17,7 +17,7 @@ the record — from the model. Three things must not leave an agent:
 
 THE ACTION IS THE AGENT'S TO CHOOSE
 
-``output_screening_mode`` is Log, Flag or Block, and it defaults to Log:
+``output_screening_mode`` is Log, Flag or Block, and it defaults to Flag:
 
 * **Flag** (the default) — recorded, offending text replaced with a token. The
   reply still reads and the reader can see something was removed. Chosen as the

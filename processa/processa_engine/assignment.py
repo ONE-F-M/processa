@@ -337,7 +337,7 @@ def notify_task_assignee(
 	task_id: str = "", bpmn_id: str = "",
 ) -> None:
 	"""Email the assignee of a User Task with Notify Assignee ticked; failures are logged, never raised.
-	Kept apart from add_frappe_assignment: one ToDo per person per instance, but one email per notifying task."""
+	Kept apart from add_frappe_assignment: one Open ToDo per person per document, but one email per notifying task."""
 	cfg = task_cfg or {}
 	if cfg.get("notifyAssignee") != "true":
 		return

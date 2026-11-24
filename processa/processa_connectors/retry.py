@@ -1,9 +1,9 @@
 # Copyright (c) 2026, one-fm and contributors
-"""Provider-neutral retry for outbound API calls, used by the HTTP executor, the Google clients and A2A."""
+"""Provider-neutral retry for outbound API calls, used by the HTTP executor, the Google Docs and Slides clients and A2A."""
 
 import time
 
-# HTTP 429 and the 5xx family are retried; anything else propagates at once.
+# HTTP 429, 500, 502, 503 and 504 are retried; anything else propagates at once.
 _TRANSIENT_STATUS = {429, 500, 502, 503, 504}
 
 

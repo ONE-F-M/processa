@@ -79,7 +79,7 @@ def _logged_error(script_name: str) -> str:
 def library_scripts(process_model: str | None) -> list[dict]:
 	"""The library scripts on a map that the user can read, each with its function signatures and code.
 
-	A library is a script task with no incoming or outgoing flow whose script only defines functions.
+	A library is a script task with no incoming or outgoing flow whose script only defines functions or does not parse.
 	"""
 	bpmn_xml = process_model and frappe.db.get_value("BPMN Process Model", process_model, "bpmn_xml")
 	if not bpmn_xml:

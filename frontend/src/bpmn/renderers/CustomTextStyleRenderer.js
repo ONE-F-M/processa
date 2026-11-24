@@ -1,7 +1,7 @@
 /**
  * Custom Text Style Renderer Module
  * 
- * Extends BpmnRenderer to support per-element text styles.
+ * Adds per-element text styles on top of the default rendering.
  * This module listens for render events and applies custom text styling
  * to element labels based on properties stored in the businessObject.
  */

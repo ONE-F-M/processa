@@ -2,8 +2,8 @@
 """``bench check-agent-tools``: run every agent tool once with empty input after a deploy.
 
 Server Script tools run inside a rolled-back savepoint with commit, enqueue, realtime,
-error logging and model calls blocked. Connector tools only have their handler imported. Only an
-import-shaped error fails a tool; the command exits 1 when any tool fails.
+error logging and model calls blocked. Connector tools only have their handler imported. An import-shaped
+error, or a missing or disabled Server Script, fails a tool; the command exits 1 when any tool fails.
 """
 
 import json

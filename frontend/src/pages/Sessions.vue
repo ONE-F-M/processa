@@ -198,7 +198,7 @@
 							</td>
 							<td class="py-2 px-3 text-xs">
 								<span v-if="a.compaction_model" class="font-mono">{{ a.compaction_model }}</span>
-								<!-- No summariser named means the agent's own model does the summarising. -->
+								<!-- No summariser named: conversation compaction uses the site default_compaction_model or skips; loop compaction uses the agent's model. -->
 								<span v-else class="text-gray-400 italic">agent's own model</span>
 							</td>
 							<td class="py-2 text-right tabular-nums">

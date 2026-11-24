@@ -2,7 +2,7 @@
 Schema validator for Docu-generated Frappe DocType definitions.
 
 Docu produces a DocType Intermediate Representation (IR) — a plain dict describing
-a DocType and its fields (see docu_agent for the schema). Before that IR is ever
+a DocType and its fields. Before that IR is ever
 applied to the database it passes through ``validate_doctype_ir`` here, which is a
 *safety and correctness* gate, not a style lint:
 
@@ -76,9 +76,9 @@ _MAX_FIELDS = 200
 def validate_doctype_ir(ir: dict, existing_fieldnames: set | None = None) -> dict:
 	"""Validate a Docu DocType IR.
 
-	Returns ``{valid, violations, fix_hints}``. ``violations`` are precise,
-	human-readable strings; ``fix_hints`` is a single actionable guidance string
-	(empty when valid) a self-correcting loop can feed straight back to the model.
+	Returns ``{valid, violations, warnings, fix_hints}``: ``violations`` and ``warnings``
+	are lists of strings, and ``fix_hints`` holds one guidance string when invalid, else is empty.
+	A non-dict IR returns no ``warnings`` key.
 
 	``existing_fieldnames`` is the set of fieldnames already on the target DocType
 	when customizing an existing type. Those fields are not being (re)created —

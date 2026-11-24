@@ -387,7 +387,7 @@ def get_active_bpmn_tasks(doctype: str, docname: str) -> list:
 def _task_authorization(instance, row, user: str) -> tuple[str | None, str | None]:
 	"""Why ``user`` may not complete this Waiting task, or None; and the approved CTC that lets them.
 	Assignees and their relievers may act, and so may a super user or the holder of an approved Contingency Task Completion."""
-	# Imported lazily: assignment.py pulls in engine.py, which is fragile across SpiffWorkflow versions.
+	# Imported lazily: assignment.py pulls in the processa_engine.engine package, which is fragile across SpiffWorkflow versions.
 	from processa.processa_engine.assignment import split_users, task_actors
 
 	super_user = is_bpmn_super_user(user)

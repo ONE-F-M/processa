@@ -144,7 +144,7 @@ def dispatch_ai_task_selector(instance, sp, task_cfg: dict, bpmn_id: str) -> tup
 			)
 		tools.append(spec)
 
-	# Send tasks leave no data trace, so the prompt lists finished tasks explicitly.
+	# The prompt lists the completed and cancelled tasks explicitly.
 	user_prompt = render(task_cfg.get("aiUserPrompt", ""))
 	if finished_names:
 		user_prompt += (

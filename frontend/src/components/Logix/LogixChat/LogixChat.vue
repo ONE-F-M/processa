@@ -90,7 +90,7 @@
 <script setup>
 import { ref, computed, watch } from "vue";
 import { frappeRequest } from "frappe-ui";
-// Both Logix surfaces share the panel + card registry.
+// Uses the shared chat panel + card registry, as LogixCanvas.vue does.
 import AgentChatPanel from "@/components/Chat/AgentChatPanel/AgentChatPanel.vue";
 import { cardRegistry } from "@/utils/cardRegistry";
 

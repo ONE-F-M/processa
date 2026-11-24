@@ -1,5 +1,5 @@
 # Copyright (c) 2026, one-fm and contributors
-"""Connector operation handlers: the declarative HTTP executor and the Google operation wrappers."""
+"""Connector operation handlers: the declarative HTTP executor and the Google operation wrappers (github.py is imported by path)."""
 
 from processa.processa_connectors.operations import google_docs, google_drive, google_slides, http
 

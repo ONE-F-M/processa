@@ -57,8 +57,8 @@ def get_task_display_name(task) -> str:
 	"""
 	Return the human-readable name for a task.
 
-	SpiffWorkflow stores the BPMN 'name' attribute in task_spec.description.
-	Falls back to task_spec.name (which is the BPMN id, e.g. 'Activity_0abc').
+	SpiffWorkflow stores the BPMN 'name' attribute in task_spec.bpmn_name.
+	Falls back to task_spec.description, then task_spec.name (the BPMN id, e.g. 'Activity_0abc').
 	"""
 	return (
 		getattr(task.task_spec, "bpmn_name", None)

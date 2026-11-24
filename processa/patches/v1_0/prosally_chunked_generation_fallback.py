@@ -10,7 +10,7 @@ and the model (claude-sonnet-5) already supports up to 128000 output tokens,
 far more than any one phase of a process needs. So instead: when the first
 attempt at a full generation truncates, the tool asks for a small outline (2
 to 6 sequential phases) and then generates each phase's own nodes and flows
-in its own smaller completion, well under any ceiling. bpmn_ir_pipeline's
+in its own smaller completion, well under any ceiling. tools_pipeline's
 merge_chunked_ir concatenates the phases into one IR sharing the outline's
 lane set, which then compiles and validates exactly like a normal generation.
 The result stays one diagram; ProsAlly draws one process on one canvas, not a

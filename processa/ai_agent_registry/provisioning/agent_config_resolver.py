@@ -734,9 +734,9 @@ def update_agent_config_from_shape(config_name: str, fields: str | dict) -> dict
 	"""Whitelisted: write agent-level edits from the editor modal back to the
 	linked AI Agent Configuration.
 
-	``fields`` maps shape attributes (aiSystemPrompt, aiTemperature,
-	aiMaxTokens, aiProvider) to their new values; anything outside
-	``_SHAPE_TO_CONFIG`` is ignored. Saving goes through doc.save() so
+	``fields`` maps shape attributes to new values: the keys of
+	``_SHAPE_TO_CONFIG`` plus the skill, example, guardrail and role table
+	attributes; any other key is ignored. Saving goes through doc.save() so
 	validation runs, the config cache clears, and the Edit_Action message
 	fires (resuming any Needs-Attention creation instance).
 
@@ -835,9 +835,7 @@ def update_agent_config_from_shape(config_name: str, fields: str | dict) -> dict
 	if not changed:
 		return {"ok": True, "updated": [], "reprovisioned": False}
 
-	# Re-provisioning is a chat-map concern: it re-runs the creation process
-	# so a Live CHAT agent picks up the change. Background agents (Live via
-	# auto-go-live) have no map to rebuild — never re-provision them.
+	# Only a Live Chat agent gets start_reprovision after the save.
 	was_live = doc.lifecycle_status == "Live" and doc.agent_type == "Chat"
 	doc.save()
 
@@ -936,12 +934,9 @@ CREATE_PAYLOAD_CONTRACT = {
 def create_agent_configuration(payload: str | dict) -> dict:
 	"""Create a new AI Agent Configuration from the Processa editor.
 
-	Inserted as **Chat + Draft with the caller's permissions**, so the
-	AI Agent Creation Process start trigger fires on insert exactly as it
-	does for a config created from the doctype form — the agent walks
-	validate → provision → evaluate → Live on its own. Sample prompts (with
-	optional expected behaviour) become the baseline eval suite during the
-	process's Evaluate step.
+	Inserted as Draft with the payload's agent_type (Chat or Background) and the
+	caller's permissions, so the creation process start trigger fires on insert
+	as it does for a config created from the doctype form.
 
 	Returns the new record's name plus the creation-process instance the
 	insert started (None when the creation model is inactive on this site).
@@ -954,11 +949,7 @@ def create_agent_configuration(payload: str | dict) -> dict:
 	if agent_type not in ("Chat", "Background"):
 		frappe.throw(_("agent_type must be 'Chat' or 'Background'."))
 
-	# Without a creation process there is no path from Draft to Live for a Chat
-	# agent (apply_background_lifecycle only auto-lives Background agents), so
-	# creating one would strand it as a permanent Draft. Refuse up front and say
-	# why, rather than leave a record nobody can finish. Background agents skip
-	# the process entirely, so they are never blocked by its absence.
+	# Refuse a Chat agent when no creation process map is active; a Background agent skips this check.
 	creation_model = get_creation_process_model()
 	if agent_type == "Chat" and not creation_model:
 		holder = get_creation_grant_holder()

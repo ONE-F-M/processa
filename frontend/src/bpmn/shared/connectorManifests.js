@@ -10,9 +10,9 @@ import { createResource } from "frappe-ui";
 // means a connector added in the desk shows up in both places without a rebuild.
 //
 // The properties panel builds its entry list synchronously and the renderer
-// draws synchronously, so the fetch is fired once at module level and callers
-// re-render when it resolves (fire "elements.changed", or the canvas's own
-// redraw).
+// draws synchronously, so the first ensureManifests() call fires the fetch and
+// callers re-render when it resolves (fire "elements.changed", or the canvas's
+// own redraw).
 
 
 const MANIFEST_ENDPOINT = "processa.api.connectors.get_connector_manifests";
@@ -117,7 +117,7 @@ export function ensureChoices(connectorId, operation, fieldName, context, eventB
 
 /**
  * The canvas icon configured on a connector, or null to fall back to the
- * default plug. Shape: { path, color, label } — path is SVG path data on a
+ * default plug. Shape: { path, color, label, stroke } - path is SVG path data on a
  * 24×24 viewBox, exactly what BPMN Connector stores.
  */
 export function getConnectorIcon(connectorId) {

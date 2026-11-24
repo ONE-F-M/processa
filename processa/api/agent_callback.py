@@ -113,11 +113,7 @@ def _settle(run, payload: dict) -> dict:
 	if agent_run_name:
 		run.db_set("ai_agent_run", agent_run_name, update_modified=False)
 
-	# The sandbox now opens a PR whenever there are changed files, whether or
-	# not tests passed (dev_agent_server.py's _open_pr marks a failing one
-	# clearly rather than discarding a possibly-good change over a failure
-	# that may be unrelated to it) — so pr_url/files can arrive on either
-	# status, and both are recorded here regardless of what follows.
+	# pr_url and files can arrive on either status; both are recorded here regardless of what follows.
 	files = payload.get("files") or {}
 	pr_url = payload.get("pr_url") or ""
 	if files:
@@ -175,8 +171,8 @@ TEST_SITE_SUCCESS = {"prepare_site": "prepared", "checkout_pr_head": "ready", "r
 
 
 def _settled_fields(action: str, status: str, pr_url: str, payload: dict) -> dict:
-	"""The state a finished run settles to. run_tests never opens a PR, so for
-	it tests_passed is completion; every other shape still needs a pr_url."""
+	"""The state a finished run settles to. TEST_SITE_SUCCESS actions complete on their success status and
+	run_tests on tests_passed, with no PR; every other action needs a pr_url."""
 	if action in TEST_SITE_SUCCESS:
 		if status == TEST_SITE_SUCCESS[action]:
 			return {"state": "completed"}
@@ -363,8 +359,7 @@ def _record_sandbox_trace(agent_run, trace: list) -> None:
 
 
 def enqueue_resume(run) -> None:
-	"""Two shapes of caller, one entry point — mirrors tasks.py's
-	_wake_a2a_caller exactly, for the same reason:
+	"""Two shapes of caller, one entry point, as in a2a/poller.py's _wake_a2a_caller:
 
 	- a plain, top-level parked Service Task on a diagram (the standalone
 	  Dev Agent map's own dispatch_to_sandbox step) → resume that step
@@ -390,7 +385,7 @@ def enqueue_resume(run) -> None:
 def _resume_waiting_agent(run) -> None:
 	"""Give the sandbox's outcome to the agent suspended waiting for it.
 
-	Mirrors tasks.py._resume_waiting_agent (the A2A case) exactly: store the
+	Mirrors a2a/poller.py's _resume_waiting_agent (the A2A case): store the
 	result on the checkpoint, then resume in the AI worker via
 	kind="human_resume" — to the agent this is the same event as a human
 	answering the tool call it paused on.
@@ -445,7 +440,7 @@ def _sandbox_run_answer(run) -> str:
 
 
 def _test_site_answer(run) -> str:
-	"""What the agent is told prepare_site or checkout_pr_head returned: the sandbox's own result, without timings.
+	"""What the agent is told a TEST_SITE_SUCCESS action returned: the sandbox's own result, without timings.
 	A failure names the step and carries the tail of the output so the agent can tell what broke."""
 	action = _run_action(run)
 	result = {k: v for k, v in (frappe.parse_json(run.result or "{}") or {}).items() if k != "timings_ms"}
@@ -489,11 +484,8 @@ def _specs_answer(action: str, result: dict) -> str:
 
 
 def _retry_prefix(run) -> str:
-	"""Tells the agent which attempt it's looking at, once retry_of (set
-	only on the automatic re-dispatch after a real test failure) makes this
-	something other than the very first try — the WI's own acceptance
-	criterion is that the caller is told which attempt succeeded, not left
-	to guess from a result that looks identical to a first-try success."""
+	"""Tells the agent which attempt it is looking at, once retry_of (set on the automatic re-dispatch the
+	supervisor orders for an infrastructure, model-API or environment failure) marks a retry."""
 	if not run.retry_of:
 		return ""
 	if run.state == "completed":

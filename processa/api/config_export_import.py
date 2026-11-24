@@ -22,25 +22,16 @@ AGENT_DOCTYPES = {doctype for _key, doctype in AGENT_RECORD_SETS}
 # ============================================
 # Configuration Export / Import API
 #
-# Exports and imports Server Scripts, Workflow States, and Workflow Action
-# Masters referenced by a BPMN process model.  Used to synchronise these
-# configuration records between environments (e.g. BA site → Production).
+# Exports and imports the Server Scripts, Workflow States, Workflow Action Masters,
+# agent users, AI Agent Configurations, AI Skills and AI Agent Tools a BPMN process
+# model references, to copy them between environments (e.g. BA site to Production).
 # ============================================
 
 
 @frappe.whitelist()
 def export_bpmn_config(xml_content: str) -> dict:
-	"""
-	Given BPMN XML, extract all referenced Server Scripts, Workflow States,
-	and Workflow Action Masters, and return their full data for download.
-
-	Args:
-		xml_content: Raw BPMN XML text
-
-	Returns:
-		dict with export_metadata, server_scripts, workflow_states,
-		workflow_action_masters, and counts for each category
-	"""
+	"""Return the Server Scripts, Workflow States, Workflow Action Masters and agent records the BPMN XML
+	references, with export_metadata and a count per category, for download."""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Authentication required"))
 
@@ -173,20 +164,9 @@ def _record_payload(doc) -> dict:
 
 @frappe.whitelist(methods=["POST"])
 def import_bpmn_config(config_json: str) -> dict:
-	"""
-	Import configuration records from a JSON payload.
-
-	For each record type:
-	  - Workflow States & Action Masters: create if missing, skip if exists.
-	  - Server Scripts: create if missing, skip if identical, flag if modified.
-
-	Args:
-		config_json: JSON string with server_scripts, workflow_states,
-		             and workflow_action_masters arrays
-
-	Returns:
-		dict with created, skipped, and needs_confirmation lists
-	"""
+	"""Import the records of an export_bpmn_config payload; returns created, skipped, needs_confirmation and failed.
+	Workflow States, Action Masters and agent users are created if missing; Server Scripts and agent records
+	are created if missing, skipped if identical and flagged if modified."""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Authentication required"))
 

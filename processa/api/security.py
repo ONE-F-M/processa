@@ -1,6 +1,6 @@
 # Copyright (c) 2026, one-fm and contributors
 # For license information, please see license.txt
-"""Endpoints for the Processa Security page, event promotion, lock release and the Logix script lint.
+"""Endpoints for the Processa Security page: events, patterns, policies, locks, agent screening and event promotion.
 
 Raw screened content is never returned because it is never stored: an event carries a hash and a length.
 """

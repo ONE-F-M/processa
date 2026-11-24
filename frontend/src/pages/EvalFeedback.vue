@@ -20,9 +20,7 @@
 		</header>
 
 		<main class="flex-1 p-6 overflow-auto space-y-6">
-			<!-- Counts, always with their denominator. Never a satisfaction score:
-			     under 1% of replies get rated and raters sit at the extremes, so an
-			     average would be confidently wrong. -->
+			<!-- Counts, with Rated shown as X of Y plus its rated share. No satisfaction score. -->
 			<div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
 				<div
 					v-for="c in overviewCards"
@@ -193,9 +191,8 @@
 // The triage queue for response feedback.
 //
 // One job: decide which complaints are real regressions, and turn those into
-// tests. Everything on the page serves that decision — which is why the question
-// is shown above the reply, why Dismiss sits beside Mark reviewed rather than
-// hidden behind a menu, and why the counts never become a percentage.
+// tests. The question shows above the reply, Dismiss sits beside Mark reviewed,
+// and no satisfaction score is shown.
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Button, Dialog, FormControl, frappeRequest } from "frappe-ui";

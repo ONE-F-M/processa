@@ -148,7 +148,7 @@ const config = {
 
 		// Event correctness
 		// Error per the BPMN spec / Camunda: no start or end events inside
-		// an ad-hoc subprocess (backend mirror: _validate_adhoc_structure).
+		// an ad-hoc subprocess (backend mirror: validate_adhoc_structure).
 		"bpmnlint/ad-hoc-sub-process": "error",
 		"bpmnlint/conditional-event": "warn",
 		"bpmnlint/link-event": "warn",

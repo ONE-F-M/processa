@@ -140,7 +140,7 @@ class FrappeScriptEngine(PythonScriptEngine):
 	                         data back into the workflow (gateway routing)
 	    <all task.data>    - current workflow variables
 
-	Gateway conditions can then check: result["action"] == "Approve"
+	The ``result`` keys merge into task data, so gateway conditions check: action == "Approve"
 	(but only if the script sets it on ``result``).
 
 	Example Server Script body::

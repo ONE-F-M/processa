@@ -1,4 +1,4 @@
-"""The Dev, Frontend and Mobile agents are told to use the batched tools and to submit evidence, and get 40 tool calls."""
+"""The Dev, Frontend and Mobile agents are told to use the batched tools and to submit evidence, and get at least 40 tool calls and 4 model retries."""
 
 import frappe
 

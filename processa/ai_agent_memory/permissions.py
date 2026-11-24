@@ -16,10 +16,9 @@ uses it, which is what an Agent-scoped memory has always been. Only rows
 written under one of the User scopes carry a user, and those are private to
 that person.
 
-Note this governs READING. The trusted dispatch path does its own scoping with
-``ignore_permissions=True`` and an explicit user key, because it runs as the
-system for an agent turn and must not depend on the requesting user's Desk
-permissions.
+Changing a row (write, create, delete, submit, cancel, amend) is allowed only on your
+own rows, or to a System Manager. The trusted dispatch path does its own scoping
+with permission checks off and an explicit user key.
 """
 
 from __future__ import annotations

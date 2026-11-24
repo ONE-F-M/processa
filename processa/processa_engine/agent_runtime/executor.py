@@ -84,7 +84,7 @@ class ExecutorConfig:
 	temperature: float = DEFAULT_TEMPERATURE
 	top_p: float = DEFAULT_TOP_P
 	max_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS
-	# Applies per attempt, so the worst case is timeout x (retries + 1).
+	# Applies to each model call, per attempt and per tool-loop turn.
 	timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
 	response_format: str = "text"  # "text" | "json"
 	response_schema: Optional[str] = None  # JSON Schema string

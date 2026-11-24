@@ -1,6 +1,6 @@
 # Copyright (c) 2026, one-fm and contributors
 # For license information, please see license.txt
-"""Direct API executor backend: one chat call, or the step loop when the task has tools."""
+"""Direct API executor backend: one chat call plus at most one JSON correction call, or the step loop for tools or images."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def supports_temperature(model_name: str) -> bool:
 
 
 class DirectApiExecutor(Executor):
-	"""Single-call HTTP executor supporting OpenAI-compatible and Anthropic APIs."""
+	"""HTTP executor for OpenAI-compatible, Anthropic and Google providers."""
 
 	_DEFAULT_ENDPOINTS = {
 		"OpenAI": "https://api.openai.com/v1",

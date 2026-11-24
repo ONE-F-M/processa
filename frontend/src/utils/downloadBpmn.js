@@ -1,8 +1,8 @@
 /**
  * Shared BPMN download helpers.
  *
- * Centralised here so Editor.vue and Home.vue use identical sanitisation rules,
- * MIME type, and object-URL revocation timing.
+ * Used by Processes.vue, useProcessConfig.js and useCostAllocation.js for the
+ * same sanitisation rules, MIME type, and object-URL revocation timing.
  */
 
 /**

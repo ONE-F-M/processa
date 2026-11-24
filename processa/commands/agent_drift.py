@@ -1,5 +1,5 @@
 # Copyright (c) 2026, one-fm and contributors
-"""``bench list-agent-drift``: every AI shape on an active map whose prompt, model, temperature or max tokens differ from its linked configuration. Exits 1 when any does."""
+"""``bench list-agent-drift``: every AI shape on an active map whose DRIFT_FIELDS differ from its linked configuration. Exits 1 when any does."""
 
 import click
 import frappe
