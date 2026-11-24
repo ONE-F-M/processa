@@ -137,5 +137,16 @@ class TestLogixLibraryScripts(FrappeTestCase):
 		)
 		self.assertIn(f"- {LIBRARY}: no functions could be read", out["dialog_context"])
 
+	def test_a_library_with_arrows_is_still_a_library(self):
+		self._model(
+			'<bpmn:scriptTask id="lib" name="Lib" spiffworkflow:serverScript="P: Lib Replies">'
+			"<bpmn:incoming>f0</bpmn:incoming><bpmn:outgoing>f1</bpmn:outgoing></bpmn:scriptTask>"
+			'<bpmn:scriptTask id="t" name="Finalize" spiffworkflow:serverScript="Logix Library Test Finalize">'
+			"<bpmn:incoming>f1</bpmn:incoming></bpmn:scriptTask>"
+		)
+		out = self._turn()
+		self.assertEqual([lib["name"] for lib in out["library_scripts"]], [LIBRARY])
+		self.assertNotIn("step_functions", out)
+
 	def test_a_turn_without_a_map_has_no_library_section(self):
 		self.assertNotIn("library_scripts", build_logix_turn_context({"current_script": STEP}))

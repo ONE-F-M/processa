@@ -127,6 +127,15 @@ class TestImportScriptChecks(FrappeTestCase):
 		]
 		self.assertIn(f"Library '{LIBRARY}' cannot import another script", messages)
 
+	def test_a_library_that_runs_code_on_import_is_a_finding(self):
+		self._script(LIBRARY, "def strip_fences(text):\n\treturn text.strip()\n\nresult['x'] = 1\n")
+		self._model(self.xml)
+		lint = script_gate.lint_script(CALLER_CODE, CALLER, PROCESS, TASK)
+		self.assertIn(
+			f"Library '{LIBRARY}' runs code when it is imported; keep only functions in it",
+			[f["message"] for f in lint["findings"]],
+		)
+
 	def test_import_script_with_a_default_only_library_is_clean(self):
 		self._model(self.xml)
 		lint = script_gate.lint_script(CALLER_CODE, CALLER, PROCESS, TASK)

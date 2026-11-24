@@ -274,6 +274,15 @@ def imported_scripts(code: str | None) -> list[tuple[str, int]]:
 	]
 
 
+def runs_code_on_import(code: str | None) -> bool:
+	"""True when code does more than define functions, so import_script would run the rest."""
+	try:
+		body = ast.parse(code or "").body
+	except SyntaxError:
+		return False
+	return any(not isinstance(node, ast.FunctionDef) for node in body)
+
+
 def _script_name_argument(node: ast.Call) -> str | None:
 	if len(node.args) == 1 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
 		return node.args[0].value
@@ -529,7 +538,8 @@ def _number_findings(code: str, request: str) -> list[dict]:
 	from frappe import _
 
 	replaced = set(_REPLACED_NUMBER_RE.findall(request))
-	words = re.findall(r"[a-z]+|\d+(?:\.\d+)?|%", request.lower())
+	# A name such as Activity_07p8yta stays one word, so its digits are not read as a number.
+	words = re.findall(r"\w*[a-z_]\w*|\d+(?:\.\d+)?|%", request.lower())
 	wanted = []
 	for i, word in enumerate(words):
 		if not _REQUEST_NUMBER_RE.fullmatch(word) or word in replaced:

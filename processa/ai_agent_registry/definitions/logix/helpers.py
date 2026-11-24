@@ -10,6 +10,8 @@ from frappe.model import child_table_fields, default_fields, display_fieldtypes,
 from frappe.model.document import Document
 from frappe.utils.safe_exec import SERVER_SCRIPT_FILE_PREFIX
 
+from processa.ai_agent_security.code_checks.script_validator import runs_code_on_import
+
 CODE_FENCE = re.compile(r"```[a-zA-Z]*\s*\n(.*?)```", re.DOTALL)
 TRACEBACK = "Traceback (most recent call last)"
 ERROR_CHARS = 3000
@@ -77,9 +79,9 @@ def _logged_error(script_name: str) -> str:
 
 
 def step_functions(process_model: str | None, current_script: str = "") -> list[dict]:
-	"""The functions defined inside the connected steps of a map that the user can read, other than the open script.
+	"""The functions defined in scripts on a map that also run code, which the user can read, other than the open script.
 
-	import_script cannot load these: a step runs its own code when the flow reaches it.
+	import_script cannot load these: importing one would run its other code too.
 	"""
 	bpmn_xml = process_model and frappe.db.get_value("BPMN Process Model", process_model, "bpmn_xml")
 	if not bpmn_xml:
@@ -87,16 +89,14 @@ def step_functions(process_model: str | None, current_script: str = "") -> list[
 	steps = []
 	for task in ET.fromstring(bpmn_xml.strip().encode()).iter(f"{BPMN_NS}scriptTask"):
 		name = task.get(SERVER_SCRIPT_ATTR)
-		connected = task.find(f"{BPMN_NS}incoming") is not None or task.find(f"{BPMN_NS}outgoing") is not None
-		if not connected or not name or name == current_script or not frappe.db.exists("Server Script", name):
+		if not name or name == current_script or not frappe.db.exists("Server Script", name):
 			continue
 		if not frappe.has_permission("Server Script", "read", doc=name):
 			continue
 		code = frappe.db.get_value("Server Script", name, "script") or ""
-		try:
-			functions = [node for node in ast.parse(code).body if isinstance(node, ast.FunctionDef)]
-		except SyntaxError:
+		if not runs_code_on_import(code):
 			continue
+		functions = [node for node in ast.parse(code).body if isinstance(node, ast.FunctionDef)]
 		if functions:
 			steps.append(
 				{
@@ -114,7 +114,7 @@ def step_functions(process_model: str | None, current_script: str = "") -> list[
 def library_scripts(process_model: str | None) -> list[dict]:
 	"""The library scripts on a map that the user can read, each with its function signatures and code.
 
-	A library is a script task with no incoming or outgoing flow whose script only defines functions or does not parse.
+	A library is a script task whose script only defines functions or does not parse; its arrows do not matter.
 	"""
 	bpmn_xml = process_model and frappe.db.get_value("BPMN Process Model", process_model, "bpmn_xml")
 	if not bpmn_xml:
@@ -122,8 +122,7 @@ def library_scripts(process_model: str | None) -> list[dict]:
 	libraries = []
 	for task in ET.fromstring(bpmn_xml.strip().encode()).iter(f"{BPMN_NS}scriptTask"):
 		name = task.get(SERVER_SCRIPT_ATTR)
-		connected = task.find(f"{BPMN_NS}incoming") is not None or task.find(f"{BPMN_NS}outgoing") is not None
-		if connected or not name or not frappe.db.exists("Server Script", name):
+		if not name or not frappe.db.exists("Server Script", name):
 			continue
 		if not frappe.has_permission("Server Script", "read", doc=name):
 			continue
