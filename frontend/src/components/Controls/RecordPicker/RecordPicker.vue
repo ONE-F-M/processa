@@ -150,6 +150,7 @@ let timer = null;
 let closeWatcher = null;
 let toggler = null;
 let justPicked = false;
+let blurring = false;
 
 const selected = computed(() => valuesOf(props.modelValue));
 const listed = computed(() =>
@@ -189,6 +190,7 @@ async function load(text = "") {
 }
 
 function onQuery(text) {
+	if (blurring) return;
 	const previous = query.value;
 	query.value = text;
 	if (props.allowFreeText && !props.multiple) keepTyped(previous, text);
@@ -225,6 +227,7 @@ function commitTyped() {
 	const typed = query.value.trim();
 	const cancelled = justPicked || creating.value || saving.value;
 	justPicked = false;
+	query.value = "";
 	if (!cancelled && typed && typed !== props.modelValue) {
 		emit("update:modelValue", typed);
 		emit("select", null);
@@ -243,12 +246,20 @@ function onKeydown(event) {
 	toggler();
 }
 
+// Headless UI picks the highlighted option when the search box loses focus; only a click or Enter picks.
+function onBlur(event) {
+	if (props.multiple || !event.target.closest?.(".record-picker-body")) return;
+	blurring = true;
+	setTimeout(() => (blurring = false));
+}
+
 function toggle(togglePopover) {
 	toggler = togglePopover;
 	togglePopover();
 }
 
 function onSelect(next) {
+	if (blurring) return;
 	justPicked = query.value !== "";
 	const values = valuesOf(next);
 	const picked = props.multiple ? next || [] : next || null;
@@ -312,11 +323,13 @@ watch(
 onMounted(() => {
 	load();
 	document.addEventListener("keydown", onKeydown, true);
+	document.addEventListener("blur", onBlur, true);
 });
 onBeforeUnmount(() => {
 	clearTimeout(timer);
 	clearInterval(closeWatcher);
 	document.removeEventListener("keydown", onKeydown, true);
+	document.removeEventListener("blur", onBlur, true);
 });
 </script>
 

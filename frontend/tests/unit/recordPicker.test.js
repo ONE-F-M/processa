@@ -12,8 +12,19 @@ import {
 	valuesOf,
 } from "@/utils/recordPicker.js";
 
-vi.mock("frappe-ui", () => ({ createResource: () => ({ fetch: async () => [] }) }));
-vi.mock("@/components/Controls/RecordPicker/RecordPicker.vue", () => ({ default: {} }));
+vi.mock("frappe-ui", () => ({
+	createResource: () => ({ fetch: async () => [] }),
+	// Stands in for the Headless UI combobox: the test replays what it emits.
+	Autocomplete: {
+		setup(_, { emit }) {
+			globalThis.__autocompleteEmit = emit;
+			return () => null;
+		},
+	},
+	Button: { render: () => null },
+	FeatherIcon: { render: () => null },
+}));
+vi.mock("vue-router", () => ({ onBeforeRouteLeave: () => {} }));
 
 const SRC = path.resolve(import.meta.dirname, "../../src");
 
@@ -82,4 +93,69 @@ test("a server-searched single picker keeps typed text until it closes, not on e
 	assert.equal(freeText({ fetchApi: search, multiple: true }), "");
 	assert.equal(freeText({ loadOptions: search, keepTyped: true }), "blur");
 	assert.equal(freeText({ loadOptions: search }), "");
+});
+
+async function mountPicker(props) {
+	const { createRenderer } = await import("vue");
+	const RecordPicker = (await import("@/components/Controls/RecordPicker/RecordPicker.vue")).default;
+	const node = (tag) => ({ tag, children: [], addEventListener() {}, removeEventListener() {} });
+	const { createApp } = createRenderer({
+		createElement: node,
+		createText: (text) => ({ text }),
+		createComment: (text) => ({ comment: text }),
+		setText() {},
+		setElementText() {},
+		insert: (child, parent) => (child.parent = parent),
+		remove() {},
+		parentNode: (child) => child.parent || null,
+		nextSibling: () => null,
+		patchProp() {},
+	});
+	const saved = [];
+	createApp(RecordPicker, { ...props, "onUpdate:modelValue": (value) => saved.push(value) }).mount({});
+	return { saved, emit: globalThis.__autocompleteEmit };
+}
+
+test("closing a picker by moving focus away keeps the typed text, not the highlighted option", async () => {
+	vi.useFakeTimers();
+	const listeners = {};
+	vi.stubGlobal("document", {
+		addEventListener: (type, handler) => (listeners[type] = handler),
+		removeEventListener() {},
+		querySelector: () => null,
+	});
+	try {
+		const { saved, emit } = await mountPicker({ modelValue: "Sales Order", allowFreeText: "blur" });
+		emit("update:query", "Stock Entr");
+		// Headless UI on blur: it picks the highlighted option, then empties its search text.
+		listeners.blur({ target: { closest: () => ({}) } });
+		emit("update:modelValue", { label: "Stock Entry", value: "Stock Entry" });
+		emit("update:query", "");
+		await vi.advanceTimersByTimeAsync(200);
+		assert.deepEqual(saved, ["Stock Entr"]);
+
+		emit("update:modelValue", { label: "Sales Invoice", value: "Sales Invoice" });
+		assert.deepEqual(saved, ["Stock Entr", "Sales Invoice"]);
+	} finally {
+		vi.unstubAllGlobals();
+		vi.useRealTimers();
+	}
+});
+
+test("auto-save waits while the person types in a picker's search box", async () => {
+	const { useProcessSave } = await import("@/composables/Process/useProcessSave.js");
+	const pc = {};
+	useProcessSave(pc);
+	const focusedIn = (classes) => ({
+		tagName: "INPUT",
+		closest: (selector) => selector.split(",").some((s) => classes.includes(s.trim().slice(1))),
+	});
+	try {
+		vi.stubGlobal("document", { activeElement: focusedIn(["record-picker-body"]) });
+		assert.equal(pc.isEditingShapeProperties(), true);
+		vi.stubGlobal("document", { activeElement: focusedIn(["canvas"]) });
+		assert.equal(pc.isEditingShapeProperties(), false);
+	} finally {
+		vi.unstubAllGlobals();
+	}
 });
