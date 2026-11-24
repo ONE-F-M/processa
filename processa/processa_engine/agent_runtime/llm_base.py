@@ -15,6 +15,7 @@ class BaseLLMAdapter(ABC):
 		max_turns: int | None = None,
 		temperature: float | None = None,
 		top_p: float | None = None,
+		images: list | None = None,
 	) -> CompletionResult:
 		"""Run one conversation (with optional multi-step tool calls) and return the final text plus the per-turn
 		trace."""
@@ -29,6 +30,7 @@ class BaseLLMAdapter(ABC):
 			max_turns=max_turns or 10,
 			temperature=temperature,
 			top_p=top_p,
+			images=images,
 		)
 
 	@abstractmethod
