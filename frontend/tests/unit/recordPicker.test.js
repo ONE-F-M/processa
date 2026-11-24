@@ -87,7 +87,8 @@ test("the three old pickers are gone and nothing imports them", () => {
 test("a server-searched single picker keeps typed text until it closes, not on every keystroke", async () => {
 	const { RecordPickerField } = await import("@/bpmn/shared/RecordPickerField.js");
 	const freeText = (props) =>
-		RecordPickerField.prototype.pickerProps.call({ props: { onChange() {}, ...props } }).allowFreeText;
+		RecordPickerField.prototype.pickerProps.call({ props: { onChange() {}, ...props } })
+			.allowFreeText;
 	const search = async () => [];
 	assert.equal(freeText({ fetchApi: search }), "blur");
 	assert.equal(freeText({ fetchApi: search, multiple: true }), "");
@@ -97,7 +98,8 @@ test("a server-searched single picker keeps typed text until it closes, not on e
 
 async function mountPicker(props) {
 	const { createRenderer } = await import("vue");
-	const RecordPicker = (await import("@/components/Controls/RecordPicker/RecordPicker.vue")).default;
+	const RecordPicker = (await import("@/components/Controls/RecordPicker/RecordPicker.vue"))
+		.default;
 	const node = (tag) => ({ tag, children: [], addEventListener() {}, removeEventListener() {} });
 	const { createApp } = createRenderer({
 		createElement: node,
@@ -112,7 +114,10 @@ async function mountPicker(props) {
 		patchProp() {},
 	});
 	const saved = [];
-	createApp(RecordPicker, { ...props, "onUpdate:modelValue": (value) => saved.push(value) }).mount({});
+	createApp(RecordPicker, {
+		...props,
+		"onUpdate:modelValue": (value) => saved.push(value),
+	}).mount({});
 	return { saved, emit: globalThis.__autocompleteEmit };
 }
 
@@ -125,7 +130,10 @@ test("closing a picker by moving focus away keeps the typed text, not the highli
 		querySelector: () => null,
 	});
 	try {
-		const { saved, emit } = await mountPicker({ modelValue: "Sales Order", allowFreeText: "blur" });
+		const { saved, emit } = await mountPicker({
+			modelValue: "Sales Order",
+			allowFreeText: "blur",
+		});
 		emit("update:query", "Stock Entr");
 		// Headless UI on blur: it picks the highlighted option, then empties its search text.
 		listeners.blur({ target: { closest: () => ({}) } });
@@ -148,7 +156,8 @@ test("auto-save waits while the person types in a picker's search box", async ()
 	useProcessSave(pc);
 	const focusedIn = (classes) => ({
 		tagName: "INPUT",
-		closest: (selector) => selector.split(",").some((s) => classes.includes(s.trim().slice(1))),
+		closest: (selector) =>
+			selector.split(",").some((s) => classes.includes(s.trim().slice(1))),
 	});
 	try {
 		vi.stubGlobal("document", { activeElement: focusedIn(["record-picker-body"]) });

@@ -248,7 +248,7 @@ function onKeydown(event) {
 
 // Headless UI picks the highlighted option when the search box loses focus; only a click or Enter picks.
 function onBlur(event) {
-	if (props.multiple || !event.target.closest?.(".record-picker-body")) return;
+	if (props.multiple || !event.target.closest(".record-picker-body")) return;
 	blurring = true;
 	setTimeout(() => (blurring = false));
 }
