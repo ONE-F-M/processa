@@ -45,6 +45,12 @@ describe("Logix script security controls", () => {
 		expect(panel).toMatch(/already lists everything this script needs approved/);
 	});
 
+	it("lists only what the script uses, not the categories it does not use", () => {
+		const panel = read("LogixSecurityPanel/LogixSecurityPanel.vue");
+		expect(panel).not.toMatch(/Other categories/);
+		expect(panel).not.toMatch(/otherCategories/);
+	});
+
 	it("never offers approval for a syntax error", () => {
 		const panel = read("LogixSecurityPanel/LogixSecurityPanel.vue");
 		expect(panel).toMatch(/if \(blockingError\.value\) return blockingError\.value\.category;/);

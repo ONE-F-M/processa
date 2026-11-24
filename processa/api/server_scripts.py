@@ -815,6 +815,10 @@ def build_logix_turn_context(context: dict) -> dict:
 	if libraries:
 		out["library_scripts"] = libraries
 		parts.append(logix_helpers.library_text(libraries))
+	steps = out.get("step_functions") or logix_helpers.step_functions(process_model, out.get("current_script") or "")
+	if steps:
+		out["step_functions"] = steps
+		parts.append(logix_helpers.step_function_text(steps))
 	states = out.get("workflow_states") or logix_helpers.workflow_states(process_model)
 	if states:
 		out["workflow_states"] = states
