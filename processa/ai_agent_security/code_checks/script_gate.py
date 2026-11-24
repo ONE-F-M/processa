@@ -26,6 +26,7 @@ from processa.ai_agent_security.code_checks.script_validator import (
 	import_error,
 	imported_scripts,
 	inspect_script,
+	runs_code_on_import,
 	used_categories,
 )
 
@@ -78,6 +79,9 @@ def library_findings(
 		inner = inspect_script(library_code, allowed)
 		if imported_scripts(library_code) or any(f["category"] == IMPORT_ERROR for f in inner):
 			message = _("Library '{0}' cannot import another script").format(library)
+			findings.append(import_error(library, line, message))
+		if runs_code_on_import(library_code):
+			message = _("Library '{0}' runs code when it is imported; keep only functions in it").format(library)
 			findings.append(import_error(library, line, message))
 		for finding in inner:
 			if finding["category"] not in NOT_APPROVABLE:

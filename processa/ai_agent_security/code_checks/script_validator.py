@@ -274,6 +274,15 @@ def imported_scripts(code: str | None) -> list[tuple[str, int]]:
 	]
 
 
+def runs_code_on_import(code: str | None) -> bool:
+	"""True when code does more than define functions, so import_script would run the rest."""
+	try:
+		body = ast.parse(code or "").body
+	except SyntaxError:
+		return False
+	return any(not isinstance(node, ast.FunctionDef) for node in body)
+
+
 def _script_name_argument(node: ast.Call) -> str | None:
 	if len(node.args) == 1 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
 		return node.args[0].value
