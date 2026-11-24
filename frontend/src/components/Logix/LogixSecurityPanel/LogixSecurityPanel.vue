@@ -56,15 +56,6 @@
 					<small v-if="row.note">{{ row.note }}</small>
 				</div>
 			</div>
-
-			<div class="lsp-group-head">
-				<span>Other categories</span>
-				<span>approval</span>
-			</div>
-			<div v-for="name in otherCategories" :key="name" class="lsp-item">
-				<Icon icon="lucide:square" class="lsp-check" />
-				<div class="lsp-label">{{ name }}</div>
-			</div>
 		</div>
 
 		<div v-if="!readonly" class="lsp-foot">
@@ -184,12 +175,6 @@ const allowedRows = computed(() => [
 const allowedSummary = computed(
 	() => `${allowedCategories.value.length} default, ${approvedFindings.value.length} approved`,
 );
-const otherCategories = computed(() =>
-	(props.lint?.categories || [])
-		.filter((c) => !c.allowed_by_default && !props.lint?.in_use?.[c.name])
-		.map((c) => c.name),
-);
-
 // The requester can refresh the open request from the saved script until the Reviewer acts on it.
 const updatable = computed(() => Boolean(latestRequest.value?.can_update));
 const blockedReason = computed(() => {
