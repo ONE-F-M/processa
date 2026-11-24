@@ -136,6 +136,15 @@ class TestImportScriptChecks(FrappeTestCase):
 			[f["message"] for f in lint["findings"]],
 		)
 
+	def test_a_private_library_function_is_a_finding(self):
+		code = f'lib = import_script("{LIBRARY}")\nresult["clean"] = lib._strip("x")\n'
+		self._model(self.xml)
+		lint = script_gate.lint_script(code, CALLER, PROCESS, TASK)
+		self.assertIn(
+			f"_strip is private to library '{LIBRARY}'; rename it without the leading underscore",
+			[f["message"] for f in lint["findings"]],
+		)
+
 	def test_import_script_with_a_default_only_library_is_clean(self):
 		self._model(self.xml)
 		lint = script_gate.lint_script(CALLER_CODE, CALLER, PROCESS, TASK)
