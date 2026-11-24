@@ -1,5 +1,6 @@
 # Copyright (c) 2026, one-fm and contributors
-"""Records that change while a migration runs, a record moved twice, and runs whose jobs or checks fail."""
+"""Records that change while a migration runs, a record moved twice, runs whose jobs or checks fail,
+and runs with no old map, which start records that no instance runs."""
 
 import json
 from unittest.mock import patch
@@ -8,7 +9,10 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from processa.processa_engine.doctype.processa_legacy_migration import legacy_migration
-from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_move import migrate_record
+from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_move import (
+	migrate_record,
+	unstarted_record,
+)
 from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_replay import (
 	build_context,
 	wait_ids,
@@ -20,8 +24,10 @@ from processa.processa_engine.doctype.processa_legacy_migration.test_processa_le
 	DT,
 	OLD,
 	PR_OPENED,
+	definitions,
 	deploy,
 	migration,
+	node,
 	old_instance,
 	run_batch_jobs,
 	run_start,
@@ -211,3 +217,97 @@ class TestLegacyMigrationEdgeCases(FrappeTestCase):
 		self.assertIsInstance(errors[0], frappe.PermissionError)
 		self.assertEqual(frappe.db.get_value("BPMN Process Instance", self.second_review, "status"), "Active")
 		self.assertEqual([r.reason for r in self._plm(name).error_logs], ["Error"])
+
+	def _unstarted(self, state):
+		"""A record in state that no process instance runs."""
+		record = frappe.get_doc({"doctype": DT}).insert().name
+		frappe.db.set_value(DT, record, "workflow_state", state)
+		return record
+
+	def _run_without_old_map(self, mapping):
+		name = migration(None, self.new_map, mapping, status="Queued")
+		_jobs, errors = run_start(name)
+		self.assertEqual(errors, [])
+		return self._plm(name)
+
+	def _instance_of(self, record):
+		return frappe.db.get_value(
+			"BPMN Process Instance", {"context_doctype": DT, "context_docname": record}
+		)
+
+	def test_with_no_old_map_a_record_without_an_instance_starts_at_its_mapped_state(self):
+		record = self._unstarted(APPROVED)
+		plm = self._run_without_old_map(MAPPING)
+		# waiting_pr is also Approved, but its open instance leaves it to a run from its old map.
+		self.assertEqual((plm.total_records, plm.migrated_count, plm.status), (1, 1, "Completed"))
+		new = frappe.get_doc("BPMN Process Instance", self._instance_of(record))
+		self.assertEqual((new.process_model, new.status, new.migrated_from), (self.new_map, "Active", None))
+		self.assertEqual(wait_ids(restore_workflow(json.loads(new.workflow_state))), {"Catch_pr"})
+		log = frappe.get_all(
+			"BPMN Activity Log",
+			filters={"instance": new.name, "action": ["in", ["Completed", "Migrated"]]},
+			fields=["task_name", "action", "data"],
+			order_by="creation asc",
+		)
+		self.assertEqual(
+			[(r.task_name, r.action) for r in log], [("Review", "Completed"), ("Migrated", "Migrated")]
+		)
+		self.assertEqual(json.loads(log[0].data), {"action": "Approve", "migration": plm.name})
+		self.assertEqual(frappe.db.get_value(DT, record, "workflow_state"), APPROVED)
+
+	def test_with_no_old_map_a_state_the_new_map_cannot_reach_is_logged_and_nothing_starts(self):
+		record = self._unstarted(DONE)
+		plm = self._run_without_old_map([(DONE, DONE)])
+		self.assertEqual((plm.total_records, plm.migrated_count, plm.status), (1, 0, "Failed"))
+		self.assertEqual(
+			[(r.document_name, r.reason, r.old_instance) for r in plm.error_logs],
+			[(record, "State not reached", None)],
+		)
+		self.assertIsNone(self._instance_of(record))
+
+	def test_a_record_started_with_no_old_map_moves_again_to_a_newer_map(self):
+		record = self._unstarted(APPROVED)
+		self._run_without_old_map(MAPPING)
+		newer = deploy("PLM Edge Newer", with_changes(OLD, relabel={"Task_review": "Manager Review"}))
+		moved, plm, _second = self._move(self._instance_of(record), newer)
+		self.assertEqual(self._plm(plm).error_logs, [])
+		self.assertTrue(moved)
+
+	def test_with_no_old_map_a_script_sets_the_gateway_value_and_its_writes_are_undone(self):
+		def routed(pid):
+			script = (
+				'<bpmn:scriptTask id="Script_route" name="Route"><bpmn:incoming>Flow_1</bpmn:incoming>'
+				"<bpmn:outgoing>Flow_2</bpmn:outgoing><bpmn:script>"
+				'frappe.get_doc({"doctype": "Note", "title": "plm fast-forward probe"}).insert()\n'
+				"go_on = True</bpmn:script></bpmn:scriptTask>"
+			)
+			return definitions(
+				pid,
+				'<bpmn:startEvent id="Start_1"><bpmn:outgoing>Flow_0</bpmn:outgoing></bpmn:startEvent>'
+				+ node("state", "Task_draft", DRAFT, "Flow_0", "Flow_1")
+				+ script
+				+ '<bpmn:exclusiveGateway id="Gateway_1" default="Flow_skip"><bpmn:incoming>Flow_2</bpmn:incoming>'
+				"<bpmn:outgoing>Flow_3</bpmn:outgoing><bpmn:outgoing>Flow_skip</bpmn:outgoing>"
+				"</bpmn:exclusiveGateway>"
+				+ node("user", "Task_review", "Review", "Flow_3", "Flow_4")
+				+ node("state", "Task_approved", APPROVED, "Flow_4", "Flow_5")
+				+ '<bpmn:endEvent id="End_1"><bpmn:incoming>Flow_5</bpmn:incoming>'
+				"<bpmn:incoming>Flow_skip</bpmn:incoming></bpmn:endEvent>"
+				'<bpmn:sequenceFlow id="Flow_0" sourceRef="Start_1" targetRef="Task_draft" />'
+				'<bpmn:sequenceFlow id="Flow_1" sourceRef="Task_draft" targetRef="Script_route" />'
+				'<bpmn:sequenceFlow id="Flow_2" sourceRef="Script_route" targetRef="Gateway_1" />'
+				'<bpmn:sequenceFlow id="Flow_3" sourceRef="Gateway_1" targetRef="Task_review">'
+				"<bpmn:conditionExpression>go_on</bpmn:conditionExpression></bpmn:sequenceFlow>"
+				'<bpmn:sequenceFlow id="Flow_skip" sourceRef="Gateway_1" targetRef="End_1" />'
+				'<bpmn:sequenceFlow id="Flow_4" sourceRef="Task_review" targetRef="Task_approved" />'
+				'<bpmn:sequenceFlow id="Flow_5" sourceRef="Task_approved" targetRef="End_1" />',
+			)
+
+		record = self._unstarted(APPROVED)
+		name = migration(None, deploy("PLM Edge Routed", routed), [(APPROVED, APPROVED)], status="Running")
+		ctx = build_context(frappe.get_doc("Processa Legacy Migration", name))
+		self.assertTrue(migrate_record(ctx, unstarted_record(DT, record), 1))
+		self.assertEqual(
+			frappe.db.get_value("BPMN Process Instance", self._instance_of(record), "status"), "Completed"
+		)
+		self.assertFalse(frappe.db.exists("Note", {"title": "plm fast-forward probe"}))

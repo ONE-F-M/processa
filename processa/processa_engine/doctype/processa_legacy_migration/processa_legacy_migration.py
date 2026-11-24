@@ -29,7 +29,7 @@ class ProcessaLegacyMigration(Document):
 		completed_at: DF.Datetime | None
 		error_logs: DF.Table[LegacyMigrationErrorLog]
 		failed_count: DF.Int
-		from_model: DF.Link
+		from_model: DF.Link | None
 		migrated_count: DF.Int
 		run_by: DF.Link | None
 		started_at: DF.Datetime | None
@@ -50,7 +50,7 @@ class ProcessaLegacyMigration(Document):
 			if self._setup_unchanged():
 				return
 		# A blank map or DocType is left to Frappe's mandatory check, which runs after validate.
-		if not all((self.from_model, self.to_model, self.target_doctype)):
+		if not all((self.to_model, self.target_doctype)):
 			return
 		validate_setup(self)
 

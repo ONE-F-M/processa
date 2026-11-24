@@ -16,6 +16,7 @@ from processa.processa_engine.assignment import add_frappe_assignment, resolve_a
 from processa.processa_engine.audit import apply_bpmn_workflow_state
 from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_replay import (
 	MigrationSkip,
+	fast_forward,
 	replay,
 )
 from processa.processa_engine.runtime.common import log_task, task_bpmn_id
@@ -28,15 +29,21 @@ if TYPE_CHECKING:
 
 def migrate_record(ctx: frappe._dict, old: "BPMNProcessInstance", idx: int) -> bool:
 	"""Move one record fully or not at all; one that cannot move gets Error Log row idx. True when it moved.
+	old is the record's instance on the old map, or unstarted_record for a record that has none.
 
 	Commits nothing: the batch job commits after each record, so a refused record's row is kept with it."""
 	frappe.db.savepoint("plm_record")
 	try:
-		result = replay(ctx, old)
-		new = _insert_new_instance(ctx, old, result)
-		_copy_history(ctx, old, new)
-		_repoint_todos(old, new)
-		_retire(old, new)
+		if old.name:
+			result = replay(ctx, old)
+			new = _insert_new_instance(ctx, old, result)
+			_copy_history(ctx, old, new)
+			_repoint_todos(old, new)
+			_retire(old, new)
+		else:
+			result = fast_forward(ctx, old)
+			new = _insert_new_instance(ctx, old, result)
+			_log_fast_forward(ctx, new, result.steps)
 		previous_flag = frappe.flags.bpmn_engine_action
 		frappe.flags.bpmn_engine_action = True
 		try:
@@ -60,6 +67,18 @@ def migrate_record(ctx: frappe._dict, old: "BPMNProcessInstance", idx: int) -> b
 		log_error_row(ctx.plm.name, old, "Error", frappe.get_traceback(with_context=False), idx)
 		return False
 	return True
+
+
+def unstarted_record(doctype: str, docname: str) -> frappe._dict:
+	"""What migrate_record and log_error_row read from an old instance, for a record that has none."""
+	return frappe._dict(
+		name=None,
+		context_doctype=doctype,
+		context_docname=docname,
+		active_tasks=[],
+		initiated_by=frappe.session.user,
+		started_at=now_datetime(),
+	)
 
 
 def log_error_row(
@@ -98,7 +117,8 @@ def _insert_new_instance(
 		{
 			"process_model": ctx.plm.to_model,
 			"migrated_from": old.name,
-			"status": "Active",
+			"status": "Completed" if wf.is_completed() else "Active",
+			"completed_at": now_datetime() if wf.is_completed() else None,
 			"context_doctype": old.context_doctype,
 			"context_docname": old.context_docname,
 			"initiated_by": old.initiated_by,
@@ -176,6 +196,13 @@ def _copy_history(ctx: frappe._dict, old: "BPMNProcessInstance", new: "BPMNProce
 		"Migrated",
 		{"migrated_from": old.name, "migration": ctx.plm.name},
 	)
+
+
+def _log_fast_forward(ctx: frappe._dict, new: "BPMNProcessInstance", steps: list[frappe._dict]) -> None:
+	"""Log each user task the fast-forward completed, so a later migration can replay it, then the move."""
+	for step in steps:
+		log_task(new, step.task_id, step.name, "Completed", {**step.data, "migration": ctx.plm.name})
+	log_task(new, f"migrated::{ctx.plm.name}", _("Migrated"), "Migrated", {"migration": ctx.plm.name})
 
 
 def _repoint_todos(old: "BPMNProcessInstance", new: "BPMNProcessInstance") -> None:

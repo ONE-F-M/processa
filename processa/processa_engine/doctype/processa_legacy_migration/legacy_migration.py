@@ -14,6 +14,7 @@ from rq.timeouts import JobTimeoutException
 from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_move import (
 	log_error_row,
 	migrate_record,
+	unstarted_record,
 )
 from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_replay import (
 	OPEN_INSTANCE_STATUSES,
@@ -33,12 +34,12 @@ FINISHED_MESSAGE = "processa:legacy_migration:finished"
 
 
 def start(migration_name: str) -> None:
-	"""Queue a migration's open old-map instances as run_batch jobs of BATCH_SIZE on the long queue."""
+	"""Queue a migration's records_to_move as run_batch jobs of BATCH_SIZE on the long queue."""
 	plm = frappe.get_doc("Processa Legacy Migration", migration_name)
 	user = plm.run_by or frappe.session.user
 	try:
 		check_process_ownership(
-			frappe.get_doc("BPMN Process Model", plm.from_model),
+			frappe.get_doc("BPMN Process Model", plm.from_model) if plm.from_model else None,
 			frappe.get_doc("BPMN Process Model", plm.to_model),
 			user,
 		)
@@ -49,16 +50,7 @@ def start(migration_name: str) -> None:
 		finish(migration_name)
 		return
 
-	names = frappe.get_all(
-		"BPMN Process Instance",
-		filters={
-			"process_model": plm.from_model,
-			"context_doctype": plm.target_doctype,
-			"status": ["in", OPEN_INSTANCE_STATUSES],
-		},
-		pluck="name",
-		order_by="started_at asc",
-	)
+	names = records_to_move(plm)
 	batches = list(create_batch(names, BATCH_SIZE))
 	plm.db_set(
 		{
@@ -90,6 +82,39 @@ def start(migration_name: str) -> None:
 		)
 
 
+def records_to_move(plm: "ProcessaLegacyMigration") -> list[str]:
+	"""The old map's open instances, oldest first; with no old map, the records in a mapped Old State
+	that no open instance runs."""
+	if plm.from_model:
+		return frappe.get_all(
+			"BPMN Process Instance",
+			filters={
+				"process_model": plm.from_model,
+				"context_doctype": plm.target_doctype,
+				"status": ["in", OPEN_INSTANCE_STATUSES],
+			},
+			pluck="name",
+			order_by="started_at asc",
+		)
+	states = [d.old_state for d in plm.state_map]
+	if not states:
+		return []
+	running = set(
+		frappe.get_all(
+			"BPMN Process Instance",
+			filters={"context_doctype": plm.target_doctype, "status": ["in", OPEN_INSTANCE_STATUSES]},
+			pluck="context_docname",
+		)
+	)
+	records = frappe.get_all(
+		plm.target_doctype,
+		filters={state_field(plm.target_doctype): ["in", states]},
+		pluck="name",
+		order_by="creation asc",
+	)
+	return [name for name in records if name not in running]
+
+
 def run_batch(migration_name: str, instance_names: list[str], first_idx: int = 1) -> None:
 	"""Move one batch, committing after each record; a timeout or failure logs every record it did not move.
 	A record's Error Log row gets idx first_idx plus its place in the batch, so batches never share one."""
@@ -117,7 +142,10 @@ def run_batch(migration_name: str, instance_names: list[str], first_idx: int = 1
 
 
 def _migrate_by_name(ctx: frappe._dict, name: str, idx: int) -> bool:
-	"""migrate_record for one instance name; an instance deleted since start gets an Error Log row instead."""
+	"""migrate_record for one instance name, or record name when there is no old map; an instance deleted
+	since start gets an Error Log row instead."""
+	if not ctx.plm.from_model:
+		return migrate_record(ctx, unstarted_record(ctx.plm.target_doctype, name), idx)
 	if not frappe.db.exists("BPMN Process Instance", name):
 		detail = _("The instance was deleted before its batch ran.")
 		log_error_row(ctx.plm.name, frappe._dict(name=name), "No longer open", detail, idx)
@@ -151,20 +179,8 @@ def _fail_if_stalled(name: str) -> None:
 	if any(is_job_enqueued(job_id) for job_id in job_ids):
 		return
 
-	logged = {row.old_instance for row in plm.error_logs}
-	unhandled = [
-		instance
-		for instance in frappe.get_all(
-			"BPMN Process Instance",
-			filters={
-				"process_model": plm.from_model,
-				"context_doctype": plm.target_doctype,
-				"status": ["in", OPEN_INSTANCE_STATUSES],
-			},
-			pluck="name",
-		)
-		if instance not in logged
-	]
+	logged = {row.old_instance if plm.from_model else row.document_name for row in plm.error_logs}
+	unhandled = [name for name in records_to_move(plm) if name not in logged]
 	detail = _("The run's background job stopped before this record moved.")
 	next_idx = max((row.idx for row in plm.error_logs), default=0) + 1
 	failed = _log_unmoved(name, unhandled, "Timed out", detail, next_idx)
@@ -175,17 +191,24 @@ def _fail_if_stalled(name: str) -> None:
 def _log_unmoved(
 	migration_name: str, instance_names: list[str], reason: str, detail: str, first_idx: int
 ) -> int:
-	"""An Error Log row for each instance a batch did not move, deleted ones included; returns how many."""
-	instances = {
-		d.name: d
-		for d in frappe.get_all(
-			"BPMN Process Instance",
-			filters={"name": ["in", instance_names]},
-			fields=["name", "context_doctype", "context_docname"],
-		)
-	}
-	for i, name in enumerate(instance_names):
-		old = instances.get(name, frappe._dict(name=name))
+	"""An Error Log row for each instance, or record when there is no old map, a batch did not move,
+	deleted ones included; returns how many."""
+	from_model, target_doctype = frappe.db.get_value(
+		"Processa Legacy Migration", migration_name, ["from_model", "target_doctype"]
+	)
+	if from_model:
+		instances = {
+			d.name: d
+			for d in frappe.get_all(
+				"BPMN Process Instance",
+				filters={"name": ["in", instance_names]},
+				fields=["name", "context_doctype", "context_docname"],
+			)
+		}
+		olds = [instances.get(name, frappe._dict(name=name)) for name in instance_names]
+	else:
+		olds = [unstarted_record(target_doctype, name) for name in instance_names]
+	for i, old in enumerate(olds):
 		log_error_row(migration_name, old, reason, detail, first_idx + i)
 	return len(instance_names)
 
@@ -259,7 +282,7 @@ def finish(migration_name: str) -> None:
 
 def validate_setup(plm: "ProcessaLegacyMigration") -> None:
 	"""Refuse a migration that could never run; fills each State Mapping row's Record Count."""
-	from_model = frappe.get_doc("BPMN Process Model", plm.from_model)
+	from_model = frappe.get_doc("BPMN Process Model", plm.from_model) if plm.from_model else None
 	to_model = frappe.get_doc("BPMN Process Model", plm.to_model)
 	check_process_ownership(from_model, to_model)
 	_check_maps(plm, from_model, to_model)
@@ -271,15 +294,14 @@ def validate_setup(plm: "ProcessaLegacyMigration") -> None:
 
 
 def check_process_ownership(
-	from_model: "BPMNProcessModel", to_model: "BPMNProcessModel", user: str | None = None
+	from_model: "BPMNProcessModel | None", to_model: "BPMNProcessModel", user: str | None = None
 ) -> None:
-	"""Throw PermissionError unless *user* (default the session user) owns both maps' processes.
-
-	A System Manager passes."""
+	"""Throw PermissionError unless *user* (default the session user) owns the processes of both maps,
+	or of the new map when there is no old one. A System Manager passes."""
 	user = user or frappe.session.user
 	if "System Manager" in frappe.get_roles(user):
 		return
-	for model in (from_model, to_model):
+	for model in filter(None, (from_model, to_model)):
 		if frappe.db.get_value("Process", model.process_name, "process_owner") != user:
 			frappe.throw(
 				_("You are not the Process Owner of {0}, the process of {1}.").format(
@@ -290,11 +312,11 @@ def check_process_ownership(
 
 
 def _check_maps(plm, from_model, to_model) -> None:
-	if from_model.name == to_model.name:
+	if from_model and from_model.name == to_model.name:
 		frappe.throw(_("Old Process Map and New Process Map must be different."))
 	if not to_model.serialized_spec:
 		frappe.throw(_("New Process Map {0} is not currently deployed.").format(to_model.name))
-	for model in (from_model, to_model):
+	for model in filter(None, (from_model, to_model)):
 		doctypes = _model_doctypes(model)
 		if plm.target_doctype not in doctypes:
 			frappe.throw(
@@ -323,15 +345,18 @@ def _check_state_map(plm, to_model) -> None:
 
 
 def _check_open_states_mapped(plm, fieldname: str) -> None:
-	docnames = frappe.get_all(
-		"BPMN Process Instance",
-		filters={
-			"process_model": plm.from_model,
-			"context_doctype": plm.target_doctype,
-			"status": ["in", OPEN_INSTANCE_STATUSES],
-		},
-		pluck="context_docname",
-	)
+	if plm.from_model:
+		docnames = frappe.get_all(
+			"BPMN Process Instance",
+			filters={
+				"process_model": plm.from_model,
+				"context_doctype": plm.target_doctype,
+				"status": ["in", OPEN_INSTANCE_STATUSES],
+			},
+			pluck="context_docname",
+		)
+	else:
+		docnames = records_to_move(plm)
 	states = (
 		frappe.get_all(plm.target_doctype, filters={"name": ["in", docnames]}, pluck=fieldname)
 		if docnames
@@ -340,6 +365,9 @@ def _check_open_states_mapped(plm, fieldname: str) -> None:
 	counts = Counter(states)
 	for d in plm.state_map:
 		d.record_count = counts[d.old_state]
+	# With no old map, the State Mapping itself chooses which records move.
+	if not plm.from_model:
+		return
 
 	mapped = {d.old_state for d in plm.state_map}
 	missing = [f"{state or _('(empty)')} ({count})" for state, count in counts.items() if state not in mapped]
