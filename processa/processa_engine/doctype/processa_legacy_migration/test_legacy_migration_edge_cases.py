@@ -315,3 +315,39 @@ class TestLegacyMigrationEdgeCases(FrappeTestCase):
 		frappe.cache.delete_value("plm_fast_forward_probe")
 		frappe.db.after_commit.run()
 		self.assertIsNone(frappe.cache.get_value("plm_fast_forward_probe"))
+
+	def test_a_run_whose_start_fails_fails_at_once_with_one_error_row(self):
+		name = migration(self.old_map, self.new_map, MAPPING, status="Queued")
+		frappe.db.savepoint("plm_start_test")
+		rollback = frappe.db.rollback
+		with (
+			patch.object(legacy_migration, "create_batch", side_effect=RuntimeError("no batches today")),
+			patch.object(
+				frappe.db,
+				"rollback",
+				side_effect=lambda save_point=None, **kw: rollback(save_point=save_point or "plm_start_test"),
+			),
+		):
+			jobs, _errors = run_start(name, run_jobs=False)
+		plm = self._plm(name)
+		self.assertEqual(jobs, [])
+		self.assertEqual(plm.status, "Failed")
+		self.assertEqual(
+			[(r.reason, r.document_name, r.old_instance) for r in plm.error_logs], [("Error", None, None)]
+		)
+		self.assertIn("no batches today", plm.error_logs[0].error_message)
+		self.assertEqual(frappe.db.get_value("BPMN Process Instance", self.second_review, "status"), "Active")
+
+	def test_a_stalled_run_that_never_queued_its_batches_gets_one_error_row_and_moves_nothing(self):
+		# Running with no batch queued, as a Run Migration step that fails after setting Running leaves it.
+		name = migration(self.old_map, self.new_map, MAPPING, status="Running")
+		with (
+			patch.object(legacy_migration, "is_job_enqueued", return_value=False),
+			patch.object(frappe.db, "commit"),
+		):
+			legacy_migration.fail_stalled_migrations()
+		plm = self._plm(name)
+		self.assertEqual((plm.status, plm.failed_count), ("Failed", 0))
+		self.assertEqual([(r.reason, r.old_instance) for r in plm.error_logs], [("Error", None)])
+		self.assertIn("never queued its batches", plm.error_logs[0].error_message)
+		self.assertEqual(frappe.db.get_value("BPMN Process Instance", self.second_review, "status"), "Active")
