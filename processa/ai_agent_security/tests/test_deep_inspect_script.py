@@ -409,6 +409,19 @@ class TestRequestFindings(unittest.TestCase):
 		self.assertEqual(_rules("x = frappe.get_all('ToDo', limit=5)", "change the limit from 10 to 5"), [])
 		self.assertEqual(_rules("for i in range(3):\n    frappe.msgprint(str(i))", "update 2 fields"), [])
 
+	def test_digits_inside_a_name_are_not_a_number_the_request_asks_for(self):
+		request = (
+			"Use the _chunk_text function from the Activity_07p8yta step to split task_data text "
+			'into 600-word chunks, and put the chunk count in result["chunk_count"].'
+		)
+		code = (
+			"def _chunk_text(text, size):\n"
+			"\treturn [text[i : i + size] for i in range(0, len(text), size)]\n"
+			"result['chunk_count'] = len(_chunk_text(task_data.get('text') or '', 600))"
+		)
+		self.assertEqual(_rules(code, request), [])
+		self.assertTrue(_rules("x = frappe.get_all('ToDo', limit=10)", "list the 5 latest todos from Activity_07p8yta"))
+
 	def test_a_server_script_returned_for_a_client_script_request_is_reported(self):
 		self.assertTrue(_rules("x = 1", "write a client script that hides the Notes field"))
 		self.assertEqual(_rules("frappe.ui.form.on('ToDo', {})", "write a client script", "javascript"), [])

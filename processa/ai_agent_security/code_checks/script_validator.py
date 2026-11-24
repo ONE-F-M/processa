@@ -529,7 +529,8 @@ def _number_findings(code: str, request: str) -> list[dict]:
 	from frappe import _
 
 	replaced = set(_REPLACED_NUMBER_RE.findall(request))
-	words = re.findall(r"[a-z]+|\d+(?:\.\d+)?|%", request.lower())
+	# A name such as Activity_07p8yta stays one word, so its digits are not read as a number.
+	words = re.findall(r"\w*[a-z_]\w*|\d+(?:\.\d+)?|%", request.lower())
 	wanted = []
 	for i, word in enumerate(words):
 		if not _REQUEST_NUMBER_RE.fullmatch(word) or word in replaced:
