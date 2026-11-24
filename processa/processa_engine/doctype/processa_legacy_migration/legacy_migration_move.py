@@ -12,9 +12,15 @@ from frappe.utils import now_datetime
 from rq.timeouts import JobTimeoutException
 
 from processa.processa_engine import engine as bpmn_engine
-from processa.processa_engine.assignment import add_frappe_assignment, resolve_assignee, split_users
+from processa.processa_engine.assignment import (
+	add_frappe_assignment,
+	remove_frappe_assignment,
+	resolve_assignee,
+	split_users,
+)
 from processa.processa_engine.audit import apply_bpmn_workflow_state
 from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_replay import (
+	OPEN_INSTANCE_STATUSES,
 	MigrationSkip,
 	fast_forward,
 	replay,
@@ -41,8 +47,13 @@ def migrate_record(ctx: frappe._dict, old: "BPMNProcessInstance", idx: int) -> b
 			_retire(old, new)
 		else:
 			result = fast_forward(ctx, old)
+			replaced = _open_on_other_maps(ctx, old)
+			for instance in replaced:
+				_close_assignments(instance)
 			new = _insert_new_instance(ctx, old, result)
 			_log_fast_forward(ctx, new, result.steps)
+			for instance in replaced:
+				_retire(instance, new)
 		previous_flag = frappe.flags.bpmn_engine_action
 		frappe.flags.bpmn_engine_action = True
 		try:
@@ -77,6 +88,42 @@ def unstarted_record(doctype: str, docname: str) -> frappe._dict:
 		active_tasks=[],
 		initiated_by=frappe.session.user,
 		started_at=now_datetime(),
+	)
+
+
+def _open_on_other_maps(ctx: frappe._dict, record: frappe._dict) -> list["BPMNProcessInstance"]:
+	"""The record's open instances on the other maps of the new map's process."""
+	maps = other_maps_of_process(ctx.plm.to_model)
+	if not maps:
+		return []
+	names = frappe.get_all(
+		"BPMN Process Instance",
+		filters={
+			"process_model": ["in", maps],
+			"context_doctype": record.context_doctype,
+			"context_docname": record.context_docname,
+			"status": ["in", OPEN_INSTANCE_STATUSES],
+		},
+		pluck="name",
+	)
+	return [frappe.get_doc("BPMN Process Instance", name) for name in names]
+
+
+def _close_assignments(old: "BPMNProcessInstance") -> None:
+	"""Close the ToDos of the old instance's Waiting tasks, so the new instance assigns by its own rules."""
+	for row in old.active_tasks:
+		if row.status == "Waiting":
+			for user in split_users(row.assigned_user):
+				remove_frappe_assignment(old, user)
+
+
+def other_maps_of_process(to_model: str) -> list[str]:
+	"""The other process maps of the new map's process; empty when the new map names no process."""
+	process = frappe.db.get_value("BPMN Process Model", to_model, "process_name")
+	if not process:
+		return []
+	return frappe.get_all(
+		"BPMN Process Model", filters={"process_name": process, "name": ["!=", to_model]}, pluck="name"
 	)
 
 
