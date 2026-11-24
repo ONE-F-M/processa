@@ -72,4 +72,4 @@ def execute():
 				break
 		if script and script != doc.script:
 			doc.script = script
-			doc.save(ignore_permissions=True)
+			doc.save(ignore_permissions=True)  # a patch runs as Administrator with no request user to check
