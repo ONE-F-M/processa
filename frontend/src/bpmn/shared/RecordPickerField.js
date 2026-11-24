@@ -96,7 +96,7 @@ export class RecordPickerField extends Component {
 			localSearch: Boolean(loadOptions),
 			fetchOptions: this.fetchOptions,
 			createRecord,
-			allowFreeText: multiple ? "" : loadOptions ? (keepTyped ? "blur" : "") : "live",
+			allowFreeText: multiple || (loadOptions && !keepTyped) ? "" : "blur",
 			missingText: missingText || "",
 			"onUpdate:modelValue": (next) => onChange(multiple ? joinValues(next) : next),
 		};

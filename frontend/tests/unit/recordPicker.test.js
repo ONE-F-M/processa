@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -11,6 +11,9 @@ import {
 	toOptions,
 	valuesOf,
 } from "@/utils/recordPicker.js";
+
+vi.mock("frappe-ui", () => ({ createResource: () => ({ fetch: async () => [] }) }));
+vi.mock("@/components/Controls/RecordPicker/RecordPicker.vue", () => ({ default: {} }));
 
 const SRC = path.resolve(import.meta.dirname, "../../src");
 
@@ -68,4 +71,15 @@ test("the three old pickers are gone and nothing imports them", () => {
 			);
 		}
 	}
+});
+
+test("a server-searched single picker keeps typed text until it closes, not on every keystroke", async () => {
+	const { RecordPickerField } = await import("@/bpmn/shared/RecordPickerField.js");
+	const freeText = (props) =>
+		RecordPickerField.prototype.pickerProps.call({ props: { onChange() {}, ...props } }).allowFreeText;
+	const search = async () => [];
+	assert.equal(freeText({ fetchApi: search }), "blur");
+	assert.equal(freeText({ fetchApi: search, multiple: true }), "");
+	assert.equal(freeText({ loadOptions: search, keepTyped: true }), "blur");
+	assert.equal(freeText({ loadOptions: search }), "");
 });
