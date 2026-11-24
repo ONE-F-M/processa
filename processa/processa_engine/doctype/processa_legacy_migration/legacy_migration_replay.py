@@ -1,5 +1,5 @@
 # Copyright (c) 2026, one-fm and contributors
-"""Replay an old instance's history on a new process map without side effects. Writes nothing."""
+"""Replay an old instance's history, or fast-forward a record with none, on a new process map. Writes nothing."""
 
 import datetime
 import json
@@ -8,6 +8,7 @@ from uuid import UUID
 
 import frappe
 from frappe import _
+from frappe.utils import CallbackManager
 
 from processa.processa_engine import engine as bpmn_engine
 from processa.processa_engine.engine import (
@@ -22,6 +23,7 @@ from processa.processa_engine.engine import (
 	TaskState,
 	WorkflowException,
 )
+from processa.processa_engine.runtime.active_tasks import parse_task_actions_json
 from processa.processa_engine.runtime.common import task_bpmn_id
 
 if TYPE_CHECKING:
@@ -51,17 +53,34 @@ class ReplayScriptEngine(FrappeScriptEngine):
 		"""Script tasks do not run during a replay; gateway conditions still evaluate."""
 
 
+class FastForwardScriptEngine(FrappeScriptEngine):
+	def execute(self, task, script, **kwargs):
+		"""Run the script for the values it sets for gateways, then undo its database writes and drop
+		the jobs it queued for after the commit."""
+		queued = frappe.db.before_commit, frappe.db.after_commit
+		frappe.db.before_commit, frappe.db.after_commit = CallbackManager(), CallbackManager()
+		frappe.db.savepoint("plm_fast_forward_script")
+		try:
+			super().execute(task, script, **kwargs)
+		finally:
+			frappe.db.rollback(save_point="plm_fast_forward_script")
+			frappe.db.before_commit, frappe.db.after_commit = queued
+
+
 def build_context(plm: "ProcessaLegacyMigration") -> frappe._dict:
 	"""What every replay of one Processa Legacy Migration needs, loaded once."""
 	to_spec = json.loads(frappe.db.get_value("BPMN Process Model", plm.to_model, "serialized_spec"))
-	from_spec = json.loads(frappe.db.get_value("BPMN Process Model", plm.from_model, "serialized_spec"))
+	from_ids = set()
+	if plm.from_model:
+		from_spec = json.loads(frappe.db.get_value("BPMN Process Model", plm.from_model, "serialized_spec"))
+		from_ids = _element_ids(_spec_workflow(from_spec))
 	to_wf = _spec_workflow(to_spec)
 	return frappe._dict(
 		plm=plm,
 		to_spec=to_spec,
 		to_wf=to_wf,
 		to_ids=_element_ids(to_wf),
-		from_ids=_element_ids(_spec_workflow(from_spec)),
+		from_ids=from_ids,
 		state_map={d.old_state: d.new_state for d in plm.state_map},
 		state_field=state_field(plm.target_doctype),
 		set_states={
@@ -87,7 +106,7 @@ def replay(ctx: frappe._dict, old: "BPMNProcessInstance") -> frappe._dict:
 	wf.task_tree.data.update(_old_variables(old_wf))
 	wf.task_tree.data.update(context_doctype=old.context_doctype, context_docname=old.context_docname)
 
-	progress = {"last_state": None, "runs": 0}
+	progress = {"last_state": None, "seen": set(), "runs": 0}
 	try:
 		_advance(ctx, wf, progress)
 		for step in steps:
@@ -115,6 +134,70 @@ def replay(ctx: frappe._dict, old: "BPMNProcessInstance") -> frappe._dict:
 	return frappe._dict(wf=wf, old_wf=old_wf, new_state=new_state, last_state=progress["last_state"])
 
 
+def fast_forward(ctx: frappe._dict, record: frappe._dict) -> frappe._dict:
+	"""Run a record that has no instance forward on the new map, each user task taking its first action and
+	each script's writes undone, until a step sets the record's mapped state. Writes nothing.
+	Returns wf, new_state, last_state and steps, the user tasks it completed."""
+	new_state = _mapped_state(ctx, record)
+	wf = _spec_workflow(ctx.to_spec)
+	wf.script_engine = FastForwardScriptEngine(
+		TaskDataEnvironment({"frappe": frappe, "datetime": datetime}),
+		script_task_extensions=ctx.to_spec.get("script_task_extensions", {}),
+		context_doctype=record.context_doctype,
+		context_docname=record.context_docname,
+		initiated_by=frappe.session.user,
+	)
+	wf.task_tree.data.update(_record_values(record))
+	wf.task_tree.data.update(context_doctype=record.context_doctype, context_docname=record.context_docname)
+
+	progress = {"last_state": None, "seen": set(), "runs": 0}
+	steps = []
+	try:
+		_advance(ctx, wf, progress)
+		while new_state not in progress["seen"]:
+			task = next(iter(bpmn_engine.get_ready_user_tasks(wf)), None)
+			if task is None:
+				raise MigrationSkip(
+					"State not reached",
+					_("The new map stops without setting {0}; it last set {1}.").format(
+						new_state, progress["last_state"]
+					),
+				)
+			action = _first_action(ctx, task)
+			task.data["action"] = action
+			steps.append(
+				frappe._dict(
+					task_id=str(task.id),
+					name=bpmn_engine.get_task_display_name(task),
+					data={"action": action},
+				)
+			)
+			task.run()
+			_advance(ctx, wf, progress)
+	except WorkflowException as e:
+		raise MigrationSkip("Replay stuck", str(e)) from e
+	return frappe._dict(wf=wf, new_state=new_state, last_state=progress["last_state"], steps=steps)
+
+
+def _record_values(record: frappe._dict) -> dict:
+	"""The record's plain field values, which gateway conditions read."""
+	doc = frappe.get_doc(record.context_doctype, record.context_docname)
+	values = {
+		df.fieldname: doc.get(df.fieldname)
+		for df in doc.meta.fields
+		if isinstance(doc.get(df.fieldname), str | int | float | bool | None)
+	}
+	values["docstatus"] = doc.docstatus
+	return values
+
+
+def _first_action(ctx: frappe._dict, task) -> str:
+	"""The first action a user task offers; empty when it offers none."""
+	raw = ctx.to_spec.get("user_task_extensions", {}).get(task_bpmn_id(task), {}).get("taskActions", "")
+	actions = [a.get("action", "") for a in parse_task_actions_json(raw) if isinstance(a, dict)]
+	return next((a for a in actions if a), "")
+
+
 def check_instance(ctx: frappe._dict, old: "BPMNProcessInstance") -> tuple[BpmnWorkflow, set[str], str]:
 	"""Refuse an instance that cannot be replayed; returns its workflow, wait points and mapped new state."""
 	if old.status not in OPEN_INSTANCE_STATUSES:
@@ -136,13 +219,17 @@ def check_instance(ctx: frappe._dict, old: "BPMNProcessInstance") -> tuple[BpmnW
 			"Waiting at removed step",
 			_("The new map has no {0}.").format(", ".join(sorted(removed))),
 		)
+	return old_wf, old_waits, _mapped_state(ctx, old)
 
+
+def _mapped_state(ctx: frappe._dict, record) -> str:
+	"""Refuse a record already on the new map or in an unmapped state; returns its mapped new state."""
 	if frappe.db.exists(
 		"BPMN Process Instance",
 		{
 			"process_model": ctx.plm.to_model,
-			"context_doctype": old.context_doctype,
-			"context_docname": old.context_docname,
+			"context_doctype": record.context_doctype,
+			"context_docname": record.context_docname,
 			"status": "Active",
 		},
 	):
@@ -150,10 +237,10 @@ def check_instance(ctx: frappe._dict, old: "BPMNProcessInstance") -> tuple[BpmnW
 			"Already on new map", _("The record has an Active instance on {0}.").format(ctx.plm.to_model)
 		)
 
-	state = frappe.db.get_value(old.context_doctype, old.context_docname, ctx.state_field)
+	state = frappe.db.get_value(record.context_doctype, record.context_docname, ctx.state_field)
 	if state not in ctx.state_map:
 		raise MigrationSkip("No state mapping", _("No State Mapping row for {0}.").format(state))
-	return old_wf, old_waits, ctx.state_map[state]
+	return ctx.state_map[state]
 
 
 def _history(ctx: frappe._dict, old: "BPMNProcessInstance", old_wf: BpmnWorkflow) -> list[frappe._dict]:
@@ -180,6 +267,9 @@ def _history(ctx: frappe._dict, old: "BPMNProcessInstance", old_wf: BpmnWorkflow
 			name = row.task_name.removeprefix("Message: ")
 			if bpmn_engine.declares_message(ctx.to_wf, name):
 				steps.append(frappe._dict(kind="message", name=name, data=data))
+			continue
+		# A fast-forwarded instance has its "Migrated" row but no instance it came from.
+		if row.action == "Migrated":
 			continue
 
 		try:
@@ -233,6 +323,7 @@ def _complete_started(ctx, wf, progress) -> bool:
 			continue
 		if task_bpmn_id(task) in ctx.set_states:
 			progress["last_state"] = ctx.set_states[task_bpmn_id(task)]
+			progress["seen"].add(progress["last_state"])
 		task.complete()
 		completed = True
 	return completed

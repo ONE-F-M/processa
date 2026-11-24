@@ -36,12 +36,12 @@
    "label": "Migration Configuration"
   },
   {
+   "description": "Leave empty to start records that have no process instance yet on the New Process Map.",
    "fieldname": "from_model",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Old Process Map",
-   "options": "BPMN Process Model",
-   "reqd": 1
+   "options": "BPMN Process Model"
   },
   {
    "fieldname": "to_model",
@@ -179,7 +179,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-10 16:27:15.591507",
+ "modified": "2026-11-24 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Processa Engine",
  "name": "Processa Legacy Migration",

@@ -367,6 +367,16 @@ class TestProcessaLegacyMigrationValidation(FrappeTestCase):
 		self._open_record(VAL_HOLD)
 		self._assert_refused(self._migration(), f"{VAL_HOLD} (1)")
 
+	def test_with_no_old_map_it_saves_and_counts_only_records_no_instance_runs(self):
+		self.assertFalse(frappe.get_meta("Processa Legacy Migration").get_field("from_model").reqd)
+		for state in (VAL_OPEN, VAL_HOLD):
+			record = frappe.get_doc({"doctype": DT}).insert().name
+			frappe.db.set_value(DT, record, "workflow_state", state)
+		name = self._migration(from_model=None).insert().name
+		stored = frappe.get_doc("Processa Legacy Migration", name)
+		self.assertIsNone(stored.from_model)
+		self.assertEqual([(d.old_state, d.record_count) for d in stored.state_map], [(VAL_OPEN, 1)])
+
 	def test_a_target_doctype_without_a_state_field_is_refused(self):
 		old_note, new_note = (
 			_model(f"PLM Val Note {v}", OWNED_PROCESS, doctype="Note") for v in ("Old", "New")
