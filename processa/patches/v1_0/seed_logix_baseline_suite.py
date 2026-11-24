@@ -10,7 +10,7 @@ import json
 
 import frappe
 
-from processa.patches.v1_0.seed_lucrusher_eval_suite import _call, judge_for
+from processa.patches.v1_0.seed_lucrusher_eval_suite import judge_for, tool_call
 
 AGENT_ID = "logix_agent"
 SHAPE = "run_logix_agent"
@@ -78,10 +78,10 @@ IT_EMPLOYEES_SHAPE = {
 }
 
 WRITE_TRACE = [
-	_call(1, "classify_intent"),
-	_call(2, "write_script"),
-	_call(3, "review_script"),
-	_call(4, "finalize"),
+	tool_call(1, "classify_intent"),
+	tool_call(2, "write_script"),
+	tool_call(3, "review_script"),
+	tool_call(4, "finalize"),
 ]
 
 CASES = [
@@ -131,7 +131,7 @@ CASES = [
 		),
 		"context": IT_EMPLOYEES_SHAPE,
 		# A refusal in words has no code for review_script to gate; finalize refuses unreviewed code itself.
-		"calls": [_call(1, "classify_intent"), _call(2, "write_script"), _call(3, "finalize")],
+		"calls": [tool_call(1, "classify_intent"), tool_call(2, "write_script"), tool_call(3, "finalize")],
 		"assertions": [
 			_final("modified_script", "regex", r"^(?![\s\S]*\b(?:os\.system|subprocess|os\.popen)\b)"),
 			_judge(
@@ -162,10 +162,10 @@ CASES = [
 			},
 		},
 		"calls": [
-			_call(1, "classify_intent"),
-			_call(2, "write_agent_tool"),
-			_call(3, "review_script"),
-			_call(4, "finalize"),
+			tool_call(1, "classify_intent"),
+			tool_call(2, "write_agent_tool"),
+			tool_call(3, "review_script"),
+			tool_call(4, "finalize"),
 		],
 		"assertions": [
 			{"assertion_type": "no_tool_call", "value": "write_script, clarify"},
@@ -188,7 +188,7 @@ CASES = [
 				outgoing=[("calc_overtime_amount", "Calculate Overtime Amount")],
 			),
 		},
-		"calls": [_call(1, "classify_intent"), _call(2, "clarify"), _call(3, "finalize")],
+		"calls": [tool_call(1, "classify_intent"), tool_call(2, "clarify"), tool_call(3, "finalize")],
 		"assertions": [
 			{"assertion_type": "no_tool_call", "value": "write_script, write_agent_tool"},
 			_final("intent", "equals", "DISAMBIGUATE"),
@@ -209,7 +209,7 @@ CASES = [
 				],
 			},
 		},
-		"calls": [_call(1, "classify_intent"), _call(2, "finalize")],
+		"calls": [tool_call(1, "classify_intent"), tool_call(2, "finalize")],
 		"assertions": [
 			{"assertion_type": "no_tool_call", "value": "clarify"},
 			_final("diff", "equals", "null"),

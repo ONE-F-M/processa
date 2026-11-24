@@ -10,6 +10,7 @@ from processa.ai_agent_memory.text_clean import strip_html
 from processa.ai_agent_registry.definitions.shared.helpers import format_history
 from processa.ai_agent_registry.doctype.ai_agent_configuration.ai_agent_configuration import get_agent_config
 from processa.processa_engine.agent_runtime.llm_factory import get_llm_adapter_from_settings
+from processa.processa_engine.dispatch.attachments import read_attachments
 from processa.processa_engine.agent_runtime.turn_state import run_sync
 
 AGENT_ID = "prosally_agent"
@@ -77,6 +78,25 @@ STEP_TAGS = tuple(
 )
 
 DIAGRAM_REPLIES = ("BPMN_MODIFIED", "BPMN_GENERATED")
+IR_NODE_TYPES = frozenset(
+	{
+		"startEvent",
+		"endEvent",
+		"intermediateThrowEvent",
+		"intermediateCatchEvent",
+		"task",
+		"userTask",
+		"scriptTask",
+		"serviceTask",
+		"manualTask",
+		"businessRuleTask",
+		"exclusiveGateway",
+		"parallelGateway",
+		"inclusiveGateway",
+		"subProcess",
+		"callActivity",
+	}
+)
 DIAGRAM_VERSION_SUFFIX = re.compile(r"\s+-\s+v\d+\s*$", re.I)
 MEMORY_NOTES_LIMIT = 8
 MEMORY_NOTES_HEADER = "Notes from earlier work on this process:"
@@ -96,13 +116,23 @@ def prosally_config() -> dict:
 	return cfg
 
 
-def complete_sub_prompt(cfg: dict, sub_id: str, user: str, system: str | None = None, max_tokens=None) -> str:
-	"""One model call with a sub-prompt as the system prompt, returning the reply text."""
+def complete_sub_prompt(
+	cfg: dict, sub_id: str, user: str, system: str | None = None, max_tokens=None, files: list | None = None
+) -> str:
+	"""One model call with a sub-prompt as the system prompt, returning the reply text.
+
+	files are the turn's attachments: images go with the prompt, text files are added to it."""
 	if system is None:
 		system = ((cfg.get("sub_prompts") or {}).get(sub_id) or {}).get("prompt") or ""
 	kwargs = {"system": system, "user": user}
 	if max_tokens:
 		kwargs["max_tokens"] = max_tokens
+	if files:
+		images, attached_text = read_attachments(files)
+		if attached_text:
+			kwargs["user"] = f"{user}\n\n{attached_text}"
+		if images:
+			kwargs["images"] = images
 	return run_sync(get_llm_adapter_from_settings(cfg).complete(**kwargs)).text
 
 

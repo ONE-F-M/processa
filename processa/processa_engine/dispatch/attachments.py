@@ -12,6 +12,24 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_TEXT_CHARS = 50_000
 
 
+def task_files(task) -> list:
+	"""The files attached to the turn: on the task itself, or on the calling task when the step runs as a tool."""
+	return (
+		(getattr(task, "data", None) or {}).get("files")
+		or (getattr(task, "process_data", None) or {}).get("files")
+		or []
+	)
+
+
+def conversation_files(conversation: str, files: list | None) -> list:
+	"""This turn's files, else the files last attached in the conversation, so a follow-up turn still sees them."""
+	key = f"chat_files:{conversation}"
+	if files:
+		frappe.cache.set_value(key, files)  # kept in the Redis cache: a cache flush forgets them
+		return files
+	return frappe.cache.get_value(key) or []
+
+
 def read_attachments(file_urls: list | None) -> tuple[list, str]:
 	"""The images to send with the prompt, and a text block with the text files and the files not read."""
 	images, parts = [], []

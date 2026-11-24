@@ -211,6 +211,7 @@ async def run_nested_loop(
 	max_turns: int,
 	temperature: float | None = None,
 	top_p: float | None = None,
+	images: list | None = None,
 ):
 	"""complete()'s loop: the same turns, with no terminal tool, leaving the calling turn's state as it was."""
 	saved = {
@@ -222,7 +223,7 @@ async def run_nested_loop(
 			system=system,
 			tools=tools,
 			tool_map={t.name: t for t in tools or []},
-			transcript=[{"role": "user", "content": user}],
+			transcript=[{"role": "user", "content": user, **({"images": images} if images else {})}],
 			trace=[],
 			turns_used=0,
 			max_tokens=max_tokens,

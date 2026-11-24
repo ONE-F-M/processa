@@ -9,7 +9,7 @@ import json
 
 import frappe
 
-from processa.patches.v1_0.seed_lucrusher_eval_suite import _call
+from processa.patches.v1_0.seed_lucrusher_eval_suite import tool_call
 
 AGENT_ID = "prosally_agent"
 SHAPE = "run_prosally_agent"
@@ -23,7 +23,7 @@ SUITE_DESCRIPTION = (
 
 CONFIRMED = {"confirmed_action": "GENERATE_NEW"}
 # A stage tool that writes the reply ends the turn, so finalize is never called after it.
-GENERATE_TRACE = [_call(1, "classify_intent"), _call(2, "generate_process")]
+GENERATE_TRACE = [tool_call(1, "classify_intent"), tool_call(2, "generate_process")]
 
 
 def _lanes(matcher, expected):

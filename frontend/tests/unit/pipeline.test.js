@@ -128,6 +128,18 @@ test('a lane-less IR is laid out without a pool and without bpmn-auto-layout', (
   assert.equal(r.layout.crossings, 0);
 });
 
+test('a flow that has its own id is drawn under that id, and a drawing can be measured on its own', () => {
+  const ir = {
+    name: 'Ids',
+    nodes: [{ id: 's', type: 'startEvent', name: 's' }, { id: 't', type: 'userTask', name: 't' }, { id: 'e', type: 'endEvent', name: 'e' }],
+    flows: [{ id: 'f_in', from: 's', to: 't' }, { from: 't', to: 'e' }],
+  };
+  const r = run(ir);
+  assert.match(r.xml, /<bpmndi:BPMNEdge id="f_in_di" bpmnElement="f_in">/);
+  assert.match(r.xml, /bpmnElement="flow_t_e_1"/);
+  assert.deepEqual(run({ audit: r.xml }), r.layout);
+});
+
 test('a fork inside ONE lane is drawn as a diamond, not a snake', () => {
   const ir = {
     name: 'Diamond', lanes,

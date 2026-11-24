@@ -143,11 +143,12 @@ def revoke_permissions(
 	match: str = None,
 	service=None,
 	email_address: str = None,
+	role: str | None = None,
 ) -> dict:
 	"""Remove sharing grants from a file, the inverse of set_permissions.
 
-	scope is all, domain or user, narrowed by match; email_address names one user. Structural and inherited
-	grants and failed deletions land in skipped, so a partial withdrawal is reported in full.
+	scope is all, domain or user, narrowed by match and role; email_address names one user. Structural and
+	inherited grants and failed deletions land in skipped, so a partial withdrawal is reported in full.
 	"""
 	service = service or _get_service()
 	listed = (
@@ -177,6 +178,8 @@ def revoke_permissions(
 			skipped.append(dict(perm, reason="inherited from a parent folder"))
 			continue
 		if scope in ("domain", "user") and perm.get("type") != scope:
+			continue
+		if role and perm.get("role") != role:
 			continue
 		if match:
 			target = perm.get("domain") if perm.get("type") == "domain" else perm.get("emailAddress")

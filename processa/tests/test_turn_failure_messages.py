@@ -94,6 +94,21 @@ class TestTurnFailureMessages(FrappeTestCase):
 		with patch.object(BPMNProcessInstance, "receive_message", not_waiting):
 			self.assertIsNone(SSA._delegate_to_bpmn_instance(CONVERSATION, "hello", {}))
 
+	def test_a_follow_up_turn_carries_the_files_attached_earlier_in_the_conversation(self):
+		payloads = []
+
+		def capture(doc, *args, payload=None, **kwargs):
+			payloads.append(payload)
+			frappe.throw("No task is waiting for this message")
+
+		frappe.cache.delete_value(f"chat_files:{CONVERSATION}")
+		controller = type(frappe.get_doc("BPMN Process Instance", self.instance))
+		with patch.object(controller, "receive_message", capture):
+			SSA._delegate_to_bpmn_instance(CONVERSATION, "draw this", {"files": ["/files/process.png"]})
+			SSA._delegate_to_bpmn_instance(CONVERSATION, "yes, proceed", {"files": []})
+		frappe.cache.delete_value(f"chat_files:{CONVERSATION}")
+		self.assertEqual(payloads[1]["files"], ["/files/process.png"])
+
 	def test_no_live_instance_logs_the_instance_state_then_says_reopen(self):
 		with patch.object(frappe, "log_error") as log_error:
 			with self.assertRaises(frappe.ValidationError) as ctx:

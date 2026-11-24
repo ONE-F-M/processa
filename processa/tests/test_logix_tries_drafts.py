@@ -86,6 +86,22 @@ class TestLogixTriesDrafts(FrappeTestCase):
 		self.assertIn("Not executed in the trial: sendmail", outcome["summary"])
 		self.assertEqual(frappe.db.count("Note"), count)
 
+	def test_a_draft_that_reads_an_http_reply_keeps_running(self):
+		code = (
+			"import requests\n"
+			'_resp = requests.post("https://example.com", json={}, timeout=20)\n'
+			"_resp.raise_for_status()\n"
+			'result["status_code"] = _resp.status_code\n'
+			'result["body"] = _resp.text\n'
+			'result["data"] = _resp.json()\n'
+			'result["rate"] = frappe.integrations.utils.make_get_request("https://example.com").get("rate")\n'
+		)
+		with patch.object(trial, "approved_request_names", return_value={"requests", "frappe.integrations"}):
+			outcome = self._try(code)
+		self.assertNotIn("error", outcome)
+		self.assertEqual(outcome["result"], {"status_code": None, "body": "", "data": {}, "rate": None})
+		self.assertEqual(outcome["stubbed"], ["post", "make_get_request"])
+
 	def test_a_throw_is_reported_as_a_stop_not_a_failure(self):
 		outcome = self._try('frappe.throw("Date and Time Confirmation is missing")\n')
 		self.assertNotIn("error", outcome)

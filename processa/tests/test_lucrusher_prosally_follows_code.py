@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from processa.processa_engine.agent_runtime.tool_bounds import validate_tool_arguments
@@ -209,3 +210,237 @@ class TestBuildContextLine(FrappeTestCase):
 		self.assertIn('" remaining: "', script)
 		compile(script, "build_context", "exec")
 		self.assertEqual(p.apply_edits(script, p.CONTEXT_EDITS, p.CONTEXT_MARKER), script)
+
+
+PAGES = {"session_state": {"lucid_doc:1": {"pages": [{"page_title": "Client Event"}]}}}
+GOOD_PROCESS = {"type": "User Task Driven", "reason": "R1", "shapes": ["s"], "source": "Client Event"}
+
+
+def _review(task_data, turn=None):
+	"""Run the site's Finalize script the way the engine does, in one namespace; (output, raised message)."""
+	script = frappe.db.get_value("Server Script", "LuCrusher \u2013 Tool Finalize", "script")
+	stored = {}
+	scope = {"frappe": frappe, "task_data": task_data, "context_docname": "x", "result": {}}
+	with (
+		patch(
+			"processa.processa_engine.agent_runtime.turn_state.get_turn",
+			return_value={**PAGES, **(turn or {})},
+		),
+		patch(
+			"processa.processa_engine.agent_runtime.turn_state.update_turn",
+			side_effect=lambda _n, **kw: stored.update(kw),
+		),
+	):
+		try:
+			exec(as_deployed(script), scope)
+		except ValueError as raised:
+			return stored, str(raised)
+	return stored["output"], ""
+
+
+class TestFinalizeSelfReview(FrappeTestCase):
+	def setUp(self):
+		script = frappe.db.get_value("Server Script", "LuCrusher \u2013 Tool Finalize", "script") or ""
+		if "_lcr_review_topology" not in script:
+			self.skipTest("the self-reviewing LuCrusher Finalize script is not on this site")
+
+	def _topology(self, *names, **turn):
+		processes = [{"process_name": name, **GOOD_PROCESS} for name in names]
+		return _review(
+			{"intent": "TOPOLOGY_PROPOSAL", "response": "ok", "topology": {"processes": processes}}, turn
+		)
+
+	def test_approve_and_accept_on_one_document_go_back_once_as_one_workflow(self):
+		stored, raised = self._topology("Approve Client Event", "Accept Client Event")
+
+		self.assertIn("act on the same client event", raised)
+		self.assertIn("R7", raised)
+		self.assertTrue(stored["finalize_reviewed"])
+		self.assertIn("Check before you approve", stored["review_draft"]["response"])
+
+	def test_a_problem_left_after_the_second_finalize_is_flagged_in_the_reply(self):
+		output, raised = self._topology("Approve Client Event", "Accept Client Event", finalize_reviewed=True)
+
+		self.assertEqual(raised, "")
+		self.assertIn("Check before you approve", output["response"])
+
+	def test_a_clean_draft_passes_untouched(self):
+		output, raised = self._topology("Manage Client Event", "Generate Event Schedules")
+
+		self.assertEqual(raised, "")
+		self.assertEqual(output["response"], "ok")
+
+	def test_repeats_missing_fields_and_unsourced_processes_are_found(self):
+		processes = [
+			{"process_name": "Manage Client Event", **GOOD_PROCESS},
+			{"process_name": "Manage Client Event", **GOOD_PROCESS},
+			{"process_name": "Invented Step", **GOOD_PROCESS, "source": "Somewhere Else", "reason": ""},
+		]
+		line = "The event is created by the supervisor and approved by the manager."
+		_stored, raised = _review(
+			{
+				"intent": "TOPOLOGY_PROPOSAL",
+				"response": line + "\n" + line,
+				"topology": {"processes": processes},
+			}
+		)
+
+		self.assertIn("listed 2 times", raised)
+		self.assertIn('"Invented Step" has no reason', raised)
+		self.assertIn('source of "Invented Step" is not a page', raised)
+		self.assertIn("The reply says", raised)
+
+	def test_a_script_task_standing_in_for_a_signal_goes_back(self):
+		block = "\n".join(
+			[
+				"A: HEADER",
+				"B: LANES",
+				"C: ELEMENTS",
+				"1. StartEvent | Visa requested | Employee",
+				"2. ScriptTask | Broadcast unfit signal | GRD | src=visa.py:on_update",
+				"3. EndEvent | Visa issued | PRO",
+				"D: SEQUENCE FLOWS",
+				"1. 1 -> 2",
+				"E: ANTI-LINTING",
+			]
+		)
+		prompts = {"processes": [{**_process(), "prompt_block": block, "source": "Client Event"}]}
+		_stored, raised = _review(
+			{"intent": "PROSALLY_PROMPT_DRAFT", "response": "ok", "prosally_prompts": prompts}
+		)
+
+		self.assertIn("uses a ScriptTask for a signal", raised)
+
+	def test_elements_numbered_without_a_dot_are_counted_and_checked(self):
+		block = "\n".join(
+			[
+				"A. HEADER",
+				"B. LANES",
+				"C. ELEMENTS",
+				"1 StartEvent 'Asked' lane1",
+				"2 ScriptTask 'Broadcast returned signal' lane1 src=a.py:b",
+				"D. SEQUENCE FLOWS",
+				"E. ANTI-LINTING",
+			]
+		)
+		prompts = {"processes": [{**_process(), "prompt_block": block, "source": "Client Event"}]}
+		output, raised = _review(
+			{"intent": "PROSALLY_PROMPT_DRAFT", "response": "ok", "prosally_prompts": prompts},
+			{"finalize_reviewed": True},
+		)
+
+		self.assertEqual(raised, "")
+		self.assertEqual(output["prosally_prompts"]["processes"][0]["element_count"], 2)
+		self.assertIn("uses a ScriptTask for a signal", output["response"])
+
+
+class TestConfirmationKeepsTheDraft(FrappeTestCase):
+	"""Runs the site's Save Response script on a confirmation that echoes a names-only topology."""
+
+	def setUp(self):
+		script = frappe.db.get_value("Server Script", "LuCrusher \u2013 Save Response", "script") or ""
+		if "_CONFIRMED_DRAFT" not in script:
+			self.skipTest(
+				"the LuCrusher Save Response script that keeps the confirmed draft is not on this site"
+			)
+		self.script = script
+		patcher = patch("processa.processa_engine.triggers.on_doc_event")
+		patcher.start()
+		self.addCleanup(patcher.stop)
+		self.conversation = (
+			frappe.get_doc({"doctype": "Chat Conversation", "title": "confirm probe"}).insert().name
+		)
+
+	def _save(self, output, context_state=None):
+		recorded = {}
+		turn = {"output": output, "context_state": context_state or {}}
+		with (
+			patch("processa.processa_engine.agent_runtime.turn_state.get_turn", return_value=turn),
+			patch("processa.processa_engine.agent_runtime.turn_state.clear_turn"),
+			patch(
+				"processa.ai_agent_conversations.session_state.record",
+				side_effect=lambda _c, snap: recorded.update(snap),
+			),
+		):
+			exec(
+				as_deployed(self.script),
+				{"frappe": frappe, "task_data": {}, "context_docname": self.conversation, "result": {}},
+			)
+		saved = frappe.get_all(
+			"Chat Message",
+			{"conversation": self.conversation, "message_type": "Bot"},
+			pluck="metadata",
+			order_by="creation desc",
+			limit=1,
+		)[0]
+		return json.loads(saved)["agent_result"], recorded
+
+	def test_a_confirmed_topology_keeps_the_reasons_and_sources_of_the_proposal(self):
+		proposal = {
+			"processes": [
+				{
+					"process_name": "Manage Absence Case",
+					"type": "User Task Driven",
+					"reason": "R7",
+					"source": "Action Absence Case",
+				}
+			]
+		}
+		self._save({"intent": "TOPOLOGY_PROPOSAL", "response": "proposal", "topology": proposal})
+
+		echoed = {"processes": [{"process_name": "Manage Absence Case"}]}
+		result, snapshot = self._save(
+			{"intent": "TOPOLOGY_CONFIRMED", "response": "confirmed", "topology": echoed}
+		)
+
+		self.assertEqual(result["topology"], proposal)
+		self.assertEqual(snapshot["topology"]["processes"][0]["reason"], "R7")
+		self.assertEqual(snapshot["topology"]["processes"][0]["source"], "Action Absence Case")
+
+	def test_confirmed_tasks_are_the_draft_held_in_the_state(self):
+		held = {
+			"processes": [{"process_name": "P", "tasks": [{"task": "Build the map", "references": ["a.py"]}]}]
+		}
+
+		result, _snapshot = self._save(
+			{
+				"intent": "MIGRATION_TASKS_CONFIRMED",
+				"response": "ok",
+				"migration_tasks": {"processes": [{"process_name": "P"}]},
+			},
+			{"migration_tasks": held},
+		)
+
+		self.assertEqual(result["migration_tasks"], held)
+
+	def test_a_sent_back_draft_is_saved_flagged_when_the_model_does_not_finalize_again(self):
+		draft = {
+			"intent": "TOPOLOGY_PROPOSAL",
+			"response": "proposal\n\n**Check before you approve:**\n- x",
+			"topology": {"processes": []},
+		}
+		recorded = {}
+		turn = {"output": None, "review_draft": draft, "context_state": {}}
+		with (
+			patch("processa.processa_engine.agent_runtime.turn_state.get_turn", return_value=turn),
+			patch("processa.processa_engine.agent_runtime.turn_state.clear_turn"),
+			patch(
+				"processa.ai_agent_conversations.session_state.record",
+				side_effect=lambda _c, snap: recorded.update(snap),
+			),
+		):
+			exec(
+				as_deployed(self.script),
+				{
+					"frappe": frappe,
+					"task_data": {"ai_result": "proposal as text"},
+					"context_docname": self.conversation,
+					"result": {},
+				},
+			)
+
+		self.assertEqual(recorded["intent"], "TOPOLOGY_PROPOSAL")
+		saved = frappe.get_all(
+			"Chat Message", {"conversation": self.conversation, "message_type": "Bot"}, pluck="text"
+		)
+		self.assertIn("Check before you approve", saved[0])

@@ -118,22 +118,42 @@ def lint_script(code: str, script_name: str = "", process: str = "", script_task
 		"BPMN Process Model", {"process_name": process}, "name", order_by="modified desc"
 	)
 	map_scripts = model_scripts(model) if model else None
+	open_request = _open_request(process, script_task, script_name) if on_task else None
+	requested = dict.fromkeys(
+		frappe.get_all("Script Approval Request Item", filters={"parent": open_request}, pluck="item_name")
+		if open_request
+		else [],
+		open_request,
+	)
 	findings = []
 	code = code or ""
 	for finding in inspect_script(code) + library_findings(code, frozenset(), map_scripts, script_task):
 		request = _covering_request(finding["name"], approved)
 		alternative = alternatives.get(finding["category"]) or ""
 		findings.append(
-			{**finding, "approved": bool(request), "request": request, "sanctioned_alternative": alternative}
+			{
+				**finding,
+				"approved": bool(request),
+				"request": request,
+				"in_open_request": bool(_covering_request(finding["name"], requested)),
+				"sanctioned_alternative": alternative,
+			}
 		)
-	open_request = _open_request(process, script_task, script_name) if on_task else None
 	latest = on_task and frappe.get_list(
 		"Script Approval Request",
 		filters={"process_name": process, "script_task": script_task, "server_script": script_name},
-		fields=["name", "status", "decision_note"],
+		fields=["name", "status", "decision_note", "requested_by"],
 		order_by="creation desc",
 		limit=1,
 	)
+	needed = {f["name"] for f in findings if not f["approved"] and f["category"] not in NOT_APPROVABLE}
+	for request in latest or []:
+		request["can_update"] = (
+			request.name == open_request
+			and request.status == "Pending Review"
+			and request.requested_by == frappe.session.user
+		)
+		request["has_changes"] = request["can_update"] and needed != set(requested)
 	return {
 		"findings": findings,
 		"open_request": open_request,
@@ -233,7 +253,8 @@ def collect_script_security_violations(
 ) -> list:
 	"""Every finding on the diagram's script tasks that no Approved request on ``process`` covers.
 
-	Each is ``{"label", "message", "category", "request"}``; request is the open request for the task, if any.
+	Each is ``{"label", "message", "category", "request", "name", "server_script"}``; request is the open
+	request for the task, if any.
 	"""
 	findings: list = []
 	sources = script_task_sources(bpmn_xml, process)
@@ -242,7 +263,14 @@ def collect_script_security_violations(
 		request = _open_request(process, bpmn_id, server_script)
 		for finding in inspect_script(code, allowed) + library_findings(code, allowed, map_scripts, bpmn_id):
 			findings.append(
-				{"label": label, "message": finding["message"], "category": finding["category"], "request": request}
+				{
+					"label": label,
+					"message": finding["message"],
+					"category": finding["category"],
+					"request": request,
+					"name": finding["name"],
+					"server_script": server_script,
+				}
 			)
 	return findings
 

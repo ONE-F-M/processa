@@ -40,6 +40,32 @@ CALL_ACTIVITY_CONVERSION = re.compile(
 EXPANDED_PAD = 24
 EXPANDED_HEADER = 36
 
+NODE_TAGS = tuple(
+	"{" + NS["bpmn"] + "}" + tag
+	for tag in (
+		"task",
+		"userTask",
+		"serviceTask",
+		"scriptTask",
+		"manualTask",
+		"businessRuleTask",
+		"sendTask",
+		"receiveTask",
+		"subProcess",
+		"callActivity",
+		"startEvent",
+		"endEvent",
+		"intermediateCatchEvent",
+		"intermediateThrowEvent",
+		"exclusiveGateway",
+		"parallelGateway",
+		"inclusiveGateway",
+		"eventBasedGateway",
+	)
+)
+INSERT_GAP = 50
+SUBPROCESS_SIZE = (100, 80)
+
 
 def resolve_scope(xml: str, texts: list, scope_id: str = "") -> dict | None:
 	"""The sub-process a request is about: the one open on the canvas, else the one the newest message names."""
@@ -286,8 +312,8 @@ def _draw_expanded(plane: ET.Element, step_id: str, child_plane: ET.Element) -> 
 	new_w = max(200.0, right - left + 2 * EXPANDED_PAD)
 	new_h = max(120.0, bottom - top + EXPANDED_PAD + EXPANDED_HEADER)
 	_make_room(plane, shape, (x + w, y + h, y + h / 2), max(0.0, new_w - w), max(0.0, new_h - h))
-	bounds.set("width", _num(max(w, new_w)))
-	bounds.set("height", _num(max(h, new_h)))
+	bounds.set("width", coordinate_text(max(w, new_w)))
+	bounds.set("height", coordinate_text(max(h, new_h)))
 	shape.set("isExpanded", "true")
 	for drawn in child_plane:
 		moved = copy.deepcopy(drawn)
@@ -324,12 +350,12 @@ def _make_room(plane: ET.Element, step_shape: ET.Element, edges: tuple, dw: floa
 			continue
 		if drawn in horizontal:
 			b = drawn.find(dc + "Bounds")
-			b.set("width", _num(float(b.get("width")) + dw))
+			b.set("width", coordinate_text(float(b.get("width")) + dw))
 			top, height = float(b.get("y")), float(b.get("height"))
 			if top <= centre <= top + height:
-				b.set("height", _num(height + dh))
+				b.set("height", coordinate_text(height + dh))
 			elif lane_bottom is not None and top >= lane_bottom:
-				b.set("y", _num(top + dh))
+				b.set("y", coordinate_text(top + dh))
 			continue
 		_shift(drawn, 0, 0, lambda px, py: (px + dw if px >= right else px, py + dh if py >= bottom else py))
 
@@ -341,12 +367,12 @@ def _shift(drawn: ET.Element, dx: float, dy: float, rule) -> None:
 	pinned = None if own is None else _offset(own, rule)
 	for b in drawn.iter(dc + "Bounds"):
 		ox, oy = pinned or _offset(b, rule)
-		b.set("x", _num(float(b.get("x")) + ox + dx))
-		b.set("y", _num(float(b.get("y")) + oy + dy))
+		b.set("x", coordinate_text(float(b.get("x")) + ox + dx))
+		b.set("y", coordinate_text(float(b.get("y")) + oy + dy))
 	for p in drawn.iter(di + "waypoint"):
 		ox, oy = _offset(p, rule)
-		p.set("x", _num(float(p.get("x")) + ox + dx))
-		p.set("y", _num(float(p.get("y")) + oy + dy))
+		p.set("x", coordinate_text(float(p.get("x")) + ox + dx))
+		p.set("y", coordinate_text(float(p.get("y")) + oy + dy))
 
 
 def _offset(point: ET.Element, rule) -> tuple:
@@ -355,5 +381,170 @@ def _offset(point: ET.Element, rule) -> tuple:
 	return new_x - x, new_y - y
 
 
-def _num(value: float) -> str:
+def coordinate_text(value: float) -> str:
 	return str(int(value)) if value == int(value) else str(round(value, 2))
+
+
+def insert_after(xml: str, after_name: str | None, element: ET.Element, inner: tuple) -> dict | None:
+	"""xml with element placed on the arrow that leaves the step named after_name, or the last step before the end.
+
+	None when that step is not found, is not unique, or does not leave by exactly one arrow.
+	"""
+	register_namespaces()
+	root = ET.fromstring(xml)
+	bpmn = "{" + NS["bpmn"] + "}"
+	anchor = _anchor(root, after_name)
+	if anchor is None:
+		return None
+	parent = next(p for p in root.iter() if anchor in list(p))
+	leaving = [f for f in parent.findall(bpmn + "sequenceFlow") if f.get("sourceRef") == anchor.get("id")]
+	if len(leaving) != 1:
+		return None
+	taken = {e.get("id") for e in root.iter() if e.get("id")}
+	new_id = _free_id(taken, "Activity")
+	element.set("id", new_id)
+	start, end, flow = inner or (None, None, None)
+	if inner:
+		start.set("id", _free_id(taken, "StartEvent"))
+		end.set("id", _free_id(taken, "EndEvent"))
+		flow.attrib.update(
+			{"id": _free_id(taken, "Flow"), "sourceRef": start.get("id"), "targetRef": end.get("id")}
+		)
+		add_flow_references(element)
+	old_flow = leaving[0]
+	target = old_flow.get("targetRef")
+	old_flow.set("targetRef", new_id)
+	new_flow = ET.Element(
+		bpmn + "sequenceFlow", {"id": _free_id(taken, "Flow"), "sourceRef": new_id, "targetRef": target}
+	)
+	position = list(parent).index(anchor) + 1
+	parent.insert(position, element)
+	parent.append(new_flow)
+	add_flow_references(parent)
+	for lane in root.iter(bpmn + "lane"):
+		if any((ref.text or "").strip() == anchor.get("id") for ref in lane.findall(bpmn + "flowNodeRef")):
+			ET.SubElement(lane, bpmn + "flowNodeRef").text = new_id
+	_draw_inserted(root, anchor.get("id"), new_id, old_flow.get("id"), new_flow.get("id"), target)
+	if inner:
+		_draw_collapsed_inside(root, new_id, start.get("id"), end.get("id"), flow.get("id"))
+	added = ET.tostring(root, encoding="unicode", xml_declaration=True)
+	return {
+		"xml": re.sub(r"^<\?xml\s[^?]*\?>", '<?xml version="1.0" encoding="UTF-8"?>', added),
+		"name": element.get("name"),
+		"after": anchor.get("name") or anchor.get("id"),
+	}
+
+
+def _anchor(root: ET.Element, after_name: str | None) -> ET.Element | None:
+	"""The step named after_name, or the one step that leads into the end event."""
+	bpmn = "{" + NS["bpmn"] + "}"
+	if after_name:
+		return named_node(root, after_name.strip())
+	ends = [
+		e
+		for e in root.iter(bpmn + "endEvent")
+		if any(p.tag == bpmn + "process" and e in list(p) for p in root.iter())
+	]
+	if len(ends) != 1:
+		return None
+	sources = [
+		f.get("sourceRef")
+		for f in root.iter(bpmn + "sequenceFlow")
+		if f.get("targetRef") == ends[0].get("id")
+	]
+	if len(sources) != 1:
+		return None
+	return next((e for e in root.iter() if e.get("id") == sources[0]), None)
+
+
+def named_node(root: ET.Element, name: str) -> ET.Element | None:
+	"""The one flow node whose name is name, ignoring case, spaces and punctuation."""
+	wanted = _squash(name)
+	found = [
+		e
+		for e in root.iter()
+		if e.get("name") and e.get("id") and _squash(e.get("name")) == wanted and e.tag in NODE_TAGS
+	]
+	return found[0] if len(found) == 1 else None
+
+
+def _free_id(taken: set, prefix: str) -> str:
+	"""An id that starts with prefix and is in no use, recorded in taken."""
+	n = 1
+	while f"{prefix}_{n}" in taken:
+		n += 1
+	taken.add(f"{prefix}_{n}")
+	return f"{prefix}_{n}"
+
+
+def _draw_inserted(
+	root: ET.Element, anchor_id: str, new_id: str, old_flow_id: str, new_flow_id: str, target_id: str
+) -> None:
+	"""Draw the new step right of its anchor, push the rest right, and route both arrows straight."""
+	dc, di, bpmndi = "{" + NS["dc"] + "}", "{" + NS["di"] + "}", "{" + NS["bpmndi"] + "}"
+	plane = next(
+		(p for p in root.iter(bpmndi + "BPMNPlane") if any(s.get("bpmnElement") == anchor_id for s in p)),
+		None,
+	)
+	if plane is None:
+		return
+	anchor_shape = next(s for s in plane.findall(bpmndi + "BPMNShape") if s.get("bpmnElement") == anchor_id)
+	b = anchor_shape.find(dc + "Bounds")
+	x, y, w, h = (float(b.get(k)) for k in ("x", "y", "width", "height"))
+	width, height = SUBPROCESS_SIZE
+	_make_room(plane, anchor_shape, (x + w, y + h, y + h / 2), width + INSERT_GAP, 0)
+	new_x, new_y = x + w + INSERT_GAP, y + h / 2 - height / 2
+	shape = ET.SubElement(plane, bpmndi + "BPMNShape", {"id": new_id + "_di", "bpmnElement": new_id})
+	ET.SubElement(
+		shape,
+		dc + "Bounds",
+		{
+			"x": coordinate_text(new_x),
+			"y": coordinate_text(new_y),
+			"width": coordinate_text(width),
+			"height": coordinate_text(height),
+		},
+	)
+	target_shape = next(
+		(s for s in plane.findall(bpmndi + "BPMNShape") if s.get("bpmnElement") == target_id), None
+	)
+	old_edge = next(
+		(e for e in plane.findall(bpmndi + "BPMNEdge") if e.get("bpmnElement") == old_flow_id), None
+	)
+	if old_edge is not None:
+		for point in old_edge.findall(di + "waypoint"):
+			old_edge.remove(point)
+		ET.SubElement(
+			old_edge, di + "waypoint", {"x": coordinate_text(x + w), "y": coordinate_text(y + h / 2)}
+		)
+		ET.SubElement(
+			old_edge, di + "waypoint", {"x": coordinate_text(new_x), "y": coordinate_text(y + h / 2)}
+		)
+	if target_shape is not None:
+		tb = target_shape.find(dc + "Bounds")
+		edge = ET.SubElement(
+			plane, bpmndi + "BPMNEdge", {"id": new_flow_id + "_di", "bpmnElement": new_flow_id}
+		)
+		ET.SubElement(
+			edge, di + "waypoint", {"x": coordinate_text(new_x + width), "y": coordinate_text(y + h / 2)}
+		)
+		ET.SubElement(
+			edge,
+			di + "waypoint",
+			{"x": tb.get("x"), "y": coordinate_text(float(tb.get("y")) + float(tb.get("height")) / 2)},
+		)
+
+
+def _draw_collapsed_inside(root: ET.Element, sub_id: str, start_id: str, end_id: str, flow_id: str) -> None:
+	"""Give a collapsed sub-process its own drawing, holding its start, its end and the arrow between them."""
+	dc, di, bpmndi = "{" + NS["dc"] + "}", "{" + NS["di"] + "}", "{" + NS["bpmndi"] + "}"
+	diagram = ET.SubElement(root, bpmndi + "BPMNDiagram", {"id": sub_id + "_diagram"})
+	plane = ET.SubElement(diagram, bpmndi + "BPMNPlane", {"id": sub_id + "_plane", "bpmnElement": sub_id})
+	for element_id, x in ((start_id, 180), (end_id, 332)):
+		shape = ET.SubElement(
+			plane, bpmndi + "BPMNShape", {"id": element_id + "_di", "bpmnElement": element_id}
+		)
+		ET.SubElement(shape, dc + "Bounds", {"x": str(x), "y": "82", "width": "36", "height": "36"})
+	edge = ET.SubElement(plane, bpmndi + "BPMNEdge", {"id": flow_id + "_di", "bpmnElement": flow_id})
+	ET.SubElement(edge, di + "waypoint", {"x": "216", "y": "100"})
+	ET.SubElement(edge, di + "waypoint", {"x": "332", "y": "100"})
