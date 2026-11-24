@@ -12,6 +12,7 @@ from frappe.utils import cint, escape_html, now_datetime
 
 from processa.processa_engine.agent_runtime import turn_signal
 from processa.processa_engine.agent_runtime.executor import ErrorCode
+from processa.processa_engine.dispatch.attachments import conversation_files
 from processa.ai_agent_registry.definitions.logix import helpers as logix_helpers
 from processa.ai_agent_security.rate_limit import RateLimited
 from processa.api.common import shape_reply
@@ -207,6 +208,7 @@ def _delegate_to_bpmn_instance(
 		"sender": frappe.session.user,
 	}
 	payload.update({k: v for k, v in (context or {}).items() if v not in (None, "")})
+	payload["files"] = conversation_files(conversation_name, payload.get("files"))
 
 	# The AI work parks on the bpmn_ai_agent worker, so the engine pass
 	# returns once the job is queued and the wait below covers the turn.
