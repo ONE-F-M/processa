@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import frappe
 from frappe import _
+from frappe.query_builder.functions import Count
 from frappe.utils import create_batch, now_datetime
 from frappe.utils.background_jobs import is_job_enqueued
 from rq.timeouts import JobTimeoutException
@@ -80,39 +81,6 @@ def start(migration_name: str) -> None:
 			instance_names=list(batch),
 			first_idx=(n - 1) * BATCH_SIZE + 1,
 		)
-
-
-def records_to_move(plm: "ProcessaLegacyMigration") -> list[str]:
-	"""The old map's open instances, oldest first; with no old map, the records in a mapped Old State
-	that no open instance runs."""
-	if plm.from_model:
-		return frappe.get_all(
-			"BPMN Process Instance",
-			filters={
-				"process_model": plm.from_model,
-				"context_doctype": plm.target_doctype,
-				"status": ["in", OPEN_INSTANCE_STATUSES],
-			},
-			pluck="name",
-			order_by="started_at asc",
-		)
-	states = [d.old_state for d in plm.state_map]
-	if not states:
-		return []
-	running = set(
-		frappe.get_all(
-			"BPMN Process Instance",
-			filters={"context_doctype": plm.target_doctype, "status": ["in", OPEN_INSTANCE_STATUSES]},
-			pluck="context_docname",
-		)
-	)
-	records = frappe.get_all(
-		plm.target_doctype,
-		filters={state_field(plm.target_doctype): ["in", states]},
-		pluck="name",
-		order_by="creation asc",
-	)
-	return [name for name in records if name not in running]
 
 
 def run_batch(migration_name: str, instance_names: list[str], first_idx: int = 1) -> None:
@@ -345,18 +313,19 @@ def _check_state_map(plm, to_model) -> None:
 
 
 def _check_open_states_mapped(plm, fieldname: str) -> None:
-	if plm.from_model:
-		docnames = frappe.get_all(
-			"BPMN Process Instance",
-			filters={
-				"process_model": plm.from_model,
-				"context_doctype": plm.target_doctype,
-				"status": ["in", OPEN_INSTANCE_STATUSES],
-			},
-			pluck="context_docname",
-		)
-	else:
-		docnames = records_to_move(plm)
+	# With no old map, the State Mapping itself chooses which records move, so no state is missing.
+	if not plm.from_model:
+		_count_unstarted(plm)
+		return
+	docnames = frappe.get_all(
+		"BPMN Process Instance",
+		filters={
+			"process_model": plm.from_model,
+			"context_doctype": plm.target_doctype,
+			"status": ["in", OPEN_INSTANCE_STATUSES],
+		},
+		pluck="context_docname",
+	)
 	states = (
 		frappe.get_all(plm.target_doctype, filters={"name": ["in", docnames]}, pluck=fieldname)
 		if docnames
@@ -365,9 +334,6 @@ def _check_open_states_mapped(plm, fieldname: str) -> None:
 	counts = Counter(states)
 	for d in plm.state_map:
 		d.record_count = counts[d.old_state]
-	# With no old map, the State Mapping itself chooses which records move.
-	if not plm.from_model:
-		return
 
 	mapped = {d.old_state for d in plm.state_map}
 	missing = [f"{state or _('(empty)')} ({count})" for state, count in counts.items() if state not in mapped]
@@ -377,3 +343,49 @@ def _check_open_states_mapped(plm, fieldname: str) -> None:
 				plm.from_model, ", ".join(missing)
 			)
 		)
+
+
+def records_to_move(plm: "ProcessaLegacyMigration") -> list[str]:
+	"""The old map's open instances, oldest first; with no old map, the records in a mapped Old State
+	that no open instance runs."""
+	if plm.from_model:
+		return frappe.get_all(
+			"BPMN Process Instance",
+			filters={
+				"process_model": plm.from_model,
+				"context_doctype": plm.target_doctype,
+				"status": ["in", OPEN_INSTANCE_STATUSES],
+			},
+			pluck="name",
+			order_by="started_at asc",
+		)
+	record = frappe.qb.DocType(plm.target_doctype)
+	return _unstarted(plm).select(record.name).orderby(record.creation).run(pluck=True)
+
+
+def _count_unstarted(plm) -> None:
+	"""Fill each State Mapping row's Record Count with the records a run with no old map would start."""
+	# Save runs this before Frappe's mandatory check, so the State Mapping can still be empty.
+	if not plm.state_map:
+		return
+	state = frappe.qb.DocType(plm.target_doctype)[state_field(plm.target_doctype)]
+	counts = dict(_unstarted(plm).select(state, Count("*")).groupby(state).run())
+	for d in plm.state_map:
+		d.record_count = counts.get(d.old_state, 0)
+
+
+def _unstarted(plm):
+	"""A query over the Target DocType's records in a mapped Old State that no open instance runs."""
+	record = frappe.qb.DocType(plm.target_doctype)
+	instance = frappe.qb.DocType("BPMN Process Instance")
+	running = (
+		frappe.qb.from_(instance)
+		.select(instance.context_docname)
+		.where(instance.context_doctype == plm.target_doctype)
+		.where(instance.status.isin(OPEN_INSTANCE_STATUSES))
+	)
+	return (
+		frappe.qb.from_(record)
+		.where(record[state_field(plm.target_doctype)].isin([d.old_state for d in plm.state_map]))
+		.where(record.name.notin(running))
+	)

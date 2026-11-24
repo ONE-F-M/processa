@@ -273,12 +273,13 @@ class TestLegacyMigrationEdgeCases(FrappeTestCase):
 		self.assertEqual(self._plm(plm).error_logs, [])
 		self.assertTrue(moved)
 
-	def test_with_no_old_map_a_script_sets_the_gateway_value_and_its_writes_are_undone(self):
+	def test_with_no_old_map_a_script_sets_the_gateway_value_and_its_writes_and_jobs_are_undone(self):
 		def routed(pid):
 			script = (
 				'<bpmn:scriptTask id="Script_route" name="Route"><bpmn:incoming>Flow_1</bpmn:incoming>'
 				"<bpmn:outgoing>Flow_2</bpmn:outgoing><bpmn:script>"
 				'frappe.get_doc({"doctype": "Note", "title": "plm fast-forward probe"}).insert()\n'
+				'frappe.db.after_commit.add(lambda: frappe.cache.set_value("plm_fast_forward_probe", 1))\n'
 				"go_on = True</bpmn:script></bpmn:scriptTask>"
 			)
 			return definitions(
@@ -311,3 +312,6 @@ class TestLegacyMigrationEdgeCases(FrappeTestCase):
 			frappe.db.get_value("BPMN Process Instance", self._instance_of(record), "status"), "Completed"
 		)
 		self.assertFalse(frappe.db.exists("Note", {"title": "plm fast-forward probe"}))
+		frappe.cache.delete_value("plm_fast_forward_probe")
+		frappe.db.after_commit.run()
+		self.assertIsNone(frappe.cache.get_value("plm_fast_forward_probe"))

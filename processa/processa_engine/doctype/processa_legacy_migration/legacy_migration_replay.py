@@ -8,6 +8,7 @@ from uuid import UUID
 
 import frappe
 from frappe import _
+from frappe.utils import CallbackManager
 
 from processa.processa_engine import engine as bpmn_engine
 from processa.processa_engine.engine import (
@@ -54,12 +55,16 @@ class ReplayScriptEngine(FrappeScriptEngine):
 
 class FastForwardScriptEngine(FrappeScriptEngine):
 	def execute(self, task, script, **kwargs):
-		"""Run the script for the values it sets for gateways, then undo whatever it wrote."""
+		"""Run the script for the values it sets for gateways, then undo its database writes and drop
+		the jobs it queued for after the commit."""
+		queued = frappe.db.before_commit, frappe.db.after_commit
+		frappe.db.before_commit, frappe.db.after_commit = CallbackManager(), CallbackManager()
 		frappe.db.savepoint("plm_fast_forward_script")
 		try:
 			super().execute(task, script, **kwargs)
 		finally:
 			frappe.db.rollback(save_point="plm_fast_forward_script")
+			frappe.db.before_commit, frappe.db.after_commit = queued
 
 
 def build_context(plm: "ProcessaLegacyMigration") -> frappe._dict:

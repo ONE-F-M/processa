@@ -28,10 +28,9 @@ if TYPE_CHECKING:
 
 
 def migrate_record(ctx: frappe._dict, old: "BPMNProcessInstance", idx: int) -> bool:
-	"""Move one record fully or not at all; one that cannot move gets Error Log row idx. True when it moved.
-	old is the record's instance on the old map, or unstarted_record for a record that has none.
-
-	Commits nothing: the batch job commits after each record, so a refused record's row is kept with it."""
+	"""Move one record, given its old instance or unstarted_record, fully or not at all; True when it moved.
+	One that cannot move gets Error Log row idx. Commits nothing: the batch job commits after each record,
+	so a refused record's row is kept with it."""
 	frappe.db.savepoint("plm_record")
 	try:
 		if old.name:
