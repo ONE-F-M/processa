@@ -8,7 +8,11 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.query_builder import DocType
 
-from processa.ai_agent_security.code_checks.script_categories import SYNTAX_CHECKS, clear_category_cache
+from processa.ai_agent_security.code_checks.script_categories import (
+	SYNTAX_CHECKS,
+	clear_category_cache,
+	is_syntax_node,
+)
 from processa.ai_agent_security.code_checks.script_validator import INJECTED_NAMES
 
 BUILTIN_NAMES = frozenset(dir(builtins)) | frozenset(INJECTED_NAMES)
@@ -38,9 +42,9 @@ class ScriptImportCategory(Document):
 	def validate(self):
 		for d in self.names:
 			d.dotted_name = (d.dotted_name or "").strip()
-			if d.kind == "Syntax" and d.dotted_name not in SYNTAX_CHECKS:
+			if d.kind == "Syntax" and d.dotted_name not in SYNTAX_CHECKS and not is_syntax_node(d.dotted_name):
 				frappe.throw(
-					_("Row {0}: {1} is not a shape check. Use one of: {2}").format(
+					_("Row {0}: {1} is not a shape check or a Python syntax node such as Global. Shape checks: {2}").format(
 						d.idx, d.dotted_name, ", ".join(sorted(SYNTAX_CHECKS))
 					)
 				)

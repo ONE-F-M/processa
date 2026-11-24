@@ -14,7 +14,7 @@ from processa.ai_agent_security.code_checks.script_validator import (
 	request_findings,
 	validate_script,
 )
-from processa.patches.v1_0 import seed_script_import_categories
+from processa.patches.v1_0 import seed_script_import_categories, star_import_row_on_dynamic_code
 
 SETTINGS_FIELDS = (
 	"section_break_script_security",
@@ -39,6 +39,8 @@ class _CategoryTestCase(FrappeTestCase):
 		super().setUp()
 		clear_category_cache()
 		seed_script_import_categories.execute()
+		star_import_row_on_dynamic_code.execute()
+		clear_category_cache()
 
 	def tearDown(self):
 		frappe.db.rollback()
@@ -49,6 +51,39 @@ class _CategoryTestCase(FrappeTestCase):
 		category = frappe.get_doc("Script Import Category", name)
 		category.update(values)
 		category.save()
+
+
+class TestSyntaxFollowsCategoryRows(_CategoryTestCase):
+	"""A syntax check fires only when a category row names it, so the category records decide."""
+
+	def _drop_row(self, category_name, dotted_name):
+		category = frappe.get_doc("Script Import Category", category_name)
+		category.names = [d for d in category.names if d.dotted_name != dotted_name]
+		category.save()
+
+	def test_a_syntax_node_row_flags_that_node(self):
+		self.assertEqual(_flags("global x\nx = 1"), [])
+		category = frappe.get_doc("Script Import Category", "Database direct")
+		category.append("names", {"dotted_name": "Global", "kind": "Syntax"})
+		category.save()
+		self.assertEqual(_flags("global x\nx = 1"), ["Global needs approval (Database direct)"])
+
+	def test_dropping_a_shape_row_stops_its_check(self):
+		self.assertTrue(_flags("x = obj.__dict__"))
+		self._drop_row("Dynamic code and reflection", "dunder_attribute")
+		self.assertEqual(_flags("x = obj.__dict__"), [])
+
+	def test_a_star_import_follows_its_row(self):
+		self.assertEqual(
+			_flags("from frappe.utils import *"),
+			["from frappe.utils import * needs approval (Dynamic code and reflection)"],
+		)
+		self._drop_row("Dynamic code and reflection", "import_star")
+		self.assertEqual(_flags("from frappe.utils import *"), [])
+
+	def test_no_threshold_means_no_size_check(self):
+		self._set_category("Size limits", threshold=0)
+		self.assertEqual(_flags("x = 'A' * 999999999"), [])
 
 
 class TestFindingsByCategory(_CategoryTestCase):

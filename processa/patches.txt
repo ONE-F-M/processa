@@ -422,3 +422,4 @@ processa.patches.v1_0.logix_writer_reads_doctype_fields #22-11-2026 Logix Build 
 processa.patches.v1_0.seed_prosally_route_and_constraint_cases #23-11-2026 ProsAlly Baseline gains one case per route (explain, targeted edit, create) and per request constraint
 processa.patches.v1_0.prosally_steps_see_attached_files #23-11-2026 ProsAlly's classify, confirm, generate and modify steps send the turn's attached files with each model call
 processa.patches.v1_0.agent_steps_see_attached_files #24-11-2026 Docu's and the Connector Agent's model steps send the turn's attached files with each call
+processa.patches.v1_0.star_import_row_on_dynamic_code #24-11-2026 the Dynamic code and reflection category lists import_star, so star imports stay flagged once syntax checks follow the category rows

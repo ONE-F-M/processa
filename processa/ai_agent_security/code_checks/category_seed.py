@@ -238,7 +238,7 @@ CATEGORIES = [
 			"mmap",
 		)
 		+ _rows(FUNCTION, "frappe.get_attr", "frappe.get_module", "frappe.call", "frappe.safe_eval")
-		+ _rows(SYNTAX, "dunder_attribute", "dunder_subscript"),
+		+ _rows(SYNTAX, "dunder_attribute", "dunder_subscript", "import_star"),
 	},
 	{
 		"category_name": "Secrets",
