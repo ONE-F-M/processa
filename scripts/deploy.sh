@@ -3,6 +3,8 @@
 # Usage: bash deploy.sh <bench-dir> <branch>
 # A bench still on the one_bpmn folder moves to processa on its first run, together with the apps that import it.
 set -eo pipefail
+# The deploy action stops showing stdout after a long line, so name the failing command on stderr.
+trap 'echo "Deploy failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 BENCH="${1:?bench directory}"
 BRANCH="${2:?branch}"
@@ -109,7 +111,8 @@ fi
 if [ "$APP" = processa ]; then
 	(cd sites && ../env/bin/python -c "from processa.cutover import run; run()")
 fi
-bench migrate
+# Migrate draws its progress bar with carriage returns, one line the deploy action cannot read.
+bench migrate | tr '\r' '\n'
 bench build --app "$APP"
 for a in $PULLED; do bench build --app "$a"; done
 bench clear-cache
