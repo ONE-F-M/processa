@@ -15,6 +15,7 @@ from rq.timeouts import JobTimeoutException
 from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_move import (
 	log_error_row,
 	migrate_record,
+	other_maps_of_process,
 	unstarted_record,
 )
 from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_replay import (
@@ -48,13 +49,12 @@ def _queue_batches(migration_name: str) -> None:
 	"""Queue a migration's records_to_move as run_batch jobs of BATCH_SIZE on the long queue."""
 	plm = frappe.get_doc("Processa Legacy Migration", migration_name)
 	user = plm.run_by or frappe.session.user
+	from_model = frappe.get_doc("BPMN Process Model", plm.from_model) if plm.from_model else None
+	to_model = frappe.get_doc("BPMN Process Model", plm.to_model)
 	try:
-		check_process_ownership(
-			frappe.get_doc("BPMN Process Model", plm.from_model) if plm.from_model else None,
-			frappe.get_doc("BPMN Process Model", plm.to_model),
-			user,
-		)
-	except frappe.PermissionError as e:
+		check_process_ownership(from_model, to_model, user)
+		_check_old_map_deployed(from_model)
+	except (frappe.PermissionError, frappe.ValidationError) as e:
 		frappe.clear_messages()
 		log_error_row(migration_name, frappe._dict(), "Error", str(e), idx=1)
 		plm.db_set({"status": "Running", "run_by": user, "started_at": now_datetime()})
@@ -309,6 +309,7 @@ def check_process_ownership(
 def _check_maps(plm, from_model, to_model) -> None:
 	if from_model and from_model.name == to_model.name:
 		frappe.throw(_("Old Process Map and New Process Map must be different."))
+	_check_old_map_deployed(from_model)
 	if not to_model.serialized_spec:
 		frappe.throw(_("New Process Map {0} is not currently deployed.").format(to_model.name))
 	for model in filter(None, (from_model, to_model)):
@@ -319,6 +320,18 @@ def _check_maps(plm, from_model, to_model) -> None:
 					model.name, ", ".join(sorted(doctypes)) or _("no DocType"), plm.target_doctype
 				)
 			)
+
+
+def _check_old_map_deployed(from_model) -> None:
+	if not from_model:
+		return
+	if not from_model.serialized_spec:
+		frappe.throw(
+			_(
+				"Old Process Map {0} is not currently deployed. Leave Old Process Map empty to place its "
+				"records by their state."
+			).format(from_model.name)
+		)
 
 
 def _model_doctypes(model) -> set[str]:
@@ -374,7 +387,7 @@ def _check_open_states_mapped(plm, fieldname: str) -> None:
 
 def records_to_move(plm: "ProcessaLegacyMigration") -> list[str]:
 	"""The old map's open instances, oldest first; with no old map, the records in a mapped Old State
-	that no open instance runs."""
+	that no open instance runs, other than on another map of the new map's process."""
 	if plm.from_model:
 		return frappe.get_all(
 			"BPMN Process Instance",
@@ -402,7 +415,8 @@ def _count_unstarted(plm) -> None:
 
 
 def _unstarted(plm):
-	"""A query over the Target DocType's records in a mapped Old State that no open instance runs."""
+	"""A query over the Target DocType's records in a mapped Old State that no open instance runs.
+	An open instance on another map of the new map's process does not count: the move retires it."""
 	record = frappe.qb.DocType(plm.target_doctype)
 	instance = frappe.qb.DocType("BPMN Process Instance")
 	running = (
@@ -411,6 +425,9 @@ def _unstarted(plm):
 		.where(instance.context_doctype == plm.target_doctype)
 		.where(instance.status.isin(OPEN_INSTANCE_STATUSES))
 	)
+	replaced_maps = other_maps_of_process(plm.to_model)
+	if replaced_maps:
+		running = running.where(instance.process_model.notin(replaced_maps))
 	return (
 		frappe.qb.from_(record)
 		.where(record[state_field(plm.target_doctype)].isin([d.old_state for d in plm.state_map]))
