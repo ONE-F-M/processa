@@ -76,6 +76,41 @@ def _logged_error(script_name: str) -> str:
 	return f"Logged {rows[0].creation}; the script was last saved {saved}.\n{rows[0].error[-ERROR_CHARS:]}"
 
 
+def step_functions(process_model: str | None, current_script: str = "") -> list[dict]:
+	"""The functions defined inside the connected steps of a map that the user can read, other than the open script.
+
+	import_script cannot load these: a step runs its own code when the flow reaches it.
+	"""
+	bpmn_xml = process_model and frappe.db.get_value("BPMN Process Model", process_model, "bpmn_xml")
+	if not bpmn_xml:
+		return []
+	steps = []
+	for task in ET.fromstring(bpmn_xml.strip().encode()).iter(f"{BPMN_NS}scriptTask"):
+		name = task.get(SERVER_SCRIPT_ATTR)
+		connected = task.find(f"{BPMN_NS}incoming") is not None or task.find(f"{BPMN_NS}outgoing") is not None
+		if not connected or not name or name == current_script or not frappe.db.exists("Server Script", name):
+			continue
+		if not frappe.has_permission("Server Script", "read", doc=name):
+			continue
+		code = frappe.db.get_value("Server Script", name, "script") or ""
+		try:
+			functions = [node for node in ast.parse(code).body if isinstance(node, ast.FunctionDef)]
+		except SyntaxError:
+			continue
+		if functions:
+			steps.append(
+				{
+					"step": task.get("name") or task.get("id"),
+					"script": name,
+					"functions": [f"{node.name}({ast.unparse(node.args)})" for node in functions],
+					"code": "\n\n".join(ast.get_source_segment(code, node) for node in functions)[
+						:LIBRARY_CODE_CHARS
+					],
+				}
+			)
+	return steps
+
+
 def library_scripts(process_model: str | None) -> list[dict]:
 	"""The library scripts on a map that the user can read, each with its function signatures and code.
 
@@ -135,6 +170,17 @@ def library_text(libraries: list[dict]) -> str:
 		lines.append(
 			f"- {library['name']}: {', '.join(library['functions']) or 'no functions could be read'}"
 		)
+	return "\n".join(lines)
+
+
+def step_function_text(steps: list[dict]) -> str:
+	"""The section of the text Logix reads that lists the functions inside steps."""
+	lines = [
+		"FUNCTIONS INSIDE STEPS ON THIS MAP: a step runs its own code when the flow reaches it, so "
+		"import_script cannot load these. Copy one into the open script, or move it into a library to share it."
+	]
+	for step in steps:
+		lines.append(f"- step {step['step']} (script {step['script']}): {', '.join(step['functions'])}")
 	return "\n".join(lines)
 
 
