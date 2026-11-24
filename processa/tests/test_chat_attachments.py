@@ -164,3 +164,19 @@ class TestSubCallsSendImages(FrappeTestCase):
 		self.assertTrue(calls[0]["user"].startswith("copy this\n\n"))
 		self.assertIn("Submit, Review, Approve", calls[0]["user"])
 		self.assertEqual(calls[1], {"system": "You modify BPMN.", "user": "no files"})
+
+
+class TestFollowUpTurnsKeepTheFiles(FrappeTestCase):
+	def tearDown(self):
+		frappe.cache.delete_value("chat_files:_Test Files Conversation")
+		super().tearDown()
+
+	def test_a_turn_with_no_files_gets_the_files_last_attached_in_the_conversation(self):
+		conversation = "_Test Files Conversation"
+		self.assertEqual(attachments.conversation_files(conversation, []), [])
+		self.assertEqual(attachments.conversation_files(conversation, ["/files/a.png"]), ["/files/a.png"])
+		self.assertEqual(attachments.conversation_files(conversation, []), ["/files/a.png"])
+		self.assertEqual(attachments.conversation_files(conversation, None), ["/files/a.png"])
+		self.assertEqual(attachments.conversation_files(conversation, ["/files/b.png"]), ["/files/b.png"])
+		self.assertEqual(attachments.conversation_files(conversation, []), ["/files/b.png"])
+		self.assertEqual(attachments.conversation_files("_Test Other Conversation", []), [])
