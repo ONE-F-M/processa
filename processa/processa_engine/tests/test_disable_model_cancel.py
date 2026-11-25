@@ -66,7 +66,6 @@ class TestDisableModelCancel(FrappeTestCase):
 		self.assertEqual(result["running_instances"], 2)
 		enqueue.assert_called_once_with(JOB, queue="long", model_name=model_name, reason=_reason(model_name))
 
-		cancel_running_instances(**enqueue.call_args.kwargs_for_job()) if False else None
 		cancel_running_instances(model_name=model_name, reason=_reason(model_name))
 
 		self.assertEqual(_active_count(model_name), 0)
