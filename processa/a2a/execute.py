@@ -222,6 +222,8 @@ def _start_another_attempt(task, process_model: str) -> str | None:
 	"""
 	previous = task_store.find_instance_for_task(task.name)
 	retire_instance(previous)
+	# refresh_state reads agent_run before instance, so the last attempt's run would keep deciding the state.
+	task.db_set({"agent_run": None, "pending_human_task": None}, update_modified=False)
 
 	try:
 		from processa.processa_engine.triggers import _maybe_start_instance
