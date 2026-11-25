@@ -267,7 +267,23 @@ class TestSendEmail(_ComposerTestCase):
 		self.assertEqual(kwargs["args"], {"header": "Subject", "message": "<p>Body</p>", "logo": EMAIL_LOGO})
 		self.assertEqual(kwargs["recipients"], ["user@test.com"])
 		self.assertEqual(kwargs["cc"], "cc@test.com")
-		self.assertIs(kwargs["delayed"], False)
+		self.assertIs(kwargs["delayed"], True)
+
+	@patch("processa.processa_engine.notifications.composer.frappe")
+	def test_the_mail_is_queued_and_never_sent_inside_the_request(self, mock_frappe):
+		"""delayed=True keeps the SMTP conversation out of the caller's request.
+
+		frappe.sendmail turns delayed=False into now=True, so a relay that drops
+		the connection under a notification burst used to surface as a blocking
+		"Invalid Outgoing Mail Server or Port" dialog on the document the user
+		had just saved, and the mail was lost rather than retried.
+		"""
+		mock_frappe.sendmail = MagicMock()
+		from processa.processa_engine.notifications.composer import send_email
+		send_email(["user@test.com"], "Subject", "<p>Body</p>", "<html amp>AMP</html>")
+		kwargs = mock_frappe.sendmail.call_args.kwargs
+		self.assertIs(kwargs["delayed"], True)
+		self.assertNotIn("now", kwargs)
 
 	@patch("processa.processa_engine.notifications.composer.frappe")
 	def test_administrator_is_not_a_recipient(self, mock_frappe):

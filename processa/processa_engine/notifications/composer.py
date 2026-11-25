@@ -278,6 +278,16 @@ def send_email(
 	"""Send the email wrapped in bpmn_email.html, with the AMP part when given.
 
 	frappe.flags.amp_html carries the AMP part to the Email Queue after_insert hook and is cleared after the send.
+
+	The mail is queued, never sent inline. ``delayed=False`` would become
+	``now=True`` inside frappe.sendmail, putting the SMTP conversation in the
+	caller's request: a relay that drops the connection under a notification
+	burst then surfaces as a blocking "Invalid Outgoing Mail Server or Port"
+	dialog on whatever document the user was saving, and the mail is lost
+	instead of retried. Queueing still delivers within seconds, because
+	one_fm.events.email_queue.after_insert enqueues a deduplicated queue flush.
+	The Email Queue row is inserted by frappe.sendmail either way, so the
+	amp_html flag above still reaches that hook.
 	"""
 	recipients = [r for r in recipients if r != "Administrator"]
 	if not recipients:
@@ -303,7 +313,7 @@ def send_email(
 			args={"header": subject, "message": html_body, "logo": EMAIL_LOGO},
 			reference_doctype=reference_doctype,
 			reference_name=reference_name,
-			delayed=False,
+			delayed=True,
 		)
 	finally:
 		frappe.flags.amp_html = None
