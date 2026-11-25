@@ -34,7 +34,7 @@ from frappe import _
 from frappe.utils import cint, cstr, flt
 
 from processa.ai_agent_registry.provisioning.agent_provisioning import is_chat_startable_map
-from processa.processa_engine.agent_runtime.llm_types import EFFORT_LEVELS
+from processa.processa_engine.agent_runtime.llm_types import EFFORT_LABELS, effort_label
 
 # Which config field feeds which shape attribute. Only executable fields
 # with a task-shape equivalent are mapped; chat-only metadata (chat mode
@@ -772,6 +772,10 @@ def update_agent_config_from_shape(config_name: str, fields: str | dict) -> dict
 			value = frappe.utils.flt(value)
 		if cfield == "max_tokens" and value not in (None, ""):
 			value = frappe.utils.cint(value)
+		if cfield == "effort":
+			if value and not effort_label(value):
+				frappe.throw(_("'{0}' is not an effort level. Use one of: {1}").format(value, ", ".join(EFFORT_LABELS)))
+			value = effort_label(value)
 		if cfield in ("timeout_seconds", "max_retries", "max_tool_calls"):
 			value = frappe.utils.cint(value)
 		if cfield == "top_p":
@@ -869,11 +873,12 @@ def _set_stage_efforts(doc, rows) -> bool:
 		effort = wanted.get(row.sub_agent_id)
 		if effort is None:
 			continue
-		if effort == (row.get("effort") or ""):
+		label = effort_label(effort)
+		if effort and not label:
+			frappe.throw(_("'{0}' is not an effort level. Use one of: {1}").format(effort, ", ".join(EFFORT_LABELS)))
+		if label == (row.get("effort") or ""):
 			continue
-		if effort and effort not in EFFORT_LEVELS:
-			frappe.throw(_("'{0}' is not an effort level. Use one of: {1}").format(effort, ", ".join(EFFORT_LEVELS)))
-		row.effort = effort
+		row.effort = label
 		changed = True
 	return changed
 

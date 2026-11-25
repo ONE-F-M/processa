@@ -4,13 +4,13 @@ import frappe
 
 from processa.processa_engine.agent_runtime.llm_base import BaseLLMAdapter
 from processa.processa_engine.agent_runtime.llm_types import (
-	EFFORT_LEVELS,
 	LLMRefusedError,
 	LLMTruncatedError,
 	StepResult,
 	StepToolCall,
 	ToolSpec,
 	build_parameter_schema,
+	effort_level,
 )
 from processa.processa_engine.agent_runtime.structured_output import anthropic_output_config
 
@@ -183,8 +183,9 @@ class AnthropicAdapter(BaseLLMAdapter):
 		elif temperature is not None:
 			kwargs["temperature"] = temperature
 		output_config = anthropic_output_config(response_schema) if response_schema else {}
-		if self.effort in EFFORT_LEVELS:
-			output_config = {**output_config, "effort": self.effort}
+		effort = effort_level(self.effort)
+		if effort:
+			output_config = {**output_config, "effort": effort}
 		if output_config:
 			kwargs["output_config"] = output_config
 

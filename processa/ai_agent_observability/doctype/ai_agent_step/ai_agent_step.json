@@ -10,6 +10,7 @@
   "role",
   "content",
   "step_kind",
+  "effort",
   "column_break_tool",
   "tool_calls",
   "section_break_metrics",
@@ -71,6 +72,13 @@
    "label": "Step Kind",
    "options": "\nprompt\nmodel_call\ntool_turn\nsub_call",
    "description": "prompt: system or user text; model_call: the agent's own turn; tool_turn: a turn that called tools; sub_call: a model call made from inside a tool"
+  },
+  {
+   "description": "The effort level sent to the model on this call; blank when none was sent.",
+   "fieldname": "effort",
+   "fieldtype": "Data",
+   "label": "Effort",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_tool",

@@ -53,7 +53,7 @@ class AIAgentConfiguration(Document):
 		conversation_store: DF.Literal["", "process_variable", "document_store", "custom"]
 		delegation_deadline_minutes: DF.Int
 		description: DF.SmallText | None
-		effort: DF.Literal["", "low", "medium", "high", "xhigh", "max"]
+		effort: DF.Literal["", "Low", "Medium", "High", "Extra High", "Max"]
 		enabled: DF.Check
 		enabled_skills: DF.Table[AIAgentEnabledSkill]
 		examples: DF.Table[AIAgentExample]

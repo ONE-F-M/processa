@@ -24,6 +24,7 @@ from frappe.utils import cint, flt, get_datetime, now_datetime
 from rq import get_current_job
 
 from processa.processa_engine.agent_runtime.executor import ErrorCode, ExecutorConfig, ExecutorResult
+from processa.processa_engine.agent_runtime.llm_types import effort_label
 from processa.ai_agent_observability.pricing import compute_token_cost
 
 # Max size for final_output stored on the Run (64 KB)
@@ -352,6 +353,7 @@ def create_ai_run(
 		"backend": config.backend,
 		"provider": config.provider_name,
 		"model": config.model,
+		"effort": sent_effort(config.model, config.effort),
 		# WI-001751: runs produced while an eval is invoking the agent are
 		# tagged so Insights can show them under a separate "Evals" segment.
 		# The flag also names WHICH case and run, so reviewing an eval no longer
@@ -424,6 +426,13 @@ def step_window(started_at=None, ended_at=None, latency_ms: int = 0) -> tuple:
 	return start, end
 
 
+def sent_effort(model_name: str, effort: str) -> str:
+	"""The Effort label a run sends: the configured one when its AI Model has Support Effort, else ""."""
+	from processa.processa_engine.agent_runtime.llm_factory import supports_effort
+
+	return effort_label(effort) if supports_effort(model_name) else ""
+
+
 def record_ai_step(
 	run,
 	step_index: int,
@@ -442,6 +451,7 @@ def record_ai_step(
 	started_at=None,
 	ended_at=None,
 	step_kind: str | None = None,
+	effort: str | None = None,
 ) -> Optional["frappe.Document"]:
 	"""Record a single AI Agent Step linked to *run*.
 
@@ -511,6 +521,7 @@ def record_ai_step(
 		"started_at": started_at,
 		"ended_at": ended_at,
 		"step_kind": step_kind,
+		"effort": _step_effort(run, role, effort),
 		"error_code": error_code or None,
 		"error_message": error_message or None,
 	})
@@ -547,6 +558,13 @@ def record_ai_step(
 			message=frappe.get_traceback(),
 		)
 		return None
+
+
+def _step_effort(run, role: str, effort: str | None) -> str | None:
+	"""The effort a step ran at: its own when given, else the run's for a turn the model took."""
+	if effort is not None:
+		return effort or None
+	return getattr(run, "effort", None) if role in ("assistant", "tool") else None
 
 
 def latest_ordinary_step(run_name: str) -> str | None:
@@ -680,7 +698,7 @@ def current_sub_call():
 	return frappe.flags.get(_SUB_CALL_FLAG) or None
 
 
-def record_sub_call(model: str, result, latency_ms: int = 0) -> frappe.Document | None:
+def record_sub_call(model: str, result, latency_ms: int = 0, effort: str = "") -> frappe.Document | None:
 	"""Record one model call made from inside a tool script as a Step.
 
 	Returns None outside a sub-call scope, which is what keeps this off every
@@ -718,6 +736,7 @@ def record_sub_call(model: str, result, latency_ms: int = 0) -> frappe.Document 
 			cache_read_tokens=getattr(result, "cache_read_tokens", 0) or 0,
 			cache_write_tokens=getattr(result, "cache_write_tokens", 0) or 0,
 			latency_ms=latency_ms,
+			effort=effort_label(effort),
 		)
 	finally:
 		run.model = run_model

@@ -72,6 +72,10 @@
 								<td class="py-1 pr-3 text-gray-500 font-medium whitespace-nowrap align-top">Model</td>
 								<td class="py-1 text-gray-800 font-mono text-[12px]">{{ aiRun.model || '—' }}</td>
 							</tr>
+							<tr v-if="aiRun.effort">
+								<td class="py-1 pr-3 text-gray-500 font-medium whitespace-nowrap align-top">Effort</td>
+								<td class="py-1 text-gray-800">{{ aiRun.effort }}</td>
+							</tr>
 							<tr>
 								<td class="py-1 pr-3 text-gray-500 font-medium whitespace-nowrap align-top">Provider</td>
 								<td class="py-1 text-gray-800">{{ aiRun.provider || '—' }}</td>
@@ -521,7 +525,7 @@ async function fetchAiRun() {
 			url: "/api/method/frappe.client.get_list",
 			params: {
 				doctype: "AI Agent Run",
-				fields: JSON.stringify(["name", "status", "model", "provider", "total_prompt_tokens", "total_completion_tokens", "total_tokens", "estimated_cost", "duration_ms", "started_at", "ended_at", "error_code", "error_message", "backend"]),
+				fields: JSON.stringify(["name", "status", "model", "effort", "provider", "total_prompt_tokens", "total_completion_tokens", "total_tokens", "estimated_cost", "duration_ms", "started_at", "ended_at", "error_code", "error_message", "backend"]),
 				filters: JSON.stringify(runFilter),
 				limit_page_length: 1,
 				order_by: "creation desc",

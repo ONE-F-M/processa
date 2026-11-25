@@ -40,7 +40,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Effort",
-   "options": "\nlow\nmedium\nhigh\nxhigh\nmax"
+   "options": "\nLow\nMedium\nHigh\nExtra High\nMax"
   },
   {
    "fieldname": "prompt_text",

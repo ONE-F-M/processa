@@ -297,7 +297,7 @@
    "fieldname": "effort",
    "fieldtype": "Select",
    "label": "Effort",
-   "options": "\nlow\nmedium\nhigh\nxhigh\nmax"
+   "options": "\nLow\nMedium\nHigh\nExtra High\nMax"
   },
   {
    "default": "8192",

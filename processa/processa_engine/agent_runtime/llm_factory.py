@@ -210,6 +210,7 @@ class MeteredAdapter:
 				getattr(self._inner, "_model", "") or "",
 				result,
 				latency_ms=latency_ms,
+				effort=self._inner.effort,
 			)
 		except Exception:
 			# Metering must never be the reason a tool fails.

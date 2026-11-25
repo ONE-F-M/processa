@@ -25,7 +25,7 @@ from processa.processa_engine.agent_runtime.executor import (
 from processa.processa_engine.agent_runtime import backoff_seconds, structured_output
 from processa.processa_engine.agent_runtime.llm_anthropic import log_truncated
 from processa.processa_engine.agent_runtime.llm_factory import supports_effort, thinking_min_tokens
-from processa.processa_engine.agent_runtime.llm_types import EFFORT_LEVELS, LLMRefusedError
+from processa.processa_engine.agent_runtime.llm_types import LLMRefusedError, effort_level
 
 
 def run_coro_blocking(coro):
@@ -594,8 +594,9 @@ class DirectApiExecutor(Executor):
 				config.max_tokens, thinking_min_tokens(config.model, config.thinking_min_tokens)
 			),
 		}
-		if config.effort in EFFORT_LEVELS and supports_effort(config.model):
-			payload["output_config"] = {"effort": config.effort}
+		effort = effort_level(config.effort) if supports_effort(config.model) else ""
+		if effort:
+			payload["output_config"] = {"effort": effort}
 		if config.system_prompt:
 			payload["system"] = [
 				{

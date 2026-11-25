@@ -22,6 +22,7 @@ class AIAgentRun(Document):
 		completion_basis: DF.SmallText | None
 		correlation_id: DF.Data | None
 		duration_ms: DF.Int
+		effort: DF.Data | None
 		element_type: DF.Literal["task", "subprocess"]
 		ended_at: DF.Datetime | None
 		error_code: DF.Data | None

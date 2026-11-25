@@ -19,6 +19,7 @@ from processa.processa_engine.agent_runtime.executor import ExecutorConfig
 from processa.processa_engine.agent_runtime.llm_anthropic import AnthropicAdapter
 from processa.processa_engine.agent_runtime.llm_factory import _for_stage
 from processa.processa_engine.agent_runtime.llm_types import (
+	effort_label,
 	LLMRefusedError,
 	LLMTruncatedError,
 	StepResult,
@@ -27,7 +28,7 @@ from processa.processa_engine.agent_runtime.llm_types import (
 )
 from processa.processa_engine.agent_runtime.llm_gemini import GeminiAdapter
 from processa.processa_engine.agent_runtime.llm_openai import OpenAIAdapter
-from processa.ai_agent_observability.observability import SUB_CALL_TURN_FLAG
+from processa.ai_agent_observability.observability import SUB_CALL_TURN_FLAG, sent_effort
 from processa.ai_agent_skills.tools.shape_tools import PAUSE_HELD_FLAG
 from processa.patches.v1_0 import ai_models_mark_effort_support, lift_max_tokens_to_thinking_minimum
 from processa.tests.test_anthropic_sampling_params import _model
@@ -216,6 +217,16 @@ class TestEffortAndRoomToThink(FrappeTestCase):
 	def test_the_adapter_sends_the_effort_it_was_given(self):
 		sent = _anthropic_effort_step("claude-sonnet-5-5", effort="high")
 		self.assertEqual(sent["output_config"], {"effort": "high"})
+
+	def test_a_label_is_sent_as_the_providers_level_and_shown_back_as_the_label(self):
+		self.assertEqual(_anthropic_effort_step("claude-opus-5-5", effort="Extra High")["output_config"], {"effort": "xhigh"})
+		self.assertEqual(_anthropic_effort_step("claude-opus-5-5", effort="Medium")["output_config"], {"effort": "medium"})
+		self.assertEqual((effort_label("xhigh"), effort_label("medium"), effort_label("extreme")), ("Extra High", "Medium", ""))
+
+	def test_a_run_records_the_effort_it_sent_and_nothing_when_the_model_takes_none(self):
+		self.assertEqual(sent_effort(_effort_model("_effort-yes-sonnet-5-5", 1), "high"), "High")
+		self.assertEqual(sent_effort(_effort_model("_effort-no-sonnet-4-5", 0), "High"), "")
+		self.assertEqual(sent_effort(_effort_model("_effort-yes-sonnet-5-5", 1), ""), "")
 
 	def test_effort_rides_with_a_response_schema(self):
 		schema = {"type": "object", "properties": {"a": {"type": "string"}}, "required": ["a"]}

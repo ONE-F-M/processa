@@ -130,8 +130,8 @@
 			<label>Effort</label>
 			<select v-model="form.aiEffort">
 				<option value="">Model Default</option>
-				<option v-for="level in EFFORT_LEVELS" :key="level.value" :value="level.value">
-					{{ level.label }}
+				<option v-for="level in EFFORT_LEVELS" :key="level" :value="level">
+					{{ level }}
 				</option>
 			</select>
 		</div>
@@ -159,8 +159,8 @@
 			<span>{{ stage.sub_agent_name || stage.sub_agent_id }}</span>
 			<select v-model="stage.effort">
 				<option value="">Agent Effort</option>
-				<option v-for="level in EFFORT_LEVELS" :key="level.value" :value="level.value">
-					{{ level.label }}
+				<option v-for="level in EFFORT_LEVELS" :key="level" :value="level">
+					{{ level }}
 				</option>
 			</select>
 		</div>
@@ -269,13 +269,7 @@
 import { inject } from "vue";
 import { AGENT_CONFIG_KEY } from "@/composables/AgentConfig/useAgentConfigState";
 
-const EFFORT_LEVELS = [
-	{ value: "low", label: "Low" },
-	{ value: "medium", label: "Medium" },
-	{ value: "high", label: "High" },
-	{ value: "xhigh", label: "Extra High" },
-	{ value: "max", label: "Max" },
-];
+const EFFORT_LEVELS = ["Low", "Medium", "High", "Extra High", "Max"];
 
 const ac = inject(AGENT_CONFIG_KEY);
 const {

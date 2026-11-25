@@ -10,7 +10,26 @@ class LLMRefusedError(RuntimeError):
 	"""The provider's safety system stopped the reply before it gave any answer."""
 
 
+# What the provider takes, and what the Effort fields show for each.
 EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+EFFORT_LABELS = ("Low", "Medium", "High", "Extra High", "Max")
+
+
+def effort_label(value) -> str:
+	"""The Effort label for a label or level, in any case; "" for anything else."""
+	level = effort_level(value)
+	return EFFORT_LABELS[EFFORT_LEVELS.index(level)] if level else ""
+
+
+def effort_level(value) -> str:
+	"""The provider's level for an Effort label or level, in any case; "" for anything else."""
+	word = str(value or "").strip().lower()
+	if word in EFFORT_LEVELS:
+		return word
+	labels = [label.lower() for label in EFFORT_LABELS]
+	return EFFORT_LEVELS[labels.index(word)] if word in labels else ""
+
+
 # Thinking tokens count against max_tokens, so a call on a model that thinks gets at least this much room by default.
 DEFAULT_THINKING_MIN_TOKENS = 8192
 

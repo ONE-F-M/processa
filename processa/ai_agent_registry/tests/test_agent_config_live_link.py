@@ -117,17 +117,17 @@ class TestAgentConfigLiveLink(FrappeTestCase):
 
 		result = update_agent_config_from_shape(
 			TEST_CONFIG,
-			{"aiEffort": "high", "aiStageEfforts": [{"sub_agent_id": "writer", "effort": "low"}]},
+			{"aiEffort": "High", "aiStageEfforts": [{"sub_agent_id": "writer", "effort": "low"}]},
 		)
 
 		self.assertIn("effort", result["updated"])
 		self.assertIn("sub_prompts", result["updated"])
-		self.assertEqual(config_field_map(TEST_CONFIG)["aiEffort"], "high")
+		self.assertEqual(config_field_map(TEST_CONFIG)["aiEffort"], "High")
 		stage = frappe.get_doc("AI Agent Configuration", TEST_CONFIG).sub_prompts[0]
-		self.assertEqual((stage.effort, stage.prompt_text), ("low", "Write."))
+		self.assertEqual((stage.effort, stage.prompt_text), ("Low", "Write."))
 		self.assertEqual(
 			config_static_context(TEST_CONFIG)["aiStageEfforts"],
-			[{"sub_agent_id": "writer", "sub_agent_name": "Writer", "effort": "low"}],
+			[{"sub_agent_id": "writer", "sub_agent_name": "Writer", "effort": "Low"}],
 		)
 
 	def test_a_stage_effort_that_is_not_a_level_is_refused(self):

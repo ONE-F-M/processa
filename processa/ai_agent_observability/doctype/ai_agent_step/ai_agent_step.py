@@ -21,6 +21,7 @@ class AIAgentStep(Document):
 		completion_tokens: DF.Int
 		content: DF.LongText | None
 		cost: DF.Currency
+		effort: DF.Data | None
 		ended_at: DF.Datetime | None
 		error_code: DF.Data | None
 		error_message: DF.LongText | None
