@@ -387,3 +387,4 @@ processa.patches.v1_0.sandbox_tools_fall_back_to_base_branch #18-11-2026 sandbox
 processa.patches.v1_0.submit_assertions_reads_one_review #18-11-2026 Submit Assertions reads the checker's one review variable, so approved lines are no longer duplicated and rejected
 processa.patches.v1_0.frontend_agent_names_processa #24-11-2026 the Frontend Agent prompt names processa and processa/frontend/src instead of one_bpmn, so the deploy's one_bpmn check passes
 processa.patches.v1_0.frontend_agent_config_names_processa #24-11-2026 the Frontend Agent configuration prompt names processa, so after_migrate stops writing one_bpmn back onto its map
+processa.patches.v1_0.write_spec_records_assertion_lines #25-11-2026 Write Spec records the assertion lines of the spec it wrote, so Run Specs finds them and stops answering "No spec was written" on a site that took the older script

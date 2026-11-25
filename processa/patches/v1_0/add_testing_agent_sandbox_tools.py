@@ -10,6 +10,27 @@ work_item_description = (task_data.get("work_item_description") or "").strip()
 run_id = (task_data.get("run_id") or "").strip()
 """
 
+# Appended to Write Spec. Run Specs hashes each criterion's lines from the turn state's spec_assertions and compares them with the
+# approved assertion_hashes, so something has to record them: the '// ASSERT AC1: <line>' comments of the spec just written, with the
+# id's spaces removed and upper-cased, whitespace collapsed in the line, and the lines kept in file order -- as Submit Assertions
+# reads its own input. Without this Run Specs always answers "No spec was written: call write_spec first."
+RECORD_ASSERTIONS = r"""
+# Record this spec's assertion lines (the '// ASSERT AC1: <line>' comments) so run_specs can check them against the approved hashes.
+import re
+from processa.processa_engine.agent_runtime.turn_state import get_turn, update_turn
+
+if not result.get("error"):
+    _by_id = {}
+    for _l in str(content).splitlines():
+        _m = re.search(r"//\s*ASSERT\s+(AC\s*\d+)\s*:\s*(.+?)\s*$", _l, re.I)
+        if _m:
+            _by_id.setdefault(re.sub(r"\s+", "", _m.group(1)).upper(), []).append(re.sub(r"\s+", " ", _m.group(2)).strip())
+    _specs = dict(get_turn(context_docname).get("spec_assertions") or {})
+    _specs[file] = _by_id
+    update_turn(context_docname, spec_assertions=_specs)
+    result["assertion_lines_recorded"] = {k: len(v) for k, v in _by_id.items()}
+"""
+
 NEEDS_BRIEF = (
 	'"target_app, git_branch, work_item_description and run_id are all required -- pass the exact same values '
 	'on every call for one run."'
@@ -41,6 +62,7 @@ else:
     else:
         result.update(_dispatch["response"])
 """
+	+ RECORD_ASSERTIONS
 )
 
 BROWSER_SNAPSHOT = (
