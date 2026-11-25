@@ -15,6 +15,8 @@ from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_registry.provisioning.bpmn_task_config import (
 	normalise_task_actions,
+	python_condition,
+	resolve_ir_conditions,
 	resolve_ir_config,
 	resolve_node_attrs,
 )
@@ -252,3 +254,33 @@ class TestStartEventTrigger(ConfigCase):
 	def test_a_manually_started_process_needs_no_trigger(self):
 		attrs, problems = resolve_node_attrs(self._start({}))
 		self.assertEqual((attrs, problems), ({}, []))
+
+
+class TestConditions(FrappeTestCase):
+	def test_javascript_spellings_become_python_and_doc_is_dropped(self):
+		self.assertEqual(
+			python_condition("!x && doc.status == 'Open' || approved == true"),
+			"not x and status == 'Open' or approved == True",
+		)
+
+	def test_quoted_text_is_left_alone(self):
+		self.assertEqual(python_condition("action == 'true && false'"), "action == 'true && false'")
+
+	def test_a_near_miss_action_takes_the_name_on_the_user_task(self):
+		ir = {
+			"nodes": [
+				{"id": "u", "type": "userTask", "config": {"taskActions": ["Arrange Pickup", "Arrived"]}},
+				{"id": "g", "type": "exclusiveGateway"},
+			],
+			"flows": [{"from": "u", "to": "g"}, {"from": "g", "to": "e", "condition": "action == 'Arrange Pick Up'"}],
+		}
+		resolve_ir_conditions(ir)
+		self.assertEqual(ir["flows"][1]["condition"], "action == 'Arrange Pickup'")
+
+	def test_an_action_far_from_any_is_kept_for_the_reply_to_name(self):
+		ir = {
+			"nodes": [{"id": "u", "type": "userTask", "config": {"taskActions": ["Approve"]}}],
+			"flows": [{"from": "u", "to": "g"}, {"from": "g", "to": "e", "condition": "action == 'Escalate'"}],
+		}
+		resolve_ir_conditions(ir)
+		self.assertEqual(ir["flows"][1]["condition"], "action == 'Escalate'")
