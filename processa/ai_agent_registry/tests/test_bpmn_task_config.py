@@ -165,7 +165,7 @@ class TestUpdateFieldValues(ConfigCase):
 	def test_rows_that_are_not_a_list_are_dropped_and_reported(self):
 		attrs, problems = self._rows({"field": "status", "value": "Open"})
 		self.assertNotIn("updateFieldRows", attrs)
-		self.assertIn("must be a list", problems[0]["message"])
+		self.assertIn("not a list of field and value rows", problems[0]["message"])
 
 	def test_a_reference_to_a_name_the_render_lacks_is_left_out(self):
 		attrs, problems = self._rows([{"field": "description", "value": "{{ sla_trigger_time }}"}])

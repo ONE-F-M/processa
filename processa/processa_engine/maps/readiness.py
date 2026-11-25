@@ -1,8 +1,6 @@
 # Copyright (c) 2026, one-fm and contributors
 """Deploy readiness checklist: what a BPMN map needs on this site before it can run."""
 
-import json
-
 from lxml import etree as ET
 import frappe
 from frappe import _
@@ -450,7 +448,7 @@ def _user_task_config_category(xml_content: str) -> dict | None:
 
 def _update_field_value_category(xml_content: str, root) -> dict | None:
 	"""The Field Values readiness category, one warning per Update Field value its field cannot hold, or None."""
-	from processa.ai_agent_registry.provisioning.bpmn_task_config import update_field_value_problem
+	from processa.ai_agent_registry.provisioning.bpmn_task_config import update_field_row_problems
 	from processa.processa_engine.compiler.extensions import extract_service_task_config
 
 	found = []
@@ -462,17 +460,7 @@ def _update_field_value_category(xml_content: str, root) -> dict | None:
 			continue
 		if not frappe.db.exists("DocType", doctype):
 			continue
-		try:
-			rows = json.loads(cfg.get("updateFieldRows") or "[]")
-		except ValueError:
-			rows = None
-		if not isinstance(rows, list):
-			found.append((bpmn_id, _("Its Field Updates are not a list of field and value rows, so it writes nothing.")))
-			continue
-		for row in rows:
-			message = isinstance(row, dict) and update_field_value_problem(doctype, row.get("field") or "", row.get("value"))
-			if message:
-				found.append((bpmn_id, message))
+		found += [(bpmn_id, message) for _index, message in update_field_row_problems(doctype, cfg.get("updateFieldRows"))]
 	if not found:
 		return None
 	ids = list(dict.fromkeys(bpmn_id for bpmn_id, _message in found))

@@ -364,25 +364,39 @@ def _check_update_field_rows(attrs: dict, element_id: str, problems: list) -> No
 		return
 	if not frappe.db.exists("DocType", doctype):
 		return
-	try:
-		rows = json.loads(attrs["updateFieldRows"])
-	except ValueError:
-		rows = None
-	if not isinstance(rows, list):
-		problems.append(_problem(element_id, _("updateFieldRows must be a list of {\"field\", \"value\"} rows.")))
+	found = update_field_row_problems(doctype, attrs["updateFieldRows"])
+	if found and found[0][0] is None:
+		problems.append(_problem(element_id, found[0][1]))
 		attrs.pop("updateFieldRows")
 		return
-	kept = []
-	for row in rows:
-		message = isinstance(row, dict) and update_field_value_problem(doctype, row.get("field") or "", row.get("value"))
-		if message:
-			problems.append(_problem(element_id, message + " " + _("I left this row out."), rule="update-field-value"))
-		else:
-			kept.append(row)
+	for _index, message in found:
+		problems.append(_problem(element_id, message + " " + _("I left this row out."), rule="update-field-value"))
+	bad = {index for index, _message in found}
+	kept = [row for index, row in enumerate(json.loads(attrs["updateFieldRows"])) if index not in bad]
 	if kept:
 		attrs["updateFieldRows"] = json.dumps(kept)
 	else:
 		attrs.pop("updateFieldRows")
+
+
+def update_field_row_problems(doctype: str, rows_json: str) -> list[tuple[int | None, str]]:
+	"""(row index, why) for each Update Field row doctype cannot hold; one (None, why) when rows_json is not a list."""
+	from frappe import _
+
+	try:
+		rows = json.loads(rows_json or "[]")
+	except ValueError:
+		rows = None
+	if not isinstance(rows, list):
+		return [(None, _("The Field Updates are not a list of field and value rows, so the step writes nothing."))]
+	found = []
+	for index, row in enumerate(rows):
+		if not isinstance(row, dict):
+			continue
+		message = update_field_value_problem(doctype, row.get("field") or "", row.get("value"))
+		if message:
+			found.append((index, message))
+	return found
 
 
 def update_field_value_problem(doctype: str, fieldname: str, value) -> str:
@@ -409,7 +423,7 @@ def update_field_value_problem(doctype: str, fieldname: str, value) -> str:
 		if text in options:
 			return ""
 		return _("'{0}' is not an option of {1} on {2}. Allowed: {3}.").format(text, fieldname, doctype, ", ".join(options))
-	if field.fieldtype == "Link" and field.options and not frappe.db.exists(field.options, text):
+	if field.fieldtype == "Link" and not frappe.db.exists(field.options, text):
 		return _("'{0}' is not a {1}, so {2} on {3} cannot hold it.").format(text, field.options, fieldname, doctype)
 	try:
 		if field.fieldtype in NUMBER_FIELDTYPES:
