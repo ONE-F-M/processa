@@ -5,12 +5,16 @@ import json
 
 import frappe
 from frappe import _
+from frappe.utils import get_datetime, now_datetime, time_diff_in_seconds
 
 from processa.processa_engine.agent_runtime.job_limits import AI_AGENT_JOB_TIMEOUT
 from processa.processa_engine.audit import is_bpmn_super_user
 from processa.processa_engine.instances import starting
 from processa.processa_engine.runtime import active_tasks as runtime_tasks
 from processa.processa_engine.runtime import common as runtime_common
+
+# An answer this old that has not woken its agent is treated as lost, not as still on its way.
+PAUSE_GRACE_SECONDS = 60
 
 
 def complete_task(
@@ -174,7 +178,8 @@ def get_parked_ai_tasks(instance_name: str) -> list:
 
 
 def get_suspended_ai_tasks(instance_name: str) -> list:
-	"""The agents of this instance suspended waiting for a person, as {bpmn_id, human_task_id, human_task_label}."""
+	"""The suspended agents of this instance: the person, sandbox run or delegation each waits on,
+	and whether that answer already arrived without waking it (stuck)."""
 	if not instance_name:
 		frappe.throw(_("instance_name is required"))
 
@@ -184,7 +189,7 @@ def get_suspended_ai_tasks(instance_name: str) -> list:
 	runs = frappe.get_list(
 		"AI Agent Run",
 		filters={"instance": instance_name, "status": "Suspended"},
-		fields=["bpmn_id", "pending_human_task"],
+		fields=["name", "bpmn_id", "pending_human_task", "suspended_at", "checkpoint"],
 	)
 	labels = {
 		row.task_id: row.task_name
@@ -196,9 +201,77 @@ def get_suspended_ai_tasks(instance_name: str) -> list:
 			"bpmn_id": r.bpmn_id,
 			"human_task_id": r.pending_human_task or "",
 			"human_task_label": labels.get(r.pending_human_task, ""),
+			"agent_run": r.name,
+			"suspended_at": r.suspended_at,
+			**suspended_wait(r),
 		}
 		for r in runs
 	]
+
+
+def suspended_wait(run) -> dict:
+	"""What a Suspended AI Agent Run waits on, read from its checkpoint, and whether that answer is stuck."""
+	checkpoint = frappe.parse_json(run.checkpoint or "{}") or {}
+	deferred = (checkpoint.get("suspension") or {}).get("deferred_wait") or {}
+	if deferred.get("run"):
+		return _sandbox_wait(run, deferred)
+	if deferred.get("a2a_task"):
+		return _a2a_wait(run, deferred)
+	return {
+		"waits_on": "human",
+		"wait_label": "",
+		"wait_name": "",
+		"wait_state": "",
+		"answered_at": None,
+		"stuck": False,
+	}
+
+
+def _sandbox_wait(run, deferred: dict) -> dict:
+	"""A wait on an Agent Sandbox Run: its latest retry stands for it; a scheduled retry is no answer."""
+	from processa.api.agent_callback import attempt_chain, settled_attempt
+
+	latest = frappe.db.get_value(
+		"Agent Sandbox Run", attempt_chain(deferred["run"])[-1], ["name", "action", "state"], as_dict=True
+	)
+	settled = settled_attempt(deferred["run"])
+	return _wait(
+		"agent_sandbox",
+		deferred.get("label") or latest.action,
+		latest.name,
+		latest.state,
+		settled.completed_at if settled else None,
+		run.suspended_at,
+	)
+
+
+def _a2a_wait(run, deferred: dict) -> dict:
+	"""A wait on an A2A Task delegated to another agent; a terminal state is its answer."""
+	from processa.processa_engine.runtime.remote_waits import A2A_TERMINAL_STATES
+
+	task = frappe.db.get_value(
+		"A2A Task", deferred["a2a_task"], ["name", "state", "completed_at", "modified"], as_dict=True
+	)
+	answered_at = (task.completed_at or task.modified) if task.state in A2A_TERMINAL_STATES else None
+	return _wait(
+		"a2a", deferred.get("label") or task.name, task.name, task.state, answered_at, run.suspended_at
+	)
+
+
+def _wait(waits_on: str, label: str, name: str, state: str, answered_at, suspended_at) -> dict:
+	"""One wait; stuck once its answer and the suspension are both older than PAUSE_GRACE_SECONDS."""
+	stuck = bool(answered_at) and (
+		time_diff_in_seconds(now_datetime(), max(get_datetime(answered_at), get_datetime(suspended_at)))
+		> PAUSE_GRACE_SECONDS
+	)
+	return {
+		"waits_on": waits_on,
+		"wait_label": label,
+		"wait_name": name,
+		"wait_state": state,
+		"answered_at": answered_at,
+		"stuck": stuck,
+	}
 
 
 def retry_ai_task(instance_name: str, task_id: str, kind: str = "service_task") -> dict:
