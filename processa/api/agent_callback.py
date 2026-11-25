@@ -40,6 +40,8 @@ from processa.ai_agent_observability.observability import record_ai_step
 from processa.processa_engine.agent_runtime.job_limits import AI_AGENT_JOB_TIMEOUT
 from processa.agents_sandbox.doctype.agent_sandbox_run.agent_sandbox_run import bounded_error
 
+CALLER_FIELDS = ("caller_instance", "caller_wf_task_id", "caller_agent_run", "resume_enqueued")
+
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 def report_result() -> dict:
@@ -144,8 +146,16 @@ def _settle(run, payload: dict) -> dict:
 		if ops.retry_eligible(run) and ops.retry_dispatch(run, delay=step["delay"]):
 			return {"accepted": True}
 
+	_lock_caller(run)
 	enqueue_resume(run)
 	return {"accepted": True}
+
+
+def _lock_caller(run) -> None:
+	"""Re-read who waits on this run under a row lock, so a binding committed after loading is seen."""
+	run.update(
+		frappe.db.get_value("Agent Sandbox Run", run.name, CALLER_FIELDS, as_dict=True, for_update=True)
+	)
 
 
 def _run_action(run) -> str:
@@ -362,6 +372,38 @@ def _record_sandbox_trace(agent_run, trace: list) -> None:
 		)
 
 
+def resume_if_settled(run_name: str) -> None:
+	"""Resume the waiting agent when its run, or the latest retry of it, settled before the binding."""
+	run = settled_attempt(run_name, for_update=True)
+	if run and not run.resume_enqueued:
+		enqueue_resume(run)
+
+
+def settled_attempt(run_name: str, for_update: bool = False):
+	"""The latest attempt of a run once settled; None while it runs or a delayed retry is scheduled."""
+	run = frappe.get_doc("Agent Sandbox Run", attempt_chain(run_name)[-1], for_update=for_update)
+	if run.state not in ("completed", "failed"):
+		return None
+	if run.state == "failed" and _retry_scheduled(run):
+		return None
+	return run
+
+
+def attempt_chain(run_name: str) -> list[str]:
+	"""The run and every retry the supervisor sent after it, oldest first."""
+	chain = [run_name]
+	while retry := frappe.db.get_value("Agent Sandbox Run", {"retry_of": chain[-1]}, "name"):
+		chain.append(retry)
+	return chain
+
+
+def _retry_scheduled(run) -> bool:
+	"""Whether the supervisor scheduled a delayed retry of this failed run that has no row yet."""
+	from processa.agents_sandbox.sandbox import ops
+
+	return ops.retry_eligible(run) and ops.supervisor.next_step(run)["delay"] > 0
+
+
 def enqueue_resume(run) -> None:
 	"""Two shapes of caller, one entry point — mirrors tasks.py's
 	_wake_a2a_caller exactly, for the same reason:
@@ -421,6 +463,7 @@ def _resume_waiting_agent(run) -> None:
 		task_id=payload.get("wf_task_id") or run.caller_wf_task_id or "",
 		run_as_user="Administrator",
 	)
+	run.db_set("resume_enqueued", 1, update_modified=False)
 
 
 def _sandbox_run_answer(run) -> str:

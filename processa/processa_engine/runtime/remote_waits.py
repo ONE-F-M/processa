@@ -61,21 +61,26 @@ def bind_agent_sandbox_wait(instance, task, marker: dict) -> None:
 
 	agent_callback reads caller_agent_run before caller_wf_task_id, so here the latter holds this task's own id.
 	"""
+	from processa.api.agent_callback import attempt_chain, resume_if_settled
+
 	run_name = marker.get("agent_sandbox_run")
 	agent_run_name = marker.get("run") or ""
 	if not run_name:
 		return
 	try:
-		frappe.db.set_value(
-			"Agent Sandbox Run",
-			run_name,
-			{
-				"caller_agent_run": agent_run_name or None,
-				"caller_instance": instance.name,
-				"caller_wf_task_id": str(getattr(task, "id", "") or ""),
-			},
-			update_modified=False,
-		)
+		for name in attempt_chain(run_name):
+			frappe.db.set_value(
+				"Agent Sandbox Run",
+				name,
+				{
+					"caller_agent_run": agent_run_name or None,
+					"caller_instance": instance.name,
+					"caller_wf_task_id": str(getattr(task, "id", "") or ""),
+				},
+				update_modified=False,
+			)
+		# A run that settled before this binding found no one to wake from its callback.
+		resume_if_settled(run_name)
 	except Exception:
 		frappe.log_error(
 			title=f"Dev Agent Sandbox: could not bind the run to its waiting agent ({run_name})",
