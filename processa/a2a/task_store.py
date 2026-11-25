@@ -66,7 +66,12 @@ def refresh_state(task) -> None:
 	if task.state in a2a_contract.terminal_states():
 		return
 
-	if task.agent_run:
+	if task.instance and not task.conversation:
+		# A map the task started: the instance IS the delegation. Its agent_run is only the suspended run the task last pointed
+		# at, and an AI step in the map can fail while the map carries on (Sonnet errors, the map retries on Opus), so that run
+		# must not decide the task's state. Only the instance failing, or ending, does.
+		_refresh_from_instance(task)
+	elif task.agent_run:
 		_refresh_from_run(task)
 	elif task.instance:
 		_refresh_from_instance(task)
