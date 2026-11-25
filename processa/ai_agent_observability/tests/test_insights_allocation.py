@@ -324,16 +324,13 @@ class TestInsightsAllocation(FrappeTestCase):
 		self.assertEqual([n["label"] for n in agents], ["Logix", "Docu", "General Chat"])
 		self.assertEqual([c["kind"] for c in agents[0]["children"]], ["user", "user"])
 
-	def test_a_crowded_department_lists_the_heaviest_and_counts_the_rest(self):
+	def test_a_crowded_department_lists_every_user_in_its_own_row(self):
 		tree = _tree(axis="chat_user", group_by="department", from_date=B_FROM, to_date=B_TO)
 		hr = next(n for n in tree if n["label"] == HR)
 		self.assertEqual(hr["users"], 9)
-		self.assertEqual([c["kind"] for c in hr["children"]],
-		                 ["user"] * 5 + ["more"])
-		rest = hr["children"][-1]
-		self.assertEqual(rest["count"], 4)
-		self.assertEqual(rest["children"], [])
-		self.assertEqual(flt(rest["cost"], 2), 10.0)  # 4 + 3 + 2 + 1
+		self.assertEqual([c["kind"] for c in hr["children"]], ["user"] * 9)
+		costs = [c["cost"] for c in hr["children"]]
+		self.assertEqual(costs, sorted(costs, reverse=True))
 		self.assertAlmostEqual(hr["cost"], sum(c["cost"] for c in hr["children"]), places=6)
 
 	def test_chat_totals_report_seats_against_the_people_using_them(self):

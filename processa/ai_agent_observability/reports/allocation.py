@@ -42,8 +42,8 @@ ALLOCATION_LEVELS = {
 
 DEFAULT_GROUP_BY = "department"
 
-# Chat users listed under a parent before the rest fold into one "more" node.
-MAX_PEER_NODES = 5
+# How many of the heaviest chat users the "top 5 share" tile adds up. Every user still gets its own row in the tree.
+TOP_USERS_FOR_SHARE = 5
 
 # Holders of this role are the chat seats; without it, active employees with a login are.
 CHAT_SEAT_ROLE = "Chat User"
@@ -145,12 +145,7 @@ def _allocation_tree(agg: dict, previous: dict, total_cost: float, axis: str) ->
 
 	def nodes_of(parent: tuple) -> list:
 		paths = sorted(children.get(parent, ()), key=lambda p: (-agg[p]["cost"], agg[p]["label"]))
-		out = [node_of(p) for p in paths]
-		too_many_users = len(out) > MAX_PEER_NODES and out[0]["kind"] == "user"
-		if parent and too_many_users:
-			out, rest = out[:MAX_PEER_NODES], out[MAX_PEER_NODES:]
-			out.append(_more_node(rest, total_cost))
-		return out
+		return [node_of(p) for p in paths]
 
 	def node_of(path: tuple) -> dict:
 		a = agg[path]
@@ -184,38 +179,6 @@ def _allocation_tree(agg: dict, previous: dict, total_cost: float, axis: str) ->
 		return node
 
 	return nodes_of(())
-
-
-def _more_node(rest: list, total_cost: float) -> dict:
-	"""The tail of a long peer list, as one row that still carries its money."""
-	cost = flt(sum(n["cost"] for n in rest), 6)
-	previous_cost = flt(sum(n["previous_cost"] for n in rest), 6)
-	node = {
-		"kind": "more",
-		"key": "",
-		"label": _("{0} more").format(len(rest)),
-		"count": len(rest),
-		"department": "",
-		"runs": sum(n["runs"] for n in rest),
-		"tokens": sum(n["tokens"] for n in rest),
-		"cost": cost,
-		"share": _share(cost, total_cost),
-		"previous_cost": previous_cost,
-		"delta": _delta(cost, previous_cost),
-		"by_bucket": _sum_series(rest, "by_bucket"),
-		"by_month": _sum_series(rest, "by_month"),
-		"children": [],
-	}
-	node["conversations"] = sum(n["conversations"] for n in rest)
-	return node
-
-
-def _sum_series(nodes: list, key: str) -> dict:
-	out = {}
-	for node in nodes:
-		for bucket, cost in node[key].items():
-			out[bucket] = flt(out.get(bucket, 0.0) + cost, 6)
-	return out
 
 
 def _chat_seats() -> int:
@@ -274,7 +237,7 @@ def _allocation_totals(axis: str, leaves: list, from_d, to_d, filters: list) -> 
 				by_department[leaf["department_label"]] += leaf["cost"]
 			if leaf["person"]:
 				by_user[leaf["person"]] += leaf["cost"]
-		top5 = sorted(by_user.values(), reverse=True)[:MAX_PEER_NODES]
+		top5 = sorted(by_user.values(), reverse=True)[:TOP_USERS_FOR_SHARE]
 		top_department = max(by_department.items(), key=lambda kv: kv[1]) if by_department else ("", 0.0)
 		totals.update({
 			"active_users": now["users"],
