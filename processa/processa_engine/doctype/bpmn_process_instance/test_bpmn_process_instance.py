@@ -178,6 +178,15 @@ class TestDispatchUpdateField(BaseBPMNHelperTest):
 			frappe.db.get_value("ToDo", todo.name, "description"), "From TEST-PI-XYZ"
 		)
 
+	def test_update_field_now_writes_the_current_time(self):
+		todo = self._make_todo()
+		inst = make_instance(context_docname=todo.name)
+		cfg = {"updateFieldDoctype": "ToDo", "updateFieldRows": json.dumps([{"field": "date", "value": "now"}])}
+
+		call_dispatch_update_field(inst, FakeTask(), cfg, "task_1")
+
+		self.assertEqual(str(frappe.db.get_value("ToDo", todo.name, "date")), frappe.utils.today())
+
 	def test_update_field_missing_context_is_noop(self):
 		inst = make_instance(context_docname=None)
 		cfg = {"updateFieldRows": json.dumps([{"field": "priority", "value": "High"}])}

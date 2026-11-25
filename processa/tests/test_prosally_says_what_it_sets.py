@@ -1,6 +1,8 @@
 # Copyright (c) 2026, one-fm and contributors
 # For license information, please see license.txt
 
+from itertools import pairwise
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
@@ -71,6 +73,42 @@ class TestTheReplyListsWhatWasSet(FrappeTestCase):
 	def test_a_task_waiting_for_an_assignee_says_so(self):
 		xml = _diagram().replace(' spiffworkflow:assigneeDocfield="supervisor"', "")
 		self.assertIn("Review Incident works on the Incident Report, has no one chosen to do it yet", describe_task_config(xml))
+
+
+class TestTheReplyNamesSettingsItLeftOut(FrappeTestCase):
+	def test_a_value_the_field_cannot_hold_is_named_with_its_step(self):
+		mark = {
+			"id": "mark",
+			"type": "serviceTask",
+			"name": "Mark Started",
+			"lane": "supervisor",
+			"config": {
+				"serviceType": "update_field",
+				"updateFieldDoctype": "ToDo",
+				"updateFieldRows": [{"field": "status", "value": "Pre-Start"}],
+			},
+		}
+		steps = [START, mark, END]
+		result = compile_ir({
+			"process": {"id": "incident", "name": "Incident Handling"},
+			"lanes": [{"id": "staff", "name": "Staff"}, {"id": "supervisor", "name": "Supervisor"}],
+			"nodes": [dict(step) for step in steps],
+			"flows": [{"from": a["id"], "to": b["id"]} for a, b in pairwise(steps)],
+		})
+		text = describe_task_config(result["xml"], problems=result["problems"])
+		self.assertIn("- Mark Started: 'Pre-Start' is not an option of status on ToDo. Allowed: Open, Closed, Cancelled.", text)
+		self.assertNotIn("updateFieldRows", result["xml"])
+
+	def test_a_new_script_task_is_named_with_what_it_needs(self):
+		xml = (
+			'<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="d"><bpmn:process id="p">'
+			'<bpmn:scriptTask id="calc" name="Compute SLA Trigger Time" /></bpmn:process></bpmn:definitions>'
+		)
+		self.assertIn("Compute SLA Trigger Time is a Script Task, so it needs a script.", describe_task_config(xml))
+		self.assertEqual(describe_task_config(xml, xml), "")
+
+	def test_no_config_problem_adds_nothing(self):
+		self.assertEqual(describe_task_config("", problems=[{"kind": "layout", "rule": "edge-crossing", "elementId": "", "message": "x"}]), "")
 
 
 class TestThePatch(FrappeTestCase):

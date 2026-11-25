@@ -1,6 +1,8 @@
 # Copyright (c) 2026, one-fm and contributors
 """Deploy readiness checklist: what a BPMN map needs on this site before it can run."""
 
+import json
+
 from lxml import etree as ET
 import frappe
 from frappe import _
@@ -402,6 +404,10 @@ def check_readiness(xml_content: str, model_name: str = None) -> dict:
 	if sender_category:
 		categories.append(sender_category)
 
+	field_value_category = _update_field_value_category(xml_content, refs["root"])
+	if field_value_category:
+		categories.append(field_value_category)
+
 	user_task_category = _user_task_config_category(xml_content)
 	if user_task_category:
 		categories.append(user_task_category)
@@ -440,6 +446,39 @@ def _user_task_config_category(xml_content: str) -> dict | None:
 		for _bpmn_id, message in gaps
 	]
 	return {"label": _("User Task Configuration"), "icon": "user-check", "items": items}
+
+
+def _update_field_value_category(xml_content: str, root) -> dict | None:
+	"""The Field Values readiness category, one warning per Update Field value its field cannot hold, or None."""
+	from processa.ai_agent_registry.provisioning.bpmn_task_config import update_field_value_problem
+	from processa.processa_engine.compiler.extensions import extract_service_task_config
+
+	found = []
+	for bpmn_id, cfg in extract_service_task_config(xml_content).items():
+		if cfg.get("serviceType") != "update_field":
+			continue
+		doctype = cfg.get("updateFieldDoctype")
+		if not doctype:
+			continue
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		try:
+			rows = json.loads(cfg.get("updateFieldRows") or "[]")
+		except ValueError:
+			rows = None
+		if not isinstance(rows, list):
+			found.append((bpmn_id, _("Its Field Updates are not a list of field and value rows, so it writes nothing.")))
+			continue
+		for row in rows:
+			message = isinstance(row, dict) and update_field_value_problem(doctype, row.get("field") or "", row.get("value"))
+			if message:
+				found.append((bpmn_id, message))
+	if not found:
+		return None
+	ids = list(dict.fromkeys(bpmn_id for bpmn_id, _message in found))
+	names = dict(zip(ids, _step_names(root, ids), strict=True))
+	items = [{"name": names[bpmn_id], "exists": True, "type": "warning", "detail": message} for bpmn_id, message in found]
+	return {"label": _("Field Values"), "icon": "columns-3", "items": items}
 
 
 def _email_settings_category(xml_content: str, root) -> dict | None:
