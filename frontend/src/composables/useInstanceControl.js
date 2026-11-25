@@ -6,13 +6,13 @@ import { serverMessage } from "@/utils/serverMessage"
 export function useInstanceControl() {
 	const busy = ref("")
 
-	async function runControl(method, instanceName, reason = "") {
+	async function runControl(method, instanceName, reason = "", extra = {}) {
 		busy.value = method
 		try {
 			return await frappeRequest({
 				url: `/api/method/processa.api.instances.${method}`,
 				method: "POST",
-				params: { instance_name: instanceName, reason },
+				params: { instance_name: instanceName, reason, ...extra },
 			})
 		} catch (e) {
 			throw new Error(serverMessage(e))

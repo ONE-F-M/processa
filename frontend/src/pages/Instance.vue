@@ -65,6 +65,14 @@
 					</button>
 				</div>
 
+				<InstancePausedAgentBanner
+					v-if="pausedAgents.length"
+					:instance-name="instanceId"
+					:agents="pausedAgents"
+					@changed="loadDetails"
+					@notice="controlNotice = $event"
+				/>
+
 				<!-- Result of a header control (retry, resume, suspend, cancel) that needs the user's attention -->
 				<div
 					v-if="controlNotice"
@@ -132,6 +140,7 @@ import BpmnDiagramViewer from "@/components/Instances/BpmnDiagramViewer/BpmnDiag
 import InstanceHistory from "@/components/Instances/InstanceHistory/InstanceHistory.vue"
 import ElementInspector from "@/components/Instances/ElementInspector/ElementInspector.vue"
 import PendingActions from "@/components/Instances/PendingActions/PendingActions.vue"
+import InstancePausedAgentBanner from "@/components/Instances/InstancePausedAgentBanner/InstancePausedAgentBanner.vue"
 
 const route = useRoute()
 const instanceId = computed(() => route.params.instance)
@@ -583,9 +592,11 @@ const waitingAiMap = computed(() => {
 // ── Suspended agents waiting for a human (Durable AI Agent HITL) ──
 const suspendedAiTasks = ref([])
 const waitingForHuman = computed(() => details.value?.waiting_for_human || "")
+// An agent paused on a sandbox run or a delegation sets no instance field, so an Active instance is always asked.
+const pausedAgents = computed(() => suspendedAiTasks.value.filter((s) => s.waits_on && s.waits_on !== "human"))
 
 async function loadSuspendedAiTasks() {
-	if (!waitingForHuman.value) {
+	if (!waitingForHuman.value && details.value?.status !== "Active") {
 		suspendedAiTasks.value = []
 		return
 	}

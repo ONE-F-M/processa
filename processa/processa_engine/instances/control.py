@@ -61,6 +61,62 @@ def resume_instance(instance_name: str, reason: str = "") -> dict:
 	return {"instance": instance_name, "status": instance.status}
 
 
+def resume_suspended_agent(instance_name: str, agent_run: str, reason: str = "") -> dict:
+	"""Give a suspended agent the sandbox result or delegated answer that arrived without waking it."""
+	instance = _instance_for_recovery(instance_name)
+	if instance.status != "Active":
+		frappe.throw(
+			_('Instance "{0}" is {1}. Only an Active instance can resume an agent.').format(
+				instance_name, instance.status
+			)
+		)
+	run = frappe.db.get_value(
+		"AI Agent Run", agent_run, ["name", "instance", "status", "suspended_at", "checkpoint"], as_dict=True
+	)
+	if not run or run.instance != instance_name or run.status != "Suspended":
+		frappe.throw(_("Agent run {0} is not paused in this instance.").format(agent_run))
+
+	wait = task_actions.suspended_wait(run)
+	if not wait["stuck"]:
+		frappe.throw(_not_stuck_reason(wait))
+	_wake(wait)
+	instance.log_operator_action(
+		"Resumed",
+		reason or _("Agent run {0} was given the answer from {1}.").format(agent_run, wait["wait_name"]),
+	)
+	return {"instance": instance_name, "agent_run": agent_run, "resumed_with": wait["wait_name"]}
+
+
+def _not_stuck_reason(wait: dict) -> str:
+	"""Why a suspended agent cannot be resumed from here."""
+	if wait["waits_on"] == "human":
+		return _("This agent waits for a person. Complete its task instead.")
+	if not wait["answered_at"]:
+		return _("This agent's answer has not arrived yet ({0} is {1}).").format(
+			wait["wait_name"], wait["wait_state"]
+		)
+	return _("This agent's answer arrived less than a minute ago. Give it a moment to resume by itself.")
+
+
+def _wake(wait: dict) -> None:
+	"""Hand the arrived answer to the suspended agent the same way its own callback would have."""
+	if wait["waits_on"] == "agent_sandbox":
+		from processa.api.agent_callback import enqueue_resume
+
+		enqueue_resume(frappe.get_doc("Agent Sandbox Run", wait["wait_name"], for_update=True))
+		return
+	from processa.a2a.poller import wake_caller_if_any
+
+	wake_caller_if_any(
+		frappe.db.get_value(
+			"A2A Task",
+			wait["wait_name"],
+			["name", "caller_instance", "caller_wf_task_id", "caller_agent_run", "wf_task_id"],
+			as_dict=True,
+		)
+	)
+
+
 def retry_failed_step(instance_name: str, reason: str = "") -> dict:
 	"""Run an Errored instance again from its last saved state, so the step that failed runs again."""
 	instance = _instance_for_recovery(instance_name)

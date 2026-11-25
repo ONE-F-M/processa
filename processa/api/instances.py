@@ -131,6 +131,12 @@ def resume_instance(instance_name: str, reason: str = "") -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
+def resume_suspended_agent(instance_name: str, agent_run: str, reason: str = "") -> dict:
+	"""Give a paused agent the answer that arrived without waking it."""
+	return control.resume_suspended_agent(instance_name, agent_run, reason)
+
+
+@frappe.whitelist(methods=["POST"])
 def retry_failed_step(instance_name: str, reason: str = "") -> dict:
 	"""Run an Errored instance again from its last saved state."""
 	return control.retry_failed_step(instance_name, reason)
