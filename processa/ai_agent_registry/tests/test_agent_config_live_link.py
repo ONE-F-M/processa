@@ -7,6 +7,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_registry.provisioning.agent_config_resolver import (
 	_refuse_roles_the_editor_does_not_hold,
+	config_field_map,
 	config_static_context,
 	grantable_roles,
 	resolve_dispatch_overrides,
@@ -108,6 +109,37 @@ class TestAgentConfigLiveLink(FrappeTestCase):
 			("required", 0, 2048, "submit_plan"),
 		)
 
+	def test_write_back_sets_effort_on_the_agent_and_on_a_stage_without_touching_its_prompt(self):
+		doc = frappe.get_doc("AI Agent Configuration", TEST_CONFIG)
+		doc.set("sub_prompts", [])
+		doc.append("sub_prompts", {"sub_agent_id": "writer", "sub_agent_name": "Writer", "prompt_text": "Write."})
+		doc.save()
+
+		result = update_agent_config_from_shape(
+			TEST_CONFIG,
+			{"aiEffort": "high", "aiStageEfforts": [{"sub_agent_id": "writer", "effort": "low"}]},
+		)
+
+		self.assertIn("effort", result["updated"])
+		self.assertIn("sub_prompts", result["updated"])
+		self.assertEqual(config_field_map(TEST_CONFIG)["aiEffort"], "high")
+		stage = frappe.get_doc("AI Agent Configuration", TEST_CONFIG).sub_prompts[0]
+		self.assertEqual((stage.effort, stage.prompt_text), ("low", "Write."))
+		self.assertEqual(
+			config_static_context(TEST_CONFIG)["aiStageEfforts"],
+			[{"sub_agent_id": "writer", "sub_agent_name": "Writer", "effort": "low"}],
+		)
+
+	def test_a_stage_effort_that_is_not_a_level_is_refused(self):
+		doc = frappe.get_doc("AI Agent Configuration", TEST_CONFIG)
+		doc.set("sub_prompts", [])
+		doc.append("sub_prompts", {"sub_agent_id": "writer", "prompt_text": "Write."})
+		doc.save()
+		with self.assertRaises(frappe.ValidationError):
+			update_agent_config_from_shape(
+				TEST_CONFIG, {"aiStageEfforts": [{"sub_agent_id": "writer", "effort": "extreme"}]}
+			)
+
 	def test_write_back_no_change_is_noop(self):
 		prompt = frappe.db.get_value("AI Agent Configuration", TEST_CONFIG, "system_prompt")
 		result = update_agent_config_from_shape(TEST_CONFIG, {"aiSystemPrompt": prompt})
@@ -180,7 +212,7 @@ class TestTheModalCanEditWhatTheAgentMayDo(FrappeTestCase):
 		NameError — so opening the modal before picking an agent broke it."""
 		self.assertEqual(
 			config_static_context(""),
-			{"aiExamples": [], "aiGuardrails": [], "aiSkills": [], "aiAgentRoles": []},
+			{"aiExamples": [], "aiGuardrails": [], "aiSkills": [], "aiAgentRoles": [], "aiStageEfforts": []},
 		)
 
 	# ── writing ──────────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ from frappe import _
 from frappe.utils import cint, cstr, flt
 
 from processa.ai_agent_registry.provisioning.agent_provisioning import is_chat_startable_map
+from processa.processa_engine.agent_runtime.llm_types import EFFORT_LEVELS
 
 # Which config field feeds which shape attribute. Only executable fields
 # with a task-shape equivalent are mapped; chat-only metadata (chat mode
@@ -71,6 +72,7 @@ CONFIG_TO_SHAPE = {
 	"tool_choice": "aiToolChoice",
 	"parallel_tool_calls": "aiParallelToolCalls",
 	"thinking_budget_tokens": "aiThinkingBudgetTokens",
+	"effort": "aiEffort",
 	"terminal_tools": "aiTerminalTools",
 }
 
@@ -97,6 +99,8 @@ _SHAPE_TO_CONFIG = {
 	"aiToolChoice": "tool_choice",
 	"aiParallelToolCalls": "parallel_tool_calls",
 	"aiThinkingBudgetTokens": "thinking_budget_tokens",
+	"aiEffort": "effort",
+	"aiThinkingMinTokens": "thinking_min_tokens",
 	"aiTerminalTools": "terminal_tools",
 	**ZERO_MEANS_UNSET,
 	# The modal's Memory section now persists here instead of onto
@@ -200,6 +204,9 @@ def _clean_skill_rows(rows: list[dict]) -> list[dict]:
 # question the person designing the agent is the one asking.
 _ROLE_SHAPE_ATTR = "aiAgentRoles"
 _ROLE_FIELDS = ("role",)
+# The agent's stages (its sub-prompts) with the effort each runs at; only the effort is editable here.
+_STAGE_SHAPE_ATTR = "aiStageEfforts"
+_STAGE_FIELDS = ("sub_agent_id", "sub_agent_name", "effort")
 
 
 def _clean_role_rows(rows: list[dict]) -> list[dict]:
@@ -359,6 +366,7 @@ def config_static_context(config_name: str) -> dict:
 			_GUARDRAIL_SHAPE_ATTR: [],
 			_SKILL_SHAPE_ATTR: [],
 			_ROLE_SHAPE_ATTR: [],
+			_STAGE_SHAPE_ATTR: [],
 		}
 	cfg = frappe.get_doc("AI Agent Configuration", config_name)
 	# Every table the modal may edit has to come back, or the modal opens with an
@@ -369,6 +377,7 @@ def config_static_context(config_name: str) -> dict:
 		_GUARDRAIL_SHAPE_ATTR: _rows_for_shape(cfg, "guardrails", _GUARDRAIL_FIELDS),
 		_SKILL_SHAPE_ATTR: _rows_for_shape(cfg, "enabled_skills", _SKILL_FIELDS),
 		_ROLE_SHAPE_ATTR: _rows_for_shape(cfg, "agent_roles", _ROLE_FIELDS),
+		_STAGE_SHAPE_ATTR: _rows_for_shape(cfg, "sub_prompts", _STAGE_FIELDS),
 	}
 
 
@@ -439,6 +448,8 @@ def config_field_map(config_name: str) -> dict:
 		out["aiLoopCompactionKeepTurns"] = cint(cfg.get("loop_compaction_keep_turns")) or 8
 	if cint(cfg.get("run_token_budget")):
 		out["aiRunTokenBudget"] = cfg.run_token_budget
+	if cint(cfg.get("thinking_min_tokens")):
+		out["aiThinkingMinTokens"] = cfg.thinking_min_tokens
 	if flt(cfg.get("run_cost_budget")):
 		out["aiRunCostBudget"] = cfg.run_cost_budget
 	for sattr, cfield in ZERO_MEANS_UNSET.items():
@@ -779,6 +790,7 @@ def update_agent_config_from_shape(config_name: str, fields: str | dict) -> dict
 			"sandbox_retry_on_test_failure",
 			"require_reproduction",
 			"thinking_budget_tokens",
+			"thinking_min_tokens",
 			"loop_compaction_threshold",
 			"loop_compaction_keep_turns",
 		):
@@ -832,6 +844,9 @@ def update_agent_config_from_shape(config_name: str, fields: str | dict) -> dict
 			doc.append(table, row)
 		changed.append(table)
 
+	if _set_stage_efforts(doc, fields.get(_STAGE_SHAPE_ATTR)):
+		changed.append("sub_prompts")
+
 	if not changed:
 		return {"ok": True, "updated": [], "reprovisioned": False}
 
@@ -844,6 +859,23 @@ def update_agent_config_from_shape(config_name: str, fields: str | dict) -> dict
 		reprovisioned = start_reprovision(doc.name)
 
 	return {"ok": True, "updated": changed, "reprovisioned": reprovisioned}
+
+
+def _set_stage_efforts(doc, rows) -> bool:
+	"""Set the effort of each sub-prompt the rows name, leaving its prompt alone; True when one changed."""
+	wanted = {r.get("sub_agent_id"): (r.get("effort") or "") for r in rows or []}
+	changed = False
+	for row in doc.get("sub_prompts") or []:
+		effort = wanted.get(row.sub_agent_id)
+		if effort is None:
+			continue
+		if effort == (row.get("effort") or ""):
+			continue
+		if effort and effort not in EFFORT_LEVELS:
+			frappe.throw(_("'{0}' is not an effort level. Use one of: {1}").format(effort, ", ".join(EFFORT_LEVELS)))
+		row.effort = effort
+		changed = True
+	return changed
 
 
 # The create endpoint's payload contract as DATA: the AI Assistant
@@ -1175,7 +1207,7 @@ def model_catalogue() -> list:
 	rows = frappe.get_all(
 		"AI Model",
 		filters={"enable_model": 1},
-		fields=["name", "provider", "model_api_name", "model_name", "support_temperature"],
+		fields=["name", "provider", "model_api_name", "model_name", "support_temperature", "support_effort"],
 		order_by="name asc",
 	)
 	for row in rows:

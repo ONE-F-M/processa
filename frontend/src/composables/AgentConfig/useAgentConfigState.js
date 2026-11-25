@@ -112,6 +112,11 @@ export function createAgentConfigContext(props, emit) {
 		aiToolChoice: "",
 		aiParallelToolCalls: true,
 		aiThinkingBudgetTokens: 0,
+		// "" leaves the model's own default; the stage rows are the agent's sub-prompts.
+		aiEffort: "",
+		// The least Max Tokens a call gets on a model that thinks; 0 uses the platform's 8,192.
+		aiThinkingMinTokens: 0,
+		aiStageEfforts: [],
 		aiTerminalTools: "",
 		aiSandboxUseJob: false,
 		aiSandboxRetryOnTestFailure: true,

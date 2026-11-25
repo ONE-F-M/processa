@@ -53,6 +53,7 @@ class AIAgentConfiguration(Document):
 		conversation_store: DF.Literal["", "process_variable", "document_store", "custom"]
 		delegation_deadline_minutes: DF.Int
 		description: DF.SmallText | None
+		effort: DF.Literal["", "low", "medium", "high", "xhigh", "max"]
 		enabled: DF.Check
 		enabled_skills: DF.Table[AIAgentEnabledSkill]
 		examples: DF.Table[AIAgentExample]
@@ -105,6 +106,7 @@ class AIAgentConfiguration(Document):
 		temperature: DF.Float
 		terminal_tools: DF.Data | None
 		thinking_budget_tokens: DF.Int
+		thinking_min_tokens: DF.Int
 		timeout_seconds: DF.Int
 		tool_choice: DF.Data | None
 		tool_result_max_chars: DF.Int
@@ -121,6 +123,7 @@ class AIAgentConfiguration(Document):
 		self.validate_a2a_exposure()
 		self.validate_memory_config()
 		self.validate_thinking_budget()
+		self.validate_thinking_minimum()
 		self.validate_loop_compaction()
 		self.validate_top_p()
 		self.warn_unsupported_temperature()
@@ -153,6 +156,22 @@ class AIAgentConfiguration(Document):
 			frappe.throw(
 				_("Thinking Budget Tokens must be 0, or at least 1,024 and below Max Tokens ({0}).").format(limit),
 				title=_("Invalid Thinking Budget"),
+			)
+
+	def validate_thinking_minimum(self):
+		"""On a model that thinks, Max Tokens covers Minimum Tokens When Thinking."""
+		from processa.processa_engine.agent_runtime.executor import DEFAULT_MAX_OUTPUT_TOKENS
+		from processa.processa_engine.agent_runtime.llm_factory import thinking_min_tokens
+
+		minimum = thinking_min_tokens(self.ai_model, self.get("thinking_min_tokens"))
+		limit = self.max_tokens or DEFAULT_MAX_OUTPUT_TOKENS
+		if limit < minimum:
+			frappe.throw(
+				_(
+					"Max Tokens ({0}) is below Minimum Tokens When Thinking ({1}). {2} thinks, and thinking counts "
+					"against Max Tokens. Raise Max Tokens or lower the minimum."
+				).format(limit, minimum, self.ai_model),
+				title=_("Max Tokens Too Low"),
 			)
 
 	def validate_loop_compaction(self):
@@ -615,6 +634,8 @@ def get_agent_config(agent_id: str) -> dict | None:
 		"system_prompt": doc.system_prompt,
 		"temperature": doc.temperature,
 		"max_tokens": doc.max_tokens,
+		"effort": doc.get("effort") or "",
+		"thinking_min_tokens": doc.get("thinking_min_tokens") or 0,
 		"ai_provider": doc.ai_provider,
 		"ai_model": doc.ai_model,
 		"langsmith_project": doc.langsmith_project,
@@ -624,7 +645,8 @@ def get_agent_config(agent_id: str) -> dict | None:
 		"lifecycle_status": doc.lifecycle_status,
 		"agent_type": doc.agent_type,
 		"sub_prompts": {
-			d.sub_agent_id: {"prompt": d.prompt_text, "temperature": d.temperature} for d in doc.sub_prompts
+			d.sub_agent_id: {"prompt": d.prompt_text, "temperature": d.temperature, "effort": d.get("effort") or ""}
+			for d in doc.sub_prompts
 		},
 		"constants": {
 			d.constant_name: _cast_constant(d.constant_value, d.constant_type) for d in doc.constants

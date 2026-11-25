@@ -32,6 +32,8 @@
   "tool_choice",
   "parallel_tool_calls",
   "thinking_budget_tokens",
+  "effort",
+  "thinking_min_tokens",
   "terminal_tools",
   "run_token_budget",
   "run_cost_budget",
@@ -289,6 +291,21 @@
    "fieldname": "thinking_budget_tokens",
    "fieldtype": "Int",
    "label": "Thinking Budget Tokens"
+  },
+  {
+   "description": "How hard the model thinks on each call. Blank uses the model's own default. Sent only to models that accept it.",
+   "fieldname": "effort",
+   "fieldtype": "Select",
+   "label": "Effort",
+   "options": "\nlow\nmedium\nhigh\nxhigh\nmax"
+  },
+  {
+   "default": "8192",
+   "description": "The least output room a call gets on a model that thinks, because thinking counts against Max Tokens. Max Tokens cannot be set below it.",
+   "fieldname": "thinking_min_tokens",
+   "fieldtype": "Int",
+   "label": "Minimum Tokens When Thinking",
+   "non_negative": 1
   },
   {
    "description": "Comma-separated tools that end the turn when called; their arguments are the reply. finalize always does.",

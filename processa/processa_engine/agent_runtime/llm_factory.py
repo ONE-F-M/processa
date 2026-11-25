@@ -3,6 +3,7 @@
 import frappe
 
 from processa.processa_engine.agent_runtime.llm_base import BaseLLMAdapter
+from processa.processa_engine.agent_runtime.llm_types import DEFAULT_THINKING_MIN_TOKENS
 
 _PROVIDER_DEFAULTS = {
 	"gemini": "gemini-2.0-flash",
@@ -136,7 +137,7 @@ def get_llm_adapter_from_settings(agent_config: dict | None = None) -> BaseLLMAd
 				api_key = model_api_key(model)
 			api_model = frappe.db.get_value("AI Model", model, "model_api_name") or model
 			return MeteredAdapter(
-				get_llm_adapter(provider=adapter_key, model=api_model, api_key=api_key or "")
+				_for_stage(get_llm_adapter(provider=adapter_key, model=api_model, api_key=api_key or ""), cfg, model)
 			)
 		except frappe.DoesNotExistError:
 			frappe.log_error(
@@ -162,7 +163,29 @@ def get_llm_adapter_from_settings(agent_config: dict | None = None) -> BaseLLMAd
 		)
 
 	api_model = frappe.db.get_value("AI Model", model, "model_api_name") or model
-	return MeteredAdapter(get_llm_adapter(provider=provider, model=api_model, api_key=api_key))
+	return MeteredAdapter(
+		_for_stage(get_llm_adapter(provider=provider, model=api_model, api_key=api_key), cfg, model)
+	)
+
+
+def _for_stage(adapter: BaseLLMAdapter, cfg: dict, model_name: str) -> BaseLLMAdapter:
+	"""The adapter carrying the config's effort and thinking minimum, when its AI Model thinks, and its stage name."""
+	adapter.effort = (cfg.get("effort") or "") if supports_effort(model_name) else ""
+	adapter.thinking_min_tokens = thinking_min_tokens(model_name, cfg.get("thinking_min_tokens"))
+	adapter.stage = cfg.get("stage") or cfg.get("name") or cfg.get("agent_id") or ""
+	return adapter
+
+
+def thinking_min_tokens(model_name: str, configured) -> int:
+	"""The least max_tokens a call on this AI Model gets: the configured minimum when the model thinks, else 0."""
+	if not supports_effort(model_name):
+		return 0
+	return frappe.utils.cint(configured) or DEFAULT_THINKING_MIN_TOKENS
+
+
+def supports_effort(model_name: str) -> bool:
+	"""True when the AI Model record says the model accepts an effort level."""
+	return bool(model_name and frappe.db.get_value("AI Model", model_name, "support_effort"))
 
 
 class MeteredAdapter:

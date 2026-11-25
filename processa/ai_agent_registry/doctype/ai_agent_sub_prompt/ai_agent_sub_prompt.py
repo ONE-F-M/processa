@@ -13,6 +13,7 @@ class AIAgentSubPrompt(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		effort: DF.Literal["", "low", "medium", "high", "xhigh", "max"]
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data

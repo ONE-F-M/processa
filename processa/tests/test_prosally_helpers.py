@@ -159,6 +159,27 @@ class TestModelCalls(FrappeTestCase):
 		self.assertEqual(calls[0], {"system": "You modify BPMN.", "user": "change it"})
 		self.assertEqual(calls[1], {"system": "custom", "user": "again", "max_tokens": 4096})
 
+	def test_a_stage_runs_at_its_own_effort_and_the_agents_when_it_has_none(self):
+		seen = []
+
+		class Adapter:
+			async def complete(self, **kwargs):
+				return SimpleNamespace(text="reply")
+
+		def adapter_for(cfg):
+			seen.append((cfg["effort"], cfg["stage"]))
+			return Adapter()
+
+		cfg = {
+			"name": "prosally",
+			"effort": "medium",
+			"sub_prompts": {"modifier": {"prompt": "p", "effort": "high"}, "explainer": {"prompt": "p", "effort": ""}},
+		}
+		with patch.object(helpers, "get_llm_adapter_from_settings", side_effect=adapter_for):
+			helpers.complete_sub_prompt(cfg, "modifier", "u")
+			helpers.complete_sub_prompt(cfg, "explainer", "u")
+		self.assertEqual(seen, [("high", "prosally / modifier"), ("medium", "prosally / explainer")])
+
 	def test_stage_system_prompt_appends_only_active_named_skills(self):
 		for name, status in (("_Test ProsAlly Rules", "Active"), ("_Test ProsAlly Draft", "Draft")):
 			if not frappe.db.exists("AI Skill", name):

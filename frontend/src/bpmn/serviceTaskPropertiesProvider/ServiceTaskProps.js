@@ -263,6 +263,8 @@ function ServiceTypeComponent(props) {
 			"spiffworkflow:aiTemperature":        undefined,
 			"spiffworkflow:aiTopP":               undefined,
 			"spiffworkflow:aiMaxTokens":          undefined,
+			"spiffworkflow:aiEffort":             undefined,
+			"spiffworkflow:aiThinkingMinTokens":  undefined,
 			"spiffworkflow:aiTimeout":            undefined,
 			"spiffworkflow:aiMaxRetries":         undefined,
 			"spiffworkflow:aiWriteBackField":     undefined,

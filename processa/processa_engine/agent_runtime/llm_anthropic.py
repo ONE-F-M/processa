@@ -1,7 +1,10 @@
 import re
 
+import frappe
+
 from processa.processa_engine.agent_runtime.llm_base import BaseLLMAdapter
 from processa.processa_engine.agent_runtime.llm_types import (
+	EFFORT_LEVELS,
 	LLMRefusedError,
 	LLMTruncatedError,
 	StepResult,
@@ -13,8 +16,6 @@ from processa.processa_engine.agent_runtime.structured_output import anthropic_o
 
 _NO_FORCED_TOOL_CHOICE = re.compile(r"-(?:opus|sonnet)-5-5|fable")
 _ADAPTIVE_THINKING = re.compile(r"-(?:sonnet|opus|haiku)-5(?:$|[^0-9])|fable")
-
-
 def _usage_tokens(response) -> tuple:
 	"""Real token counts for the turn."""
 	usage = getattr(response, "usage", None)
@@ -158,6 +159,7 @@ class AnthropicAdapter(BaseLLMAdapter):
 			messages[-1]["content"] = _split_cacheable_prefix(text["text"]) + images
 
 		thinking = bool(thinking_budget_tokens) and not _ADAPTIVE_THINKING.search(self._model.lower())
+		max_tokens = max(max_tokens, self.thinking_min_tokens)
 		kwargs: dict = {
 			"model": self._model,
 			"system": system_blocks,
@@ -180,14 +182,18 @@ class AnthropicAdapter(BaseLLMAdapter):
 			kwargs["top_p"] = top_p
 		elif temperature is not None:
 			kwargs["temperature"] = temperature
-		if response_schema:
-			kwargs["output_config"] = anthropic_output_config(response_schema)
+		output_config = anthropic_output_config(response_schema) if response_schema else {}
+		if self.effort in EFFORT_LEVELS:
+			output_config = {**output_config, "effort": self.effort}
+		if output_config:
+			kwargs["output_config"] = output_config
 
 		async with self._client.messages.stream(**kwargs) as stream:
 			await _forward_text(stream)
 			response = await stream.get_final_message()
 
 		if response.stop_reason == "max_tokens":
+			log_truncated(self.stage or self._model, max_tokens)
 			raise LLMTruncatedError(
 				f"The model hit its {max_tokens}-token output limit before "
 				"finishing. Raise Max Tokens on the agent configuration (or "
@@ -245,3 +251,11 @@ def _split_cacheable_prefix(user: str) -> list:
 		{"type": "text", "text": user[: match.start()].strip(), "cache_control": {"type": "ephemeral"}},
 		{"type": "text", "text": (match.group(1) + match.group(2)).strip()},
 	]
+
+
+def log_truncated(stage: str, max_tokens: int) -> None:
+	"""Record a reply cut off at its output cap, with the stage and the cap."""
+	frappe.log_error(
+		title=f"AI reply truncated: {stage}"[:140],
+		message=f"{stage} stopped at its {max_tokens}-token output cap (thinking tokens count against it).",
+	)

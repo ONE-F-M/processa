@@ -20,6 +20,8 @@ CONFIG_KEYS = {
 	"system_prompt",
 	"temperature",
 	"max_tokens",
+	"effort",
+	"thinking_min_tokens",
 	"ai_provider",
 	"ai_model",
 	"langsmith_project",
@@ -209,6 +211,8 @@ class TestAIAgentConfiguration(FrappeTestCase):
 				"system_prompt": "You are a test agent.",
 				"temperature": 0.5,
 				"max_tokens": 1000,
+				"effort": "",
+				"thinking_min_tokens": 8192,
 				"ai_provider": saved.ai_provider,
 				"ai_model": saved.ai_model,
 				"langsmith_project": "test-project",
@@ -217,7 +221,7 @@ class TestAIAgentConfiguration(FrappeTestCase):
 				"chat_mode_label": None,
 				"lifecycle_status": saved.lifecycle_status,
 				"agent_type": saved.agent_type,
-				"sub_prompts": {"analyzer": {"prompt": "Analyze the input carefully.", "temperature": 0.2}},
+				"sub_prompts": {"analyzer": {"prompt": "Analyze the input carefully.", "temperature": 0.2, "effort": ""}},
 				"constants": {"max_retries": 3, "threshold": 0.85, "verbose": True, "label": "hello"},
 				"examples": [
 					{

@@ -10,6 +10,11 @@ class LLMRefusedError(RuntimeError):
 	"""The provider's safety system stopped the reply before it gave any answer."""
 
 
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+# Thinking tokens count against max_tokens, so a call on a model that thinks gets at least this much room by default.
+DEFAULT_THINKING_MIN_TOKENS = 8192
+
+
 @dataclass
 class ToolSpec:
 	"""Provider-agnostic tool definition. A human tool suspends the loop and its fn is never called."""
