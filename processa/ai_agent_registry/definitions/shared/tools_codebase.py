@@ -20,26 +20,26 @@ EXCLUDE_PATTERNS = (
 	"*.pem",
 	"*.key",
 	"*.crt",
-	".env",
-	".env.*",
+	"*.env",
+	"*.env.*",
 )
 EXCLUDE_DIRS = ("node_modules", ".git", "__pycache__", ".cache", "dist", "build")
 
 # Applied in this order; group 1 is the name that stays in front of the redacted value.
 _REDACTION_PATTERNS = (
-	r"""(password|passwd|pwd)\s*[=:]\s*["']?[^\s"',\)]+["']?""",
-	r"""(secret|secret_key)\s*[=:]\s*["']?[^\s"',)]+["']?""",
-	r"""(api_key|apikey|api_secret)\s*[=:]\s*["']?[^\s"',\)]+["']?""",
-	r"""(token|auth_token|access_token)\s*[=:]\s*["']?[^\s"',)]+["']?""",
-	r"""(db_password|encryption_key)\s*[=:]\s*["']?[^\s"',\)]+["']?""",
-	r"""(private_key|ssh_key)\s*[=:]\s*["']?[^\s"',)]+["']?""",
+	r"""(password|passwd|pwd)\s*[=:]\s*["']?[^\s"'`,\)]+["']?""",
+	r"""(secret|secret_key)\s*[=:]\s*["']?[^\s"'`,\)]+["']?""",
+	r"""(api_key|apikey|api_secret)\s*[=:]\s*["']?[^\s"'`,\)]+["']?""",
+	r"""(token|auth_token|access_token)\s*[=:]\s*["']?[^\s"'`,\)]+["']?""",
+	r"""(db_password|encryption_key)\s*[=:]\s*["']?[^\s"'`,\)]+["']?""",
+	r"""(private_key|ssh_key)\s*[=:]\s*["']?[^\s"'`,\)]+["']?""",
 )
 
 
 def _sanitize_codebase_output(line: str) -> str:
 	"""line with the value of any password, secret, key or token assignment replaced by REDACTED."""
 	for pattern in _REDACTION_PATTERNS:
-		line = re.sub(pattern, r"\1=REDACTED", line, flags=re.IGNORECASE)
+		line = re.sub(pattern, r"\1=***REDACTED***", line, flags=re.IGNORECASE)
 	return line
 
 
@@ -52,7 +52,7 @@ def _grep_command(query: str, search_path: str) -> list[str]:
 	for directory in EXCLUDE_DIRS:
 		command += ["--exclude-dir", directory]
 	# "--" makes a query that starts with a dash text to search for, not a grep option.
-	return command + ["--", query, search_path]
+	return [*command, "--", query, search_path]
 
 
 @tool_envelope("Shared Tool - search_codebase", lambda **_: json.dumps({"error": "Codebase search failed."}))
@@ -99,6 +99,4 @@ def search_codebase(query: str, path: str = ".", app: str | None = None) -> str:
 			if line.strip():
 				results.append(f"[{app_name}] {_sanitize_codebase_output(line)}")
 
-	return json.dumps(
-		{"query": query, "results": results, "count": len(results), "searched_apps": app_names}
-	)
+	return json.dumps({"query": query, "results": results, "count": len(results), "searched_apps": app_names})

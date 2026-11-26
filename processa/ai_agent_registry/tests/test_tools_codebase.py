@@ -78,13 +78,14 @@ class TestSearchCodebase(FrappeTestCase):
 		self.assertIsInstance(command, list)
 		self.assertEqual(command[command.index("--") + 1], "--help")
 		self.assertNotIn("shell", popen.call_args.kwargs)
-		for pattern in ("*.py", "*.md", "*.pem", ".env", ".env.*", "__pycache__"):
+		for pattern in ("*.py", "*.md", "*.pem", "*.env", "*.env.*", "__pycache__"):
 			self.assertIn(pattern, command)
 
 	def test_secret_values_are_redacted(self):
-		self.assertEqual(_sanitize_codebase_output('api_key = "abc123"'), "api_key=REDACTED")
-		self.assertEqual(_sanitize_codebase_output("PASSWORD: hunter2"), "PASSWORD=REDACTED")
-		self.assertEqual(_sanitize_codebase_output("token='t0k3n', x"), "token=REDACTED, x")
+		self.assertEqual(_sanitize_codebase_output('api_key = "abc123"'), "api_key=***REDACTED***")
+		self.assertEqual(_sanitize_codebase_output("PASSWORD: hunter2"), "PASSWORD=***REDACTED***")
+		self.assertEqual(_sanitize_codebase_output("token='t0k3n', x"), "token=***REDACTED***, x")
+		self.assertEqual(_sanitize_codebase_output("pwd=abc`"), "pwd=***REDACTED***`")
 		self.assertEqual(_sanitize_codebase_output("def get_doctype_fields():"), "def get_doctype_fields():")
 
 	def test_a_redacted_value_does_not_reach_the_results(self):
@@ -110,8 +111,12 @@ class TestSearchCodebase(FrappeTestCase):
 	def test_results_stop_at_100_across_apps(self):
 		lines = "".join(f"/x/f.py:{i}:needle\n" for i in range(60))
 		with (
-			patch.object(tools_codebase.frappe, "get_installed_apps", return_value=["frappe", "processa", "erpnext"]),
-			patch.object(tools_codebase.subprocess, "Popen", side_effect=lambda *a, **k: _fake_process(lines)) as popen,
+			patch.object(
+				tools_codebase.frappe, "get_installed_apps", return_value=["frappe", "processa", "erpnext"]
+			),
+			patch.object(
+				tools_codebase.subprocess, "Popen", side_effect=lambda *a, **k: _fake_process(lines)
+			) as popen,
 		):
 			result = json.loads(search_codebase("needle"))
 		self.assertEqual(result["count"], 100)
