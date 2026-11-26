@@ -69,7 +69,9 @@ def make_doctype(name: str, fields: list, permissions: list, autoname: str) -> N
 
 
 def make_todo(description: str, owner: str) -> str:
-	todo = frappe.get_doc({"doctype": "ToDo", "description": description}).insert(ignore_permissions=True)
+	todo = frappe.get_doc(
+		{"doctype": "ToDo", "description": description, "allocated_to": "Administrator"}
+	).insert(ignore_permissions=True)
 	frappe.db.set_value("ToDo", todo.name, "owner", owner, update_modified=False)
 	return todo.name
 
