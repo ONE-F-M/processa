@@ -16,7 +16,6 @@ from types import SimpleNamespace
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.patches.v1_0 import apply_reviewed_memory_cleanup as memory_cleanup
 from processa.patches.v1_0 import lucrusher_retries_a_failed_fetch as patch
 from processa.patches.v1_0 import seed_lucrusher_skills as skills_seed
 
@@ -290,8 +289,6 @@ class TestFetchFailureWording(FrappeTestCase):
 	def test_the_seed_prompts_carry_the_new_wording(self):
 		self.assertNotIn("tier", skills_seed.SYSTEM_PROMPT.lower())
 		self.assertIn("try again in a minute", skills_seed.SYSTEM_PROMPT)
-		self.assertIn(KEY_INVALID, memory_cleanup.LUCIDCHART_ERRORS)
-		self.assertNotIn("Generate a new key", memory_cleanup.LUCIDCHART_ERRORS)
 
 	def test_a_zero_page_fetch_then_a_four_page_fetch_keeps_the_four_pages(self):
 		empty = {"document_id": UUID, "title": "", "pages": [], "page_count": 0, "error": NO_PAGES}

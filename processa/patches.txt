@@ -289,7 +289,6 @@ processa.patches.v1_0.bug_agents_report_not_reproducible_and_keep_discipline #11
 processa.patches.v1_0.orchestrator_brief_shows_the_branch_left_by_an_earlier_attempt #11-10-2026 the Orchestrator's brief lists the commits and files an earlier attempt left on the Work Item's branch, so a retry continues from them
 processa.patches.v1_0.add_agent_sandbox_run_tests_and_pull_request_operations #13-10-2026 the agent_sandbox connector gets the run_tests and open_pull_request operations the agent maps call, on sites that only had the old dispatch operation
 processa.patches.v1_0.prosally_generate_process_splits_cut_off_phases #14-10-2026 ProsAlly - Tool Generate Process splits a cut-off phase in two instead of failing a large process, skips the full attempt for requests over 25 elements and records cut-off calls as TRUNCATED steps
-processa.patches.v1_0.apply_reviewed_memory_cleanup #14-10-2026 the reviewed AI Memory clean-up (delete, retire, make personal, keep, and move the rules that belong in skills and prompts into them)
 processa.patches.v1_0.replace_dead_ai_models #14-10-2026 agents, nightly grading and compaction move off AI Models whose key is rejected, the stale needs-attention messages are cleared and the shape links use the configuration name exactly
 processa.patches.v1_0.lucrusher_retries_a_failed_fetch #14-10-2026 LuCrusher keeps a failed Lucidchart fetch as last_fetch_error instead of a fetched document, allows a retry, skips the topology skill and names the Lucid account to share with on a 403
 processa.patches.v1_0.prosally_scope_modify_to_subprocess #14-10-2026 ProsAlly changes the inside of the sub-process a request names or has open, compiles intermediate events and sub-process steps, and says plainly when a modify changed nothing
@@ -429,3 +428,16 @@ processa.patches.v1_0.logix_library_functions_drop_the_underscore #24-11-2026 Lo
 processa.patches.v1_0.ai_models_mark_effort_support #25-11-2026 Support Effort is ticked on the Claude AI Models that accept all five effort levels
 processa.patches.v1_0.lift_max_tokens_to_thinking_minimum #25-11-2026 Max Tokens is raised to Minimum Tokens When Thinking on agents whose AI Model thinks
 processa.patches.v1_0.set_stage_effort #25-11-2026 ProsAlly generate, modify and operation stages and the Logix writers, test writer and reviewer run at effort high, the classifiers at low, where no effort is set
+processa.patches.v1_0.seed_prosally_gateway_conditions_case #25-11-2026 ProsAlly Regressions gains the Overtime Request lifecycle, whose gateways must test actions and script results in Python
+processa.patches.v1_0.seed_prosally_update_field_values_case #25-11-2026 ProsAlly Regressions gains the Maintenance Work Order lifecycle, whose Update Field rows must hold only values the fields accept
+processa.patches.v1_0.logix_library_script_contract #26-11-2026 Logix writes and reviews a script in a Libraries box against a library contract and does not try it on a record
+processa.patches.v1_0.add_logix_library_script_eval_case #26-11-2026 Logix - Baseline gains a case that a library script defines functions only
+processa.patches.v1_0.prosally_keeps_the_libraries_box #26-11-2026 ProsAlly sets a map's Libraries box aside while it changes or regenerates the diagram and puts it back below the flow
+processa.patches.v1_0.add_prosally_library_question_case #26-11-2026 ProsAlly - Baseline gains a case where ProsAlly names the map's library scripts
+processa.patches.v1_0.logix_library_contract_def_only #26-11-2026 Logix's library contract and writer prompt say a library holds only def statements, as the deploy check enforces
+processa.patches.v1_0.logix_helpers_move_to_libraries #26-11-2026 the Logix map gets Lib Replies and Lib DocType Sources in a Libraries box and its scripts load the helpers from them
+processa.patches.v1_0.docu_helpers_move_to_library #26-11-2026 the Docu map gets Lib Schema in a Libraries box and its scripts load the schema helpers from it
+processa.patches.v1_0.docu_tools_move_to_library #26-11-2026 Docu DocType tools, read_doctype_definition, keep_unrequested_fields and timed load from Lib Schema
+processa.patches.v1_0.lucrusher_helpers_move_to_library #26-11-2026 the LuCrusher map gets Lib Codebase in a Libraries box and its codebase scripts load from it
+processa.patches.v1_0.docu_library_loads_before_first_use #26-11-2026 Docu scripts load Lib Schema above the first line that uses it
+processa.patches.v1_0.prosally_libraries_box_approval #26-11-2026 Generate Process and Modify Process get an Approved request for the Libraries box helpers

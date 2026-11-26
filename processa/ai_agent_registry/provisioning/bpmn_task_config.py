@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 
 # Attributes each Service Type accepts, keyed by the serviceType value the panel
 # writes. Anything outside the set for the chosen type is dropped and reported —
@@ -80,6 +81,11 @@ USER_TASK_KEYS: tuple[str, ...] = (
 START_EVENT_KEYS: tuple[str, ...] = ("triggerDoctype", "triggerType")
 
 TRIGGER_TYPES = ("After Insert",)
+
+DATE_FIELDTYPES = ("Date", "Datetime", "Time")
+NUMBER_FIELDTYPES = ("Int", "Float", "Currency", "Percent", "Check")
+# The names update_field renders a value with.
+TEMPLATE_NAMES = ("doc", "instance", "frappe")
 
 ASSIGNEE_MODES = ("User", "DocField", "Round Robin", "Load Balancing", "Table Field")
 
@@ -198,7 +204,7 @@ def _resolve_apply_workflow(attrs: dict, element_id: str, problems: list) -> Non
 		return
 	rows = workflow_states(doctype)
 	if not rows:
-		# No workflow to read, so whatever the model supplied is all there is.
+		_check_state_without_workflow(doctype, state, element_id, problems)
 		return
 	if not state:
 		problems.append(_problem(
@@ -218,6 +224,28 @@ def _resolve_apply_workflow(attrs: dict, element_id: str, problems: list) -> Non
 	attrs["docStatus"] = str(match.get("doc_status") or "0")
 	if match.get("allow_edit"):
 		attrs["onlyAllowEdit"] = match["allow_edit"]
+
+
+def _check_state_without_workflow(doctype: str, state: str, element_id: str, problems: list) -> None:
+	"""Report a DocType with no active Workflow that cannot hold the state: no workflow_state field, or no such Workflow State."""
+	import frappe
+	from frappe import _
+
+	if not frappe.db.exists("DocType", doctype):
+		problems.append(_problem(element_id, _("'{0}' is not a DocType on this site.").format(doctype), rule="apply-workflow-doctype"))
+	elif not frappe.get_meta(doctype).has_field("workflow_state"):
+		problems.append(_problem(
+			element_id,
+			_("{0} has no active Workflow and no workflow_state field, so an Apply Workflow step on it cannot deploy. "
+			"Add a workflow_state field to {0} first, or use an Update Field step.").format(doctype),
+			rule="apply-workflow-doctype",
+		))
+	elif state and not frappe.db.exists("Workflow State", state):
+		problems.append(_problem(
+			element_id,
+			_("'{0}' is not a Workflow State, so the workflow_state field of {1} cannot hold it.").format(state, doctype),
+			rule="apply-workflow-doctype",
+		))
 
 
 def resolve_node_attrs(node: dict) -> tuple[dict, list[dict]]:
@@ -290,6 +318,8 @@ def resolve_node_attrs(node: dict) -> tuple[dict, list[dict]]:
 
 	if node_type == "serviceTask" and attrs.get("serviceType") == "apply_workflow":
 		_resolve_apply_workflow(attrs, element_id, problems)
+	if node_type == "serviceTask" and attrs.get("serviceType") == "update_field":
+		_check_update_field_rows(attrs, element_id, problems)
 
 	if node_type == "startEvent":
 		trigger = attrs.get("triggerType")
@@ -322,6 +352,92 @@ def resolve_node_attrs(node: dict) -> tuple[dict, list[dict]]:
 	return attrs, problems
 
 
+def _check_update_field_rows(attrs: dict, element_id: str, problems: list) -> None:
+	"""Drop each Update Field row whose value the field cannot hold, and report it."""
+	import frappe
+	from frappe import _
+
+	doctype = attrs.get("updateFieldDoctype")
+	if not doctype:
+		return
+	if not attrs.get("updateFieldRows"):
+		return
+	if not frappe.db.exists("DocType", doctype):
+		return
+	found = update_field_row_problems(doctype, attrs["updateFieldRows"])
+	if found and found[0][0] is None:
+		problems.append(_problem(element_id, found[0][1]))
+		attrs.pop("updateFieldRows")
+		return
+	for _index, message in found:
+		problems.append(_problem(element_id, message + " " + _("I left this row out."), rule="update-field-value"))
+	bad = {index for index, _message in found}
+	kept = [row for index, row in enumerate(json.loads(attrs["updateFieldRows"])) if index not in bad]
+	if kept:
+		attrs["updateFieldRows"] = json.dumps(kept)
+	else:
+		attrs.pop("updateFieldRows")
+
+
+def update_field_row_problems(doctype: str, rows_json: str) -> list[tuple[int | None, str]]:
+	"""(row index, why) for each Update Field row doctype cannot hold; one (None, why) when rows_json is not a list."""
+	from frappe import _
+
+	try:
+		rows = json.loads(rows_json or "[]")
+	except ValueError:
+		rows = None
+	if not isinstance(rows, list):
+		return [(None, _("The Field Updates are not a list of field and value rows, so the step writes nothing."))]
+	found = []
+	for index, row in enumerate(rows):
+		if not isinstance(row, dict):
+			continue
+		message = update_field_value_problem(doctype, row.get("field") or "", row.get("value"))
+		if message:
+			found.append((index, message))
+	return found
+
+
+def update_field_value_problem(doctype: str, fieldname: str, value) -> str:
+	"""Why an Update Field row cannot write value into fieldname of doctype, or "" when it can."""
+	import frappe
+	from frappe import _
+	from frappe.utils import get_datetime
+
+	text = str(value if value is not None else "").strip()
+	if not text:
+		return ""
+	if "{{" in text or "{%" in text:
+		unknown = [name for name in re.findall(r"{{\s*([A-Za-z_]\w*)", text) if name not in TEMPLATE_NAMES]
+		if not unknown:
+			return ""
+		return _("'{0}' renders empty for {1} on {2}: a value can only read doc, instance or frappe. Write {{{{ doc.{3} }}}}.").format(
+			text, fieldname, doctype, unknown[0]
+		)
+	field = frappe.get_meta(doctype).get_field(fieldname)
+	if not field:
+		return ""
+	if field.fieldtype == "Select":
+		options = [o for o in (field.options or "").split("\n") if o.strip()]
+		if text in options:
+			return ""
+		return _("'{0}' is not an option of {1} on {2}. Allowed: {3}.").format(text, fieldname, doctype, ", ".join(options))
+	if field.fieldtype == "Link" and not frappe.db.exists(field.options, text):
+		return _("'{0}' is not a {1}, so {2} on {3} cannot hold it.").format(text, field.options, fieldname, doctype)
+	try:
+		if field.fieldtype in NUMBER_FIELDTYPES:
+			float(text)
+		elif field.fieldtype in DATE_FIELDTYPES and text != "now":
+			get_datetime(text)
+	except ValueError:
+		return _(
+			"'{0}' is not a {1} value for {2} on {3}. Write a value, {{{{ doc.fieldname }}}} or now; "
+			"a value worked out when the process runs belongs in a Script Task."
+		).format(text, field.fieldtype, fieldname, doctype)
+	return ""
+
+
 def resolve_ir_config(ir: dict) -> list[dict]:
 	"""Resolve every node's ``config`` into ``attrs``, in place.
 
@@ -333,12 +449,69 @@ def resolve_ir_config(ir: dict) -> list[dict]:
 	for node in (ir or {}).get("nodes") or []:
 		if not isinstance(node, dict):
 			continue
+		# A repair pass returns the compiled attrs instead of config; they are checked the same way.
+		if not node.get("config") and node.get("attrs"):
+			node["config"] = node.pop("attrs")
 		attrs, node_problems = resolve_node_attrs(node)
 		problems.extend(node_problems)
 		if attrs:
 			node["attrs"] = attrs
 		node.pop("config", None)
 	return problems
+
+
+# JavaScript spellings a model writes in a condition, and their Python.
+JS_WORDS = {"true": "True", "false": "False", "null": "None"}
+QUOTED = re.compile(r"(\"[^\"]*\"|'[^']*')")
+ACTION_CUTOFF = 0.8
+
+
+def resolve_ir_conditions(ir: dict) -> None:
+	"""Write every condition as Python, in place, and correct an action name that nearly matches one on the user task before it."""
+	nodes = {n.get("id"): n for n in (ir or {}).get("nodes") or [] if isinstance(n, dict)}
+	flows = [f for f in (ir or {}).get("flows") or [] if isinstance(f, dict)]
+	for flow in flows:
+		if not flow.get("condition"):
+			continue
+		condition = python_condition(str(flow["condition"]))
+		actions = [a for f in flows if f.get("to") == flow.get("from") for a in _node_actions(nodes.get(f.get("from")))]
+		if actions:
+			condition = _closest_actions(condition, actions)
+		flow["condition"] = condition
+
+
+def python_condition(text: str) -> str:
+	"""text with true, false, null, &&, || and !x written as Python and doc. prefixes dropped; quoted text is left alone."""
+	parts = QUOTED.split(text)
+	for index in range(0, len(parts), 2):
+		part = parts[index].replace("&&", " and ").replace("||", " or ")
+		part = re.sub(r"!(?!=)", " not ", part)
+		part = re.sub(r"\bdoc\.(?=[A-Za-z_])", "", part)
+		part = re.sub(r"\b(true|false|null)\b", lambda m: JS_WORDS[m[1]], part)
+		parts[index] = re.sub(r"\s+", " ", part)
+	return "".join(parts).strip()
+
+
+def _node_actions(node: dict | None) -> list[str]:
+	"""The action names configured on an IR user task."""
+	if not node or node.get("type") != "userTask":
+		return []
+	raw = (node.get("attrs") or {}).get("taskActions") or normalise_task_actions((node.get("config") or {}).get("taskActions"))
+	return [row["action"] for row in json.loads(raw)] if raw else []
+
+
+def _closest_actions(condition: str, actions: list[str]) -> str:
+	"""condition with each quoted name that is not an action replaced by the action it nearly matches."""
+	by_lower = {a.lower(): a for a in actions}
+
+	def closest(match):
+		quote, word = match[1][0], match[1][1:-1]
+		if word in actions:
+			return match[1]
+		near = difflib.get_close_matches(word.lower(), by_lower, 1, ACTION_CUTOFF)
+		return f"{quote}{by_lower[near[0]]}{quote}" if near else match[1]
+
+	return QUOTED.sub(closest, condition)
 
 
 LANE_ROLE_CUTOFF = 0.75

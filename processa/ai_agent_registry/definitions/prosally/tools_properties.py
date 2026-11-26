@@ -177,8 +177,13 @@ def summarize_configured_elements(configured: dict) -> str:
 	return "\n".join(lines)
 
 
-def describe_task_config(xml: str, previous_xml: str = "") -> str:
-	"""The settings on the diagram's shapes as plain sentences, leaving out any previous_xml already had; "" when none."""
+def describe_task_config(xml: str, previous_xml: str = "", problems: list | None = None) -> str:
+	"""The settings on the diagram's shapes as plain sentences, leaving out any previous_xml already had; "" when none.
+	Config problems from the compile follow, each naming its step."""
+	return _settings_text(xml, previous_xml) + _config_problems_text(problems or [], xml)
+
+
+def _settings_text(xml: str, previous_xml: str) -> str:
 	before = extract_configured_elements(previous_xml)
 	lines = []
 	for elem_id, data in extract_configured_elements(xml).items():
@@ -193,10 +198,57 @@ def describe_task_config(xml: str, previous_xml: str = "") -> str:
 			lines.append(_service_task_sentence(data["name"], config))
 		elif kind == "UserTask":
 			lines.append(_user_task_sentence(data["name"], config))
+	before_ids = _script_task_names(previous_xml)
+	lines += [
+		_("{0} is a Script Task, so it needs a script. Ask Logix to write it.").format(name)
+		for elem_id, name in _script_task_names(xml).items()
+		if elem_id not in before_ids
+	]
 	lines = [line for line in lines if line]
+	decisions = _condition_text(xml, previous_xml)
+	if not lines:
+		return decisions
+	return "\n\n" + _("I also set these up on the steps:") + "\n" + "\n".join("- " + line for line in lines) + decisions
+
+
+def _condition_text(xml: str, previous_xml: str) -> str:
+	"""The gateway conditions and check steps in xml that cannot route as drawn, leaving out any previous_xml had."""
+	from processa.processa_engine.compiler.deploy_warnings import gateway_condition_gaps
+
+	if not (xml or "").strip():
+		return ""
+	root = ET.fromstring(xml.strip().encode("utf-8"))
+	before = set(gateway_condition_gaps(ET.fromstring(previous_xml.strip().encode("utf-8")))) if (previous_xml or "").strip() else set()
+	names = {el.get("id"): el.get("name") for el in root.iter() if el.get("id")}
+	lines = [
+		_("{0}: {1}").format(names.get(elem_id) or elem_id, message)
+		for elem_id, message in gateway_condition_gaps(root)
+		if (elem_id, message) not in before
+	]
 	if not lines:
 		return ""
-	return "\n\n" + _("I also set these up on the steps:") + "\n" + "\n".join("- " + line for line in lines)
+	return "\n\n" + _("These decisions need your attention:") + "\n" + "\n".join("- " + line for line in lines)
+
+
+def _script_task_names(xml: str) -> dict:
+	"""{id: name} of the Script Tasks in xml."""
+	from processa.ai_agent_registry.definitions.prosally.tools_pipeline import element_names
+
+	return {elem_id: name or elem_id for elem_id, (kind, name) in element_names(xml).items() if kind == "scriptTask"}
+
+
+def _config_problems_text(problems: list, xml: str) -> str:
+	from processa.ai_agent_registry.definitions.prosally.tools_pipeline import element_names
+
+	names = {elem_id: name for elem_id, (_type, name) in element_names(xml).items()}
+	lines = [
+		_("{0}: {1}").format(names.get(p["elementId"]) or p["elementId"], p["message"])
+		for p in problems
+		if p.get("kind") == "config" and p.get("rule") != "lane-role"
+	]
+	if not lines:
+		return ""
+	return "\n\n" + _("These step settings need your attention:") + "\n" + "\n".join("- " + line for line in lines)
 
 
 def _service_task_sentence(name: str, config: dict) -> str:

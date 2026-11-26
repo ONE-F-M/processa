@@ -1,6 +1,8 @@
 import { frappeRequest } from "frappe-ui";
 import { withLintErrors } from "@/utils/lintIssues.js";
 
+const __ = window.__ && typeof window.__ === "function" ? window.__ : (s) => s;
+
 export function useProcessDeploy(pc) {
 	const {
 		editorRef,
@@ -10,6 +12,7 @@ export function useProcessDeploy(pc) {
 		disabling,
 		showDisableDialog,
 		disableRunningCount,
+		cancelRunning,
 		showNonExecutableDialog,
 		nonExecutableActivating,
 		nonExecutableBusy,
@@ -241,6 +244,7 @@ export function useProcessDeploy(pc) {
 
 		// Fetch running instance count for the confirmation dialog
 		disableRunningCount.value = 0;
+		cancelRunning.value = false;
 		try {
 			const countResp = await frappeRequest({
 				url: "/api/method/frappe.client.get_count",
@@ -249,7 +253,7 @@ export function useProcessDeploy(pc) {
 					doctype: "BPMN Process Instance",
 					filters: JSON.stringify({
 						process_model: activeDiagramName.value,
-						status: ["in", ["Running", "Waiting"]],
+						status: ["in", ["Active"]],
 					}),
 				},
 			});
@@ -270,14 +274,20 @@ export function useProcessDeploy(pc) {
 			const response = await frappeRequest({
 				url: "/api/method/processa.api.deploy.disable_process_model",
 				method: "POST",
-				params: { model_name: activeDiagramName.value },
+				params: {
+					model_name: activeDiagramName.value,
+					cancel_running: cancelRunning.value ? 1 : 0,
+				},
 			});
 
 			showDisableDialog.value = false;
 
 			if (response && response.success) {
+				const runningNote = response.cancelling
+					? __("{0} running instance(s) are being cancelled.")
+					: __("{0} running instance(s) will continue.");
 				const runningMsg = response.running_instances
-					? ` ${response.running_instances} running instance(s) will continue.`
+					? ` ${runningNote.replace("{0}", response.running_instances)}`
 					: "";
 				pc.showNotification(
 					"Disabled",

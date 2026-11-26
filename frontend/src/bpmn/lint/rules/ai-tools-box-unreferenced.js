@@ -3,10 +3,11 @@
 import { is } from "bpmnlint-utils";
 
 import { isAiSelector, isExecutable, label, toolBoxIds, toolShapes } from "../aiShapes.js";
+import { isLibrariesBox } from "./tool-catalogue.js";
 
 export default function () {
 	function check(node, reporter) {
-		if (!is(node, "bpmn:AdHocSubProcess") || isAiSelector(node) || !isExecutable(node)) {
+		if (!is(node, "bpmn:AdHocSubProcess") || isAiSelector(node) || isLibrariesBox(node) || !isExecutable(node)) {
 			return;
 		}
 		if ((node.incoming || []).length || (node.outgoing || []).length || toolBoxIds(node).has(node.id)) {

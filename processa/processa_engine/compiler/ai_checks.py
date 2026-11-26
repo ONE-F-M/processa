@@ -182,6 +182,14 @@ def validate_ai_agent_tools(bpmn_xml: str, service_extensions: dict) -> None:
 				).format(agent_id, adhoc_id),
 				exc=frappe.ValidationError,
 			)
+		if adhocs[adhoc_id].get("{http://spiffworkflow.org/bpmn/schema/1.0/core}scriptLibrary") == "true":
+			frappe.throw(
+				_(
+					"AI Agent Task '{0}' uses '{1}' as its Tools box, but '{1}' is a Libraries box. "
+					"Pick another Tools box."
+				).format(agent_id, adhoc_id),
+				exc=frappe.ValidationError,
+			)
 		shapes = json.loads(cfg.get("aiToolShapes") or "[]")
 		if not shapes:
 			frappe.throw(

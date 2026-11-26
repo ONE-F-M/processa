@@ -52,6 +52,7 @@ def run_debug_stage(conversation: str) -> dict:
 	subs = config.get("sub_prompts") or {}
 	adapter = get_llm_adapter_from_settings(config)
 	shape_kind = (turn.get("process_context") or {}).get("shape_kind") or "script_task"
+	is_library = bool((turn.get("process_context") or {}).get("is_library"))
 
 	debugger = (subs.get("script_debugger") or {}).get("prompt") or ""
 	debug = _ask(adapter, debugger, _debug_prompt(turn, shape_kind), DEBUG_SCHEMA)
@@ -69,7 +70,10 @@ def run_debug_stage(conversation: str) -> dict:
 		return _reply(conversation, explanation)
 
 	review = _ask(
-		adapter, _reviewer_system(subs, shape_kind), _review_prompt(shape_kind, diff), REVIEW_SCHEMA
+		adapter,
+		_reviewer_system(subs, shape_kind, is_library),
+		_review_prompt(shape_kind, diff),
+		REVIEW_SCHEMA,
 	)
 	gate = validate_script(fixed)
 	syntax_errors = [f for f in gate["findings"] if f["category"] in NOT_APPROVABLE]
@@ -151,8 +155,13 @@ def _debug_prompt(turn: dict, shape_kind: str) -> str:
 	return "\n\n".join(parts)
 
 
-def _reviewer_system(subs: dict, shape_kind: str) -> str:
-	contract = "bpmn-agent-tool-contract" if shape_kind == "agent_tool" else "bpmn-script-task-contract"
+def _reviewer_system(subs: dict, shape_kind: str, is_library: bool = False) -> str:
+	if is_library:
+		contract = "bpmn-library-script-contract"
+	elif shape_kind == "agent_tool":
+		contract = "bpmn-agent-tool-contract"
+	else:
+		contract = "bpmn-script-task-contract"
 	return (
 		((subs.get("script_reviewer") or {}).get("prompt") or "")
 		+ "\n\n# The contract this draft must follow\n"

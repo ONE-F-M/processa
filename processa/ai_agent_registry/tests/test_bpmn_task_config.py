@@ -9,12 +9,15 @@ not exist, a setting borrowed from a different Service Type, a document status
 the model asserted rather than looked up.
 """
 
+import json
 from unittest.mock import patch
 
 from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_registry.provisioning.bpmn_task_config import (
 	normalise_task_actions,
+	python_condition,
+	resolve_ir_conditions,
 	resolve_ir_config,
 	resolve_node_attrs,
 )
@@ -92,15 +95,94 @@ class TestApplyWorkflow(ConfigCase):
 		self.assertEqual(problems[0]["elementId"], "task_1")
 		self.assertNotIn("docStatus", attrs)
 
-	def test_a_doctype_with_no_workflow_keeps_what_the_model_wrote(self):
+	def test_a_doctype_with_no_workflow_and_no_workflow_state_field_is_named(self):
 		with patch("processa.ai_agent_registry.provisioning.bpmn_task_config.workflow_states", return_value=[]):
-			attrs, problems = resolve_node_attrs(_service({
+			_, problems = resolve_node_attrs(_service({
+				"serviceType": "apply_workflow",
+				"serviceTargetDoctype": "ToDo",
+				"workflowState": "Draft",
+			}))
+		self.assertEqual(len(problems), 1)
+		self.assertIn("ToDo has no active Workflow and no workflow_state field", problems[0]["message"])
+
+	def test_a_state_that_is_not_a_workflow_state_is_reported(self):
+		with patch("processa.ai_agent_registry.provisioning.bpmn_task_config.workflow_states", return_value=[]):
+			_, problems = resolve_node_attrs(_service({
+				"serviceType": "apply_workflow",
+				"serviceTargetDoctype": "Workflow Action",
+				"workflowState": "Nowhere State",
+			}))
+		self.assertIn("'Nowhere State' is not a Workflow State", problems[0]["message"])
+
+	def test_a_doctype_that_does_not_exist_is_reported(self):
+		with patch("processa.ai_agent_registry.provisioning.bpmn_task_config.workflow_states", return_value=[]):
+			_, problems = resolve_node_attrs(_service({
 				"serviceType": "apply_workflow",
 				"serviceTargetDoctype": "Some DocType",
 				"workflowState": "Anything",
 			}))
+		self.assertIn("'Some DocType' is not a DocType", problems[0]["message"])
+
+
+class TestUpdateFieldValues(ConfigCase):
+	def _rows(self, rows):
+		return resolve_node_attrs(_service({
+			"serviceType": "update_field",
+			"updateFieldDoctype": "ToDo",
+			"updateFieldRows": rows,
+		}))
+
+	def test_a_select_value_outside_the_options_is_left_out_with_the_options(self):
+		attrs, problems = self._rows([{"field": "status", "value": "Pre-Start"}, {"field": "priority", "value": "High"}])
+		self.assertEqual(json.loads(attrs["updateFieldRows"]), [{"field": "priority", "value": "High"}])
+		self.assertEqual(len(problems), 1)
+		self.assertIn("'Pre-Start' is not an option of status on ToDo", problems[0]["message"])
+		self.assertIn("Open, Closed, Cancelled", problems[0]["message"])
+
+	def test_a_description_of_a_value_points_at_a_script_task(self):
+		attrs, problems = self._rows([{"field": "date", "value": "computed"}])
+		self.assertNotIn("updateFieldRows", attrs)
+		self.assertIn("Script Task", problems[0]["message"])
+
+	def test_a_link_value_that_is_not_a_record_is_left_out(self):
+		_, problems = self._rows([{"field": "allocated_to", "value": "routed_if_empty"}])
+		self.assertIn("'routed_if_empty' is not a User", problems[0]["message"])
+
+	def test_the_readiness_check_warns_with_the_step_field_and_value(self):
+		from processa.api.process_maps import validate_bpmn_readiness
+
+		rows = json.dumps([{"field": "status", "value": "Fail"}]).replace('"', "&quot;")
+		xml = (
+			'<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" '
+			'xmlns:spiffworkflow="http://spiffworkflow.org/bpmn/schema/1.0/core" id="d">'
+			'<bpmn:process id="p" isExecutable="true"><bpmn:serviceTask id="mark" name="Mark Failed" '
+			f'spiffworkflow:serviceType="update_field" spiffworkflow:updateFieldDoctype="ToDo" spiffworkflow:updateFieldRows="{rows}" />'
+			"</bpmn:process></bpmn:definitions>"
+		)
+		values = next(c for c in validate_bpmn_readiness(xml)["categories"] if c["label"] == "Field Values")
+		self.assertEqual(values["items"][0]["name"], "Mark Failed")
+		self.assertEqual(values["items"][0]["type"], "warning")
+		self.assertIn("'Fail' is not an option of status on ToDo", values["items"][0]["detail"])
+
+	def test_rows_that_are_not_a_list_are_dropped_and_reported(self):
+		attrs, problems = self._rows({"field": "status", "value": "Open"})
+		self.assertNotIn("updateFieldRows", attrs)
+		self.assertIn("not a list of field and value rows", problems[0]["message"])
+
+	def test_a_reference_to_a_name_the_render_lacks_is_left_out(self):
+		attrs, problems = self._rows([{"field": "description", "value": "{{ sla_trigger_time }}"}])
+		self.assertNotIn("updateFieldRows", attrs)
+		self.assertIn("Write {{ doc.sla_trigger_time }}", problems[0]["message"])
+
+	def test_a_literal_a_reference_and_now_are_written(self):
+		rows = [
+			{"field": "status", "value": "Closed"},
+			{"field": "allocated_to", "value": "{{ doc.owner }}"},
+			{"field": "date", "value": "now"},
+		]
+		attrs, problems = self._rows(rows)
 		self.assertEqual(problems, [])
-		self.assertEqual(attrs["workflowState"], "Anything")
+		self.assertEqual(json.loads(attrs["updateFieldRows"]), rows)
 
 
 class TestServiceTypeBoundaries(ConfigCase):
@@ -217,6 +299,24 @@ class TestIrResolution(ConfigCase):
 		self.assertEqual(resolve_ir_config(ir), [])
 		self.assertNotIn("attrs", ir["nodes"][0])
 
+	def test_attrs_returned_by_a_repair_pass_are_checked_again(self):
+		ir = {"nodes": [{"id": "t", "type": "serviceTask", "name": "Move to Draft", "attrs": {
+			"serviceType": "apply_workflow", "serviceTargetDoctype": "ToDo", "workflowState": "Draft",
+		}}]}
+		with patch("processa.ai_agent_registry.provisioning.bpmn_task_config.workflow_states", return_value=[]):
+			problems = resolve_ir_config(ir)
+		self.assertIn("ToDo has no active Workflow and no workflow_state field", problems[0]["message"])
+		self.assertEqual(ir["nodes"][0]["attrs"]["workflowState"], "Draft")
+
+	def test_attrs_from_a_resolved_workflow_step_resolve_to_the_same(self):
+		ir = {"nodes": [_service({
+			"serviceType": "apply_workflow", "serviceTargetDoctype": "Visa Request", "workflowState": "Completed",
+		})]}
+		resolve_ir_config(ir)
+		first = dict(ir["nodes"][0]["attrs"])
+		self.assertEqual(resolve_ir_config(ir), [])
+		self.assertEqual(ir["nodes"][0]["attrs"], first)
+
 	def test_config_on_a_gateway_is_refused(self):
 		ir = {"nodes": [{"id": "gw", "type": "exclusiveGateway", "name": "?",
 		                 "config": {"serviceType": "apply_workflow"}}]}
@@ -252,3 +352,33 @@ class TestStartEventTrigger(ConfigCase):
 	def test_a_manually_started_process_needs_no_trigger(self):
 		attrs, problems = resolve_node_attrs(self._start({}))
 		self.assertEqual((attrs, problems), ({}, []))
+
+
+class TestConditions(FrappeTestCase):
+	def test_javascript_spellings_become_python_and_doc_is_dropped(self):
+		self.assertEqual(
+			python_condition("!x && doc.status == 'Open' || approved == true"),
+			"not x and status == 'Open' or approved == True",
+		)
+
+	def test_quoted_text_is_left_alone(self):
+		self.assertEqual(python_condition("action == 'true && false'"), "action == 'true && false'")
+
+	def test_a_near_miss_action_takes_the_name_on_the_user_task(self):
+		ir = {
+			"nodes": [
+				{"id": "u", "type": "userTask", "config": {"taskActions": ["Arrange Pickup", "Arrived"]}},
+				{"id": "g", "type": "exclusiveGateway"},
+			],
+			"flows": [{"from": "u", "to": "g"}, {"from": "g", "to": "e", "condition": "action == 'Arrange Pick Up'"}],
+		}
+		resolve_ir_conditions(ir)
+		self.assertEqual(ir["flows"][1]["condition"], "action == 'Arrange Pickup'")
+
+	def test_an_action_far_from_any_is_kept_for_the_reply_to_name(self):
+		ir = {
+			"nodes": [{"id": "u", "type": "userTask", "config": {"taskActions": ["Approve"]}}],
+			"flows": [{"from": "u", "to": "g"}, {"from": "g", "to": "e", "condition": "action == 'Escalate'"}],
+		}
+		resolve_ir_conditions(ir)
+		self.assertEqual(ir["flows"][1]["condition"], "action == 'Escalate'")

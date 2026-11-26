@@ -5,6 +5,9 @@ app_description = "Spiffworkflow integration with Frappe"
 app_email = "kartiksharma9319@gmail.com"
 app_license = "mit"
 
+# MCP discovery tools may show the source of this app's whitelisted methods.
+expose_discovery_source = True
+
 # Website route rules for Vue.js frontend
 website_route_rules = [
 	{"from_route": "/processa/<path:app_path>", "to_route": "processa"},

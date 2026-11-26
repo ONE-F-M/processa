@@ -2,7 +2,9 @@
 export function toolBoxOptions(businessObjects, currentId, translate) {
 	const boxes = new Map();
 	for (const bo of businessObjects) {
-		if (bo?.$type === "bpmn:AdHocSubProcess" && bo.get("spiffworkflow:serviceType") !== "ai_task_selector") {
+		if (bo?.$type === "bpmn:AdHocSubProcess" && bo.get("spiffworkflow:serviceType") !== "ai_task_selector" &&
+			bo.get("spiffworkflow:scriptLibrary") !== "true"
+		) {
 			boxes.set(bo.id, bo);
 		}
 	}

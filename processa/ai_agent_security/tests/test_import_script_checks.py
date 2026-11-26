@@ -151,12 +151,51 @@ class TestImportScriptChecks(FrappeTestCase):
 		self.assertEqual(lint["findings"], [])
 		self.assertEqual(lint["status"], "Clear")
 
+	def _approve_caller(self):
+		request = frappe.get_doc(
+			{
+				"doctype": "Script Approval Request",
+				"process_name": PROCESS,
+				"script_task": TASK,
+				"server_script": CALLER,
+			}
+		).insert()
+		request.db_set("status", "Approved")
 
-def _map_xml(tasks: dict) -> str:
+	def test_a_library_in_a_libraries_box_is_checked_only_through_the_task_that_loads_it(self):
+		self._script(LIBRARY, "def strip_fences(text):\n\timport requests\n\n\treturn text\n")
+		self._approve_caller()
+		boxed = _map_xml({TASK: CALLER}, libraries={"lib": LIBRARY})
+		self.assertEqual(script_gate.collect_script_security_violations(boxed, PROCESS), [])
+		script_gate.validate_process_model_scripts(boxed, PROCESS)
+
+	def test_a_loose_library_task_is_still_checked_on_its_own(self):
+		self._script(LIBRARY, "def strip_fences(text):\n\timport requests\n\n\treturn text\n")
+		self._approve_caller()
+		labels = {f["label"] for f in script_gate.collect_script_security_violations(self.xml, PROCESS)}
+		self.assertTrue(any("'lib'" in label for label in labels), labels)
+
+	def test_a_syntax_error_in_a_libraries_box_still_stops_the_deploy(self):
+		self._script(LIBRARY, "def strip_fences(text:\n\treturn text\n")
+		boxed = _map_xml({TASK: CALLER}, libraries={"lib": LIBRARY})
+		with self.assertRaises(frappe.ValidationError):
+			script_gate.validate_process_model_syntax(boxed)
+
+
+def _map_xml(tasks: dict, libraries: dict | None = None) -> str:
 	shapes = "".join(
 		f'<bpmn:scriptTask id="{task_id}" name="{task_id}" spiffworkflow:serverScript="{script}" />'
 		for task_id, script in tasks.items()
 	)
+	if libraries:
+		shapes += (
+			'<bpmn:adHocSubProcess id="libraries" spiffworkflow:scriptLibrary="true">'
+			+ "".join(
+				f'<bpmn:scriptTask id="{task_id}" name="{task_id}" spiffworkflow:serverScript="{script}" />'
+				for task_id, script in libraries.items()
+			)
+			+ "</bpmn:adHocSubProcess>"
+		)
 	return (
 		'<?xml version="1.0" encoding="UTF-8"?>'
 		'<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" '

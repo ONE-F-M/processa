@@ -332,6 +332,12 @@ def compile_ir(ir: dict) -> dict:
         config_problems += resolve_ir_lane_roles(ir, frappe.get_all("Role", filters={"disabled": 0}, pluck="name"))
     except Exception:  # noqa: BLE001 — configuration must never block compilation
         config_problems = []
+    from processa.ai_agent_registry.provisioning.bpmn_task_config import resolve_ir_conditions
+
+    try:
+        resolve_ir_conditions(ir)
+    except ValueError as exc:
+        return fail(f"gateway conditions: {exc}")
 
     node = find_node()
     if not node:

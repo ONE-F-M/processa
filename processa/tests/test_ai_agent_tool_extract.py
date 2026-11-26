@@ -126,6 +126,14 @@ class TestValidateAgentTools(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			validate_ai_agent_tools(xml, _extensions(xml))
 
+	def test_libraries_box_as_tools_box_rejected(self):
+		xml = _xml('spiffworkflow:aiToolsAdhoc="Tools_1"', TOOLS).replace(
+			'<bpmn:adHocSubProcess id="Tools_1">',
+			'<bpmn:adHocSubProcess id="Tools_1" spiffworkflow:scriptLibrary="true">',
+		)
+		with self.assertRaisesRegex(frappe.ValidationError, "Agent_1.*Tools_1.*Libraries box"):
+			validate_ai_agent_tools(xml, _extensions(xml))
+
 	def test_unset_reference_not_validated(self):
 		xml = _xml("", TOOLS)  # draft agent, no aiToolsAdhoc
 		validate_ai_agent_tools(xml, _extensions(xml))  # must not raise

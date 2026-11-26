@@ -186,6 +186,7 @@ const viewerModdleExtension = {
 				{ name: "aiSystemPrompt", isAttr: true, type: "String" },
 				{ name: "aiUserPrompt",   isAttr: true, type: "String" },
 				{ name: "aiToolSources",  isAttr: true, type: "String" },
+				{ name: "scriptLibrary",  isAttr: true, type: "String" },
 			],
 		},
 	],
