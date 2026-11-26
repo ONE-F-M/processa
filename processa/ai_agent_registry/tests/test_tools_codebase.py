@@ -88,7 +88,7 @@ class TestSearchCodebase(FrappeTestCase):
 		self.assertEqual(_sanitize_codebase_output("def get_doctype_fields():"), "def get_doctype_fields():")
 
 	def test_a_redacted_value_does_not_reach_the_results(self):
-		process = _fake_process('/a/b.py:3:db = {"password": "hunter2"}\n')
+		process = _fake_process('/a/b.py:3:password = "hunter2"\n')
 		with patch.object(tools_codebase.subprocess, "Popen", return_value=process):
 			result = json.loads(search_codebase("password", app="processa"))
 		self.assertEqual(result["count"], 1)
