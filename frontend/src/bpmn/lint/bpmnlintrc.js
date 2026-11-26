@@ -44,6 +44,7 @@ import noProhibitedShapes from "@/bpmn/lint/rules/no-prohibited-shapes.js";
 import callActivityMissingProcess from "@/bpmn/lint/rules/call-activity-missing-process.js";
 import noCrossingEdges from "@/bpmn/lint/rules/no-crossing-edges.js";
 import exemptToolCatalogues from "@/bpmn/lint/rules/tool-catalogue.js";
+import librariesBoxContents from "@/bpmn/lint/rules/libraries-box-contents.js";
 import scriptTaskMissingScript from "@/bpmn/lint/rules/script-task-missing-script.js";
 import aiTaskMissingConfig from "@/bpmn/lint/rules/ai-task-missing-config.js";
 import aiTaskMissingUserPrompt from "@/bpmn/lint/rules/ai-task-missing-user-prompt.js";
@@ -97,6 +98,7 @@ const ruleMapping = {
 	"custom/no-prohibited-shapes": noProhibitedShapes,
 	"custom/call-activity-missing-process": callActivityMissingProcess,
 	"custom/no-crossing-edges": noCrossingEdges,
+	"custom/libraries-box-contents": librariesBoxContents,
 	"custom/script-task-missing-script": scriptTaskMissingScript,
 	"custom/ai-task-missing-config": aiTaskMissingConfig,
 	"custom/ai-task-missing-user-prompt": aiTaskMissingUserPrompt,
@@ -166,6 +168,9 @@ const config = {
 
 		// OneFM custom rules: a Script Task with nothing to run
 		"custom/script-task-missing-script": "warn",
+
+		// OneFM custom rules: a Libraries box holds only library script tasks
+		"custom/libraries-box-contents": "error",
 
 		// OneFM custom rules: AI Agent Task and Tools box setup (deploy refuses the same gaps)
 		"custom/ai-task-missing-config": "error",

@@ -205,6 +205,7 @@ export function registerSpiffExtensions() {
 					{ name: "aiUserPrompt", isAttr: true, type: "String" },
 					// "diagram" | "registry" | "both" - stored in the diagram; the backend tool pool ignores it
 					{ name: "aiToolSources", isAttr: true, type: "String" },
+					{ name: "scriptLibrary", isAttr: true, type: "String" },
 				],
 			});
 		}
