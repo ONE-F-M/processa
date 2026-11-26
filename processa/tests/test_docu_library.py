@@ -99,6 +99,28 @@ class TestDocuLibraryCode(FrappeTestCase):
 		other = "from processa.ai_agent_registry.definitions.docu.tools import timed\nresult['x'] = 1\n"
 		self.assertEqual(move.uses_library(other), other)
 
+	def test_the_load_moves_above_a_use_that_comes_first(self):
+		script = (
+			"from processa.ai_agent_registry.definitions.docu.tools import doctype_exists, list_doctypes\n"
+			"_tools = [\n"
+			'    ToolSpec(fn=list_doctypes, name="list_doctypes"),\n'
+			"]\n"
+			'_schema = import_script("Docu: Lib Schema")\n'
+			"data = _schema.extract_json(raw)\n"
+		)
+		edited = move.uses_library(script, move_tools.MOVED)
+		lines = edited.split("\n")
+		self.assertEqual(lines.count(move.LOAD), 1)
+		self.assertLess(lines.index(move.LOAD), lines.index("_tools = ["))
+		self.assertIn("ToolSpec(fn=_schema.list_doctypes", edited)
+		compile(edited, "clarify", "exec")
+
+	def test_load_before_first_use_repairs_an_edited_script_once(self):
+		broken = "_tools = [\n    ToolSpec(fn=_schema.list_doctypes),\n]\n" + move.LOAD + "\nx = 1\n"
+		fixed = move.load_before_first_use(broken, move.LOAD)
+		self.assertTrue(fixed.startswith(move.LOAD + "\n_tools = ["))
+		self.assertEqual(move.load_before_first_use(fixed, move.LOAD), fixed)
+
 	def test_a_script_that_loads_the_library_drops_the_tools_too(self):
 		review = move.uses_library(move.uses_library(OLD_SCRIPTS["review_schema"]), move_tools.MOVED)
 		self.assertEqual(review.count(move.LOAD), 1)
@@ -199,7 +221,10 @@ class TestDocuLibraryOnTheMap(FrappeTestCase):
 
 	def test_diff_ir_and_merge_into_live_fields_through_import_script(self):
 		changed = json.loads(json.dumps(self.todo))
-		changed["fields"] = [*changed["fields"][1:], {"fieldname": "new_f", "fieldtype": "Data", "label": "New"}]
+		changed["fields"] = [
+			*changed["fields"][1:],
+			{"fieldname": "new_f", "fieldtype": "Data", "label": "New"},
+		]
 		self.assertEqual(self.lib.diff_ir(self.todo, changed), tools.diff_ir(self.todo, changed))
 		live_a, live_b = json.loads(json.dumps(self.todo)), json.loads(json.dumps(self.todo))
 		self.lib.merge_into_live_fields(live_a, json.loads(json.dumps(changed)))

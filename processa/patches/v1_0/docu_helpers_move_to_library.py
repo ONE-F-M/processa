@@ -76,7 +76,7 @@ def uses_library(script: str, moved: tuple = MOVED, load: str = LOAD) -> str:
 		return script
 	# A moved name used as code: not inside a word, an attribute or a string.
 	use = re.compile(r"(?<![\w.\"'])\b(" + "|".join(moved) + r")\b(?![\"'])")
-	return "\n".join(_point_at_library(line, use, load) for line in lines)
+	return load_before_first_use("\n".join(_point_at_library(line, use, load) for line in lines), load)
 
 
 def _point_at_library(line: str, use: re.Pattern, load: str) -> str:
@@ -89,3 +89,21 @@ def _point_at_library(line: str, use: re.Pattern, load: str) -> str:
 		code,
 	)
 	return code + hash_ + comment
+
+
+def load_before_first_use(script: str, load: str) -> str:
+	"""script with its library load moved above the top-level statement that first uses the library."""
+	import ast
+
+	alias = load.split(" = ", 1)[0] + "."
+	lines = script.split("\n")
+	at = next((i for i, line in enumerate(lines) if line.strip() == load), None)
+	first = next(
+		(i for i, line in enumerate(lines) if alias in line and not line.lstrip().startswith("#")), None
+	)
+	if at is None or first is None or at < first:
+		return script
+	start = next(n.lineno - 1 for n in ast.parse(script).body if n.lineno - 1 <= first <= n.end_lineno - 1)
+	del lines[at]
+	lines.insert(start, load)
+	return "\n".join(lines)
