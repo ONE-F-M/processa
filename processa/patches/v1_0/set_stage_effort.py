@@ -1,4 +1,4 @@
-"""Sets Effort on the ProsAlly and Logix stages that have none: High where the stage draws, writes or reviews, Low where it classifies."""
+"""Sets Effort on the ProsAlly and Logix stages that have none: High where the stage draws, writes, tests or reviews, Low where it classifies."""
 
 import frappe
 
@@ -6,6 +6,7 @@ AGENT_EFFORT = {
 	"logix_script_writer": "High",
 	"logix_tool_writer": "High",
 	"logix_script_reviewer": "High",
+	"logix_test_writer": "High",
 	"logix_intent_classifier": "Low",
 }
 PROSALLY = "prosally_agent"

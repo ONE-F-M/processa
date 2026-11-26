@@ -428,4 +428,4 @@ processa.patches.v1_0.logix_review_keeps_kept_lines #24-11-2026 Logix's review s
 processa.patches.v1_0.logix_library_functions_drop_the_underscore #24-11-2026 Logix drops a leading underscore when it moves a function into a library, so import_script can hand it over
 processa.patches.v1_0.ai_models_mark_effort_support #25-11-2026 Support Effort is ticked on the Claude AI Models that accept all five effort levels
 processa.patches.v1_0.lift_max_tokens_to_thinking_minimum #25-11-2026 Max Tokens is raised to Minimum Tokens When Thinking on agents whose AI Model thinks
-processa.patches.v1_0.set_stage_effort #25-11-2026 ProsAlly generate, modify and operation stages and the Logix writers and reviewer run at effort high, the classifiers at low, where no effort is set
+processa.patches.v1_0.set_stage_effort #25-11-2026 ProsAlly generate, modify and operation stages and the Logix writers, test writer and reviewer run at effort high, the classifiers at low, where no effort is set

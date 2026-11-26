@@ -30,7 +30,7 @@ from processa.processa_engine.agent_runtime.llm_gemini import GeminiAdapter
 from processa.processa_engine.agent_runtime.llm_openai import OpenAIAdapter
 from processa.ai_agent_observability.observability import SUB_CALL_TURN_FLAG, sent_effort
 from processa.ai_agent_skills.tools.shape_tools import PAUSE_HELD_FLAG
-from processa.patches.v1_0 import ai_models_mark_effort_support, lift_max_tokens_to_thinking_minimum
+from processa.patches.v1_0 import ai_models_mark_effort_support, lift_max_tokens_to_thinking_minimum, set_stage_effort
 from processa.tests.test_anthropic_sampling_params import _model
 
 RAN = []
@@ -505,3 +505,34 @@ class TestTheAgentConfiguration(FrappeTestCase):
 				doc.validate_thinking_budget()
 		doc.thinking_budget_tokens = 2048
 		doc.validate_thinking_budget()
+
+
+class TestStageEffortPatch(FrappeTestCase):
+	def test_the_test_writer_runs_at_high_and_a_set_effort_is_kept(self):
+		names = {}
+		for agent_id in ("logix_test_writer", "logix_script_reviewer"):
+			name = frappe.db.get_value("AI Agent Configuration", {"agent_id": agent_id}, "name")
+			if not name:
+				name = frappe.get_doc(
+					{
+						"doctype": "AI Agent Configuration",
+						"agent_name": agent_id,
+						"agent_id": agent_id,
+						"agent_type": "Background",
+						"agent_framework": "LangGraph",
+					}
+				).insert().name
+			names[agent_id] = name
+		frappe.db.set_value("AI Agent Configuration", names["logix_test_writer"], "effort", "")
+		frappe.db.set_value("AI Agent Configuration", names["logix_script_reviewer"], "effort", "Medium")
+		set_stage_effort.execute()
+		self.assertEqual(frappe.db.get_value("AI Agent Configuration", names["logix_test_writer"], "effort"), "High")
+		self.assertEqual(frappe.db.get_value("AI Agent Configuration", names["logix_script_reviewer"], "effort"), "Medium")
+
+	def test_a_prosally_stage_the_site_does_not_have_is_left_alone(self):
+		prosally = frappe.db.get_value("AI Agent Configuration", {"agent_id": set_stage_effort.PROSALLY}, "name")
+		if not prosally:
+			self.skipTest("ProsAlly is not on this site")
+		frappe.db.delete("AI Agent Sub Prompt", {"parent": prosally, "sub_agent_id": "operation_writer"})
+		set_stage_effort.execute()
+		self.assertFalse(frappe.db.exists("AI Agent Sub Prompt", {"parent": prosally, "sub_agent_id": "operation_writer"}))
