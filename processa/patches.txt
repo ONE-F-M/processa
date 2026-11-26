@@ -428,3 +428,5 @@ processa.patches.v1_0.logix_review_keeps_kept_lines #24-11-2026 Logix's review s
 processa.patches.v1_0.logix_library_functions_drop_the_underscore #24-11-2026 Logix drops a leading underscore when it moves a function into a library, so import_script can hand it over
 processa.patches.v1_0.seed_prosally_gateway_conditions_case #25-11-2026 ProsAlly Regressions gains the Overtime Request lifecycle, whose gateways must test actions and script results in Python
 processa.patches.v1_0.seed_prosally_update_field_values_case #25-11-2026 ProsAlly Regressions gains the Maintenance Work Order lifecycle, whose Update Field rows must hold only values the fields accept
+processa.patches.v1_0.logix_library_script_contract #26-11-2026 Logix writes and reviews a script in a Libraries box against a library contract and does not try it on a record
+processa.patches.v1_0.add_logix_library_script_eval_case #26-11-2026 Logix - Baseline gains a case that a library script defines functions only

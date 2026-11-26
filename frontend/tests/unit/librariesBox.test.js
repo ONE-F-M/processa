@@ -1,4 +1,5 @@
-import { test } from "vitest"
+import { test, vi } from "vitest"
+import { ref } from "vue"
 import assert from "node:assert/strict"
 
 import { BpmnModdle } from "bpmn-moddle"
@@ -12,6 +13,9 @@ import librariesBoxContents from "@/bpmn/lint/rules/libraries-box-contents.js"
 import scriptTaskMissingScript from "@/bpmn/lint/rules/script-task-missing-script.js"
 import exemptToolCatalogues from "@/bpmn/lint/rules/tool-catalogue.js"
 import { toolBoxOptions } from "@/bpmn/shared/toolBoxOptions.js"
+import { useProcessScripts } from "@/composables/Process/useProcessScripts.js"
+
+vi.mock("frappe-ui", () => ({ frappeRequest: vi.fn() }))
 
 const diagram = (body, executable = "true") => `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
@@ -79,4 +83,24 @@ test("a Libraries box is not offered as an agent's Tools box, an unmarked one is
 	}
 	assert.deepEqual(await optionValues(marked), [""])
 	assert.deepEqual(await optionValues(""), ["", "box"])
+})
+
+test("Logix gets shape_kind script_task and is_library only for a task in a Libraries box", async () => {
+	const pc = new Proxy(
+		{ props: { process: "" }, activeDiagramName: ref("Map") },
+		{ get: (target, key) => (key in target ? target[key] : (target[key] = ref(null))) },
+	)
+	useProcessScripts(pc)
+	const { extractProcessContext } = pc
+	const contextOf = async (body, id) => {
+		const root = await parse(diagram(body))
+		const all = [...root.rootElements[0].flowElements]
+		for (const el of [...all]) all.push(...(el.flowElements || []))
+		const bo = all.find((el) => el.id === id)
+		const { shape_kind, is_library } = extractProcessContext({ businessObject: bo })
+		return { shape_kind, is_library }
+	}
+	assert.deepEqual(await contextOf(box(lib()), "lib"), { shape_kind: "script_task", is_library: true })
+	assert.deepEqual(await contextOf(box(lib(), ""), "lib"), { shape_kind: "agent_tool", is_library: false })
+	assert.deepEqual(await contextOf(lib(), "lib"), { shape_kind: "script_task", is_library: false })
 })
