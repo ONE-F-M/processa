@@ -267,9 +267,14 @@ def collect_script_security_violations(
 	findings: list = []
 	sources = script_task_sources(bpmn_xml, process)
 	map_scripts = {source[4] for source in sources if source[4]} | called_scripts
+	libraries = libraries_box_task_ids(bpmn_xml)
 	for label, code, allowed, bpmn_id, server_script in sources:
 		request = _open_request(process, bpmn_id, server_script)
-		for finding in inspect_script(code, allowed) + library_findings(code, allowed, map_scripts, bpmn_id):
+		found = inspect_script(code, allowed) + library_findings(code, allowed, map_scripts, bpmn_id)
+		if bpmn_id in libraries:
+			# A library never runs on its own; what it uses is checked against each task that loads it.
+			found = [f for f in found if f["category"] in NOT_APPROVABLE]
+		for finding in found:
 			findings.append(
 				{
 					"label": label,
@@ -281,6 +286,20 @@ def collect_script_security_violations(
 				}
 			)
 	return findings
+
+
+def libraries_box_task_ids(bpmn_xml: str) -> set:
+	"""Ids of the script tasks inside a Libraries box, the ad-hoc sub-process marked spiffworkflow:scriptLibrary."""
+	try:
+		root = ET.fromstring((bpmn_xml or "").strip().encode("utf-8"))
+	except ET.ParseError:
+		return set()
+	return {
+		task.get("id")
+		for box in root.iter(f"{{{BPMN_NS}}}adHocSubProcess")
+		if box.get(f"{{{SPIFF_NS}}}scriptLibrary") == "true"
+		for task in box.iter(f"{{{BPMN_NS}}}scriptTask")
+	}
 
 
 def _open_request(process: str | None, script_task: str, server_script: str) -> str | None:
