@@ -17,8 +17,6 @@ private-import processa/api/sessions.py processa.ai_agent_conversations.compacti
 private-import processa/patches/v1_0/agent_limits_move_to_the_configuration.py processa.patches.v1_0.agent_settings_move_to_the_configuration._agent_shapes
 private-import processa/patches/v1_0/agent_limits_move_to_the_configuration.py processa.patches.v1_0.agent_settings_move_to_the_configuration._is_blank
 private-import processa/patches/v1_0/agent_prompts_for_awkward_orders.py processa.patches.v1_0.seed_connector_agent_config._AWKWARD_ORDERS
-private-import processa/patches/v1_0/apply_reviewed_memory_cleanup.py processa.ai_agent_memory.prune._invalidate
-private-import processa/patches/v1_0/apply_reviewed_memory_cleanup.py processa.ai_agent_memory.tools._json_loads
 private-import processa/patches/v1_0/chat_agents_report_failed_tool.py processa.patches.v1_0.chat_agents_post_failed_turn_error._edit_script
 private-import processa/patches/v1_0/dms_tool_reads_as_the_chatting_user.py processa.patches.v1_0.general_chat_answers_from_dms._upsert_tool_script
 private-import processa/patches/v1_0/docu_confirms_the_parts_of_a_spec.py processa.patches.v1_0.chat_agents_post_failed_turn_error._edit_script
