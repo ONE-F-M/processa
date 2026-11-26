@@ -10,6 +10,7 @@ from frappe.tests.utils import FrappeTestCase
 from processa.ai_agent_registry.definitions.docu import tools as docu_tools
 from processa.ai_agent_registry.definitions.logix import tools as logix_tools
 from processa.ai_agent_registry.definitions.shared import tools as shared_tools
+from processa.ai_agent_registry.definitions.shared import tools_codebase
 from processa.ai_agent_registry.definitions.shared.helpers import tool_envelope
 
 BROKEN = RuntimeError("database went away")
@@ -47,6 +48,12 @@ CASES = (
 		(docu_tools, "read_doctype_definition"),
 		{"doctype": "ToDo"},
 		json.dumps({"error": "Failed to read DocType 'ToDo'."}),
+	),
+	(
+		tools_codebase.search_codebase,
+		(tools_codebase.subprocess, "Popen"),
+		{"query": "def get_doctype_fields", "app": "processa"},
+		json.dumps({"error": "Codebase search failed."}),
 	),
 )
 
