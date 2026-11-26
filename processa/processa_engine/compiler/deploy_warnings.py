@@ -1,6 +1,11 @@
 # Copyright (c) 2026, one-fm and contributors
 """Deploy warnings: advisory findings returned with a successful deploy, never a refusal."""
 
+import ast
+import builtins
+import json
+import re
+
 import frappe
 from frappe import _
 
@@ -245,3 +250,182 @@ def _drift_line(drift: dict) -> str:
 			drift["label"], len(drift["live"]), len(drift["shape"])
 		)
 	return _("{0} {1} (the shape says {2})").format(drift["label"], drift["live"], drift["shape"] or _("nothing"))
+
+
+BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"
+SPIFF_NS = "http://spiffworkflow.org/bpmn/schema/1.0/core"
+# Names the engine puts in task data on every run; document fields come in as bare names too.
+ENGINE_NAMES = frozenset({"triggered_by", "trigger_doctype", "trigger_docname", "context_doctype", "context_docname", "docstatus"})
+# JavaScript spellings a condition cannot read.
+UNREADABLE_NAMES = frozenset({"true", "false", "null"})
+DOCTYPE_ATTRS = ("triggerDoctype", "targetDoctype", "serviceTargetDoctype", "updateFieldDoctype")
+CHECK_STEP = re.compile(r"(?i)\b(validate|check|verify)\b|^\s*is\b.*\b(allowed|eligible|valid)\b")
+
+
+def gateway_condition_gaps(root, doctypes: tuple = ()) -> list:
+	"""(element id, why) per gateway condition a step cannot satisfy, per check step no gateway follows, and per script that does not parse."""
+	elements = {el.get("id"): el for el in root.iter() if el.get("id")}
+	flows = list(root.iter(f"{{{BPMN_NS}}}sequenceFlow"))
+	named = {el.get(f"{{{SPIFF_NS}}}{attr}") for el in elements.values() for attr in DOCTYPE_ATTRS}
+	fields = _document_fields({*doctypes, *named} - {None, ""})
+	gaps = []
+	keys = {}
+	for el in elements.values():
+		if _tag(el) != "scriptTask":
+			continue
+		try:
+			keys[el.get("id")] = _script_keys(el)
+		except SyntaxError:
+			keys[el.get("id")] = set()
+			gaps.append((el.get("id"), _("Its script is not valid Python, so it sets nothing a decision can test.")))
+	produced = ENGINE_NAMES | fields | _step_outputs(elements.values(), keys)
+	for flow in flows:
+		expression = flow.find(f"{{{BPMN_NS}}}conditionExpression")
+		if expression is None:
+			continue
+		gateway = elements.get(flow.get("sourceRef"))
+		if gateway is None or _tag(gateway) != "exclusiveGateway":
+			continue
+		before = [elements[f.get("sourceRef")] for f in flows if f.get("targetRef") == gateway.get("id") and f.get("sourceRef") in elements]
+		message = _condition_gap((expression.text or "").strip(), before, produced, fields, keys)
+		if message:
+			gaps.append((gateway.get("id"), message))
+	gaps += _unrouted_checks(elements, flows)
+	return gaps
+
+
+def _step_outputs(elements, keys: dict) -> set:
+	"""Every name a step of the map puts in task data: action, script keys and result variables."""
+	names = set()
+	for el in elements:
+		if _tag(el) == "userTask" and _task_actions(el):
+			names.add("action")
+		names |= keys.get(el.get("id")) or set()
+		names |= {value for attr, value in el.attrib.items() if attr.startswith(f"{{{SPIFF_NS}}}") and attr.endswith("Variable") and value}
+	return names
+
+
+def _condition_gap(text: str, before: list, produced: frozenset, fields: frozenset, keys: dict) -> str:
+	"""Why a condition after the steps in before never routes as drawn, or ""."""
+	if not text:
+		return ""
+	try:
+		tree = ast.parse(text, mode="eval")
+	except SyntaxError:
+		return _("\"{0}\" is not a Python expression.").format(text)
+	names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} - frozenset(dir(builtins))
+	if "doc" in names:
+		field = next((n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and getattr(n.value, "id", "") == "doc"), "")
+		return _("\"{0}\" reads doc, which a condition cannot see. Write the field name alone, for example {1}.").format(text, field)
+	unreadable = sorted(names & UNREADABLE_NAMES)
+	if unreadable:
+		return _("\"{0}\" uses {1}, which Python does not know. Write True, False or None.").format(text, unreadable[0])
+	for step in before:
+		if _tag(step) == "userTask":
+			return _user_task_gap(text, tree, names - fields - ENGINE_NAMES, step)
+		if _tag(step) == "scriptTask":
+			return _script_task_gap(text, names, step, fields, keys.get(step.get("id")))
+	unknown = sorted(names - produced)
+	if unknown:
+		return _("'{0}' is not set by any step, the start event or a document field, so \"{1}\" never routes.").format(unknown[0], text)
+	return ""
+
+
+def _user_task_gap(text: str, tree, names: set, step) -> str:
+	"""Why a condition after a user task does not test one of its actions, or ""."""
+	actions = _task_actions(step)
+	label = step.get("name") or step.get("id")
+	if not actions:
+		return _("{0} has no actions, so action is never set and \"{1}\" never routes. Add the actions on {0}.").format(label, text)
+	if not names:
+		return ""
+	if "action" not in names:
+		return _("\"{0}\" does not test the action taken on {1}. Test action == one of: {2}.").format(text, label, ", ".join(actions))
+	compared = [n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+	wrong = [value for value in compared if value not in actions]
+	if wrong:
+		return _("'{0}' is not an action of {1}. Its actions: {2}.").format(wrong[0], label, ", ".join(actions))
+	return ""
+
+
+def _script_task_gap(text: str, names: set, step, fields: frozenset, keys: set | None) -> str:
+	"""Why a condition after a script task tests a key its script does not set, or ""."""
+	missing = sorted(names - (keys or set()) - fields - ENGINE_NAMES)
+	if not missing:
+		return ""
+	label = step.get("name") or step.get("id")
+	wanted = ", ".join(f'result["{key}"]' for key in missing)
+	if keys is None:
+		return _("{0} has no script yet. Its script must set {1} for \"{2}\" to route.").format(label, wanted, text)
+	return _("The script of {0} never sets {1}, so \"{2}\" never routes.").format(label, wanted, text)
+
+
+def _unrouted_checks(elements: dict, flows: list) -> list:
+	"""(id, why) for each check script task with no gateway right after it."""
+	gaps = []
+	for el in elements.values():
+		if _tag(el) != "scriptTask":
+			continue
+		if not CHECK_STEP.search(el.get("name") or ""):
+			continue
+		after = [elements[f.get("targetRef")] for f in flows if f.get("sourceRef") == el.get("id") and f.get("targetRef") in elements]
+		if not any(_tag(a) == "exclusiveGateway" for a in after):
+			gaps.append((el.get("id"), _("It is a check, but no decision follows it, so its result is never used. Route on its result with a gateway.")))
+	return gaps
+
+
+def _task_actions(step) -> list:
+	"""The action names on a user task element."""
+	from processa.ai_agent_registry.provisioning.bpmn_task_config import normalise_task_actions
+
+	raw = normalise_task_actions(step.get(f"{{{SPIFF_NS}}}taskActions"))
+	return [row["action"] for row in json.loads(raw)] if raw else []
+
+
+def _script_keys(step) -> set | None:
+	"""Names a script task's script puts in task data; None when it has no script. Raises SyntaxError when it does not parse."""
+	server_script = (step.get(f"{{{SPIFF_NS}}}serverScript") or "").strip()
+	if server_script:
+		code = frappe.db.get_value("Server Script", server_script, "script")
+		return None if code is None else _assigned_keys(code, inline=False)
+	inline = step.find(f"{{{BPMN_NS}}}script")
+	if inline is not None and (inline.text or "").strip():
+		return _assigned_keys(inline.text, inline=True)
+	return None
+
+
+def _assigned_keys(code: str, inline: bool) -> set:
+	"""result["key"] writes, result.update keys and result = {...} keys; an inline script's assigned names too."""
+	keys = set()
+	for node in ast.walk(ast.parse(code)):
+		if isinstance(node, ast.Subscript) and _is_result(node.value) and isinstance(node.slice, ast.Constant):
+			keys.add(str(node.slice.value))
+		elif isinstance(node, ast.Call) and _is_result_update(node):
+			keys |= {k.arg for k in node.keywords if k.arg}
+			keys |= {k.value for arg in node.args if isinstance(arg, ast.Dict) for k in arg.keys if isinstance(k, ast.Constant)}
+		elif isinstance(node, ast.Assign) and any(_is_result(t) for t in node.targets) and isinstance(node.value, ast.Dict):
+			keys |= {k.value for k in node.value.keys if isinstance(k, ast.Constant)}
+		elif inline and isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+			keys.add(node.id)
+	return keys
+
+
+def _is_result_update(node) -> bool:
+	return isinstance(node.func, ast.Attribute) and node.func.attr == "update" and _is_result(node.func.value)
+
+
+def _is_result(node) -> bool:
+	return isinstance(node, ast.Name) and node.id == "result"
+
+
+def _document_fields(doctypes: set) -> frozenset:
+	"""Field names of the DocTypes that exist on this site, as a condition reads them."""
+	fields = set()
+	for doctype in doctypes:
+		if frappe.db.exists("DocType", doctype):
+			fields |= {f.fieldname for f in frappe.get_meta(doctype).fields}
+	return frozenset(fields)
+
+
+def _tag(el) -> str:
+	return el.tag.split("}")[-1]

@@ -205,9 +205,29 @@ def _settings_text(xml: str, previous_xml: str) -> str:
 		if elem_id not in before_ids
 	]
 	lines = [line for line in lines if line]
+	decisions = _condition_text(xml, previous_xml)
+	if not lines:
+		return decisions
+	return "\n\n" + _("I also set these up on the steps:") + "\n" + "\n".join("- " + line for line in lines) + decisions
+
+
+def _condition_text(xml: str, previous_xml: str) -> str:
+	"""The gateway conditions and check steps in xml that cannot route as drawn, leaving out any previous_xml had."""
+	from processa.processa_engine.compiler.deploy_warnings import gateway_condition_gaps
+
+	if not (xml or "").strip():
+		return ""
+	root = ET.fromstring(xml.strip().encode("utf-8"))
+	before = set(gateway_condition_gaps(ET.fromstring(previous_xml.strip().encode("utf-8")))) if (previous_xml or "").strip() else set()
+	names = {el.get("id"): el.get("name") for el in root.iter() if el.get("id")}
+	lines = [
+		_("{0}: {1}").format(names.get(elem_id) or elem_id, message)
+		for elem_id, message in gateway_condition_gaps(root)
+		if (elem_id, message) not in before
+	]
 	if not lines:
 		return ""
-	return "\n\n" + _("I also set these up on the steps:") + "\n" + "\n".join("- " + line for line in lines)
+	return "\n\n" + _("These decisions need your attention:") + "\n" + "\n".join("- " + line for line in lines)
 
 
 def _script_task_names(xml: str) -> dict:

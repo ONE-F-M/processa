@@ -402,6 +402,10 @@ def check_readiness(xml_content: str, model_name: str = None) -> dict:
 	if sender_category:
 		categories.append(sender_category)
 
+	condition_category = _gateway_condition_category(refs["root"], model_name)
+	if condition_category:
+		categories.append(condition_category)
+
 	field_value_category = _update_field_value_category(xml_content, refs["root"])
 	if field_value_category:
 		categories.append(field_value_category)
@@ -445,6 +449,19 @@ def _user_task_config_category(xml_content: str) -> dict | None:
 	]
 	return {"label": _("User Task Configuration"), "icon": "user-check", "items": items}
 
+
+def _gateway_condition_category(root, model_name: str | None) -> dict | None:
+	"""The Gateway Conditions readiness category, one warning per condition or check step that cannot route, or None."""
+	from processa.processa_engine.compiler.deploy_warnings import gateway_condition_gaps
+
+	trigger = model_name and frappe.db.get_value("BPMN Process Model", model_name, "trigger_doctype")
+	gaps = gateway_condition_gaps(root, (trigger,) if trigger else ())
+	if not gaps:
+		return None
+	ids = list(dict.fromkeys(elem_id for elem_id, _message in gaps))
+	names = dict(zip(ids, _step_names(root, ids), strict=True))
+	items = [{"name": names[elem_id], "exists": True, "type": "warning", "detail": message} for elem_id, message in gaps]
+	return {"label": _("Gateway Conditions"), "icon": "git-branch", "items": items}
 
 def _update_field_value_category(xml_content: str, root) -> dict | None:
 	"""The Field Values readiness category, one warning per Update Field value its field cannot hold, or None."""

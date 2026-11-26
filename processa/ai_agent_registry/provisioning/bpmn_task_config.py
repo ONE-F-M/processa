@@ -460,6 +460,60 @@ def resolve_ir_config(ir: dict) -> list[dict]:
 	return problems
 
 
+# JavaScript spellings a model writes in a condition, and their Python.
+JS_WORDS = {"true": "True", "false": "False", "null": "None"}
+QUOTED = re.compile(r"(\"[^\"]*\"|'[^']*')")
+ACTION_CUTOFF = 0.8
+
+
+def resolve_ir_conditions(ir: dict) -> None:
+	"""Write every condition as Python, in place, and correct an action name that nearly matches one on the user task before it."""
+	nodes = {n.get("id"): n for n in (ir or {}).get("nodes") or [] if isinstance(n, dict)}
+	flows = [f for f in (ir or {}).get("flows") or [] if isinstance(f, dict)]
+	for flow in flows:
+		if not flow.get("condition"):
+			continue
+		condition = python_condition(str(flow["condition"]))
+		actions = [a for f in flows if f.get("to") == flow.get("from") for a in _node_actions(nodes.get(f.get("from")))]
+		if actions:
+			condition = _closest_actions(condition, actions)
+		flow["condition"] = condition
+
+
+def python_condition(text: str) -> str:
+	"""text with true, false, null, &&, || and !x written as Python and doc. prefixes dropped; quoted text is left alone."""
+	parts = QUOTED.split(text)
+	for index in range(0, len(parts), 2):
+		part = parts[index].replace("&&", " and ").replace("||", " or ")
+		part = re.sub(r"!(?!=)", " not ", part)
+		part = re.sub(r"\bdoc\.(?=[A-Za-z_])", "", part)
+		part = re.sub(r"\b(true|false|null)\b", lambda m: JS_WORDS[m[1]], part)
+		parts[index] = re.sub(r"\s+", " ", part)
+	return "".join(parts).strip()
+
+
+def _node_actions(node: dict | None) -> list[str]:
+	"""The action names configured on an IR user task."""
+	if not node or node.get("type") != "userTask":
+		return []
+	raw = (node.get("attrs") or {}).get("taskActions") or normalise_task_actions((node.get("config") or {}).get("taskActions"))
+	return [row["action"] for row in json.loads(raw)] if raw else []
+
+
+def _closest_actions(condition: str, actions: list[str]) -> str:
+	"""condition with each quoted name that is not an action replaced by the action it nearly matches."""
+	by_lower = {a.lower(): a for a in actions}
+
+	def closest(match):
+		quote, word = match[1][0], match[1][1:-1]
+		if word in actions:
+			return match[1]
+		near = difflib.get_close_matches(word.lower(), by_lower, 1, ACTION_CUTOFF)
+		return f"{quote}{by_lower[near[0]]}{quote}" if near else match[1]
+
+	return QUOTED.sub(closest, condition)
+
+
 LANE_ROLE_CUTOFF = 0.75
 LANE_ROLE_EXCLUDED = frozenset({"Administrator"})
 LANE_ROLE_SUGGESTIONS = 3
