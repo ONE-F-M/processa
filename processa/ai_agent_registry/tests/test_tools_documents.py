@@ -39,7 +39,7 @@ def not_found(doctype: str) -> dict:
 
 def make_user(email: str, roles: tuple = ()) -> None:
 	if frappe.db.exists("User", email):
-		frappe.delete_doc("User", email, force=True, ignore_permissions=True)
+		frappe.delete_doc("User", email, force=True)
 	user = frappe.get_doc(
 		{
 			"doctype": "User",
@@ -49,7 +49,7 @@ def make_user(email: str, roles: tuple = ()) -> None:
 			"send_welcome_email": 0,
 		}
 	)
-	user.insert(ignore_permissions=True)
+	user.insert()
 	if roles:
 		user.add_roles(*roles)
 
@@ -65,13 +65,11 @@ def make_doctype(name: str, fields: list, permissions: list, autoname: str) -> N
 			"fields": fields,
 			"permissions": permissions,
 		}
-	).insert(ignore_permissions=True)
+	).insert()
 
 
 def make_todo(description: str, owner: str) -> str:
-	todo = frappe.get_doc(
-		{"doctype": "ToDo", "description": description, "allocated_to": owner}
-	).insert(ignore_permissions=True)
+	todo = frappe.get_doc({"doctype": "ToDo", "description": description, "allocated_to": owner}).insert()
 	frappe.db.set_value("ToDo", todo.name, "owner", owner, update_modified=False)
 	return todo.name
 
@@ -82,12 +80,13 @@ def delete_fixtures() -> None:
 	frappe.db.delete("ToDo", {"description": ["like", f"{PREFIX}%"]})
 	for name in CUSTOM_DOCTYPES:
 		if frappe.db.exists("DocType", name):
-			frappe.delete_doc("DocType", name, force=True, ignore_permissions=True)
+			frappe.delete_doc("DocType", name, force=True)
 		# Deleting the DocType may leave its table behind, and a left-over table keeps old rows.
-		frappe.db.sql_ddl(f"drop table if exists `tab{name}`")
+		if frappe.db.table_exists(name):
+			frappe.db.delete(name)
 	for email in (LIMITED_USER, MANAGER_USER):
 		if frappe.db.exists("User", email):
-			frappe.delete_doc("User", email, force=True, ignore_permissions=True)
+			frappe.delete_doc("User", email, force=True)
 	frappe.db.commit()
 
 
@@ -122,7 +121,7 @@ class TestToolsDocuments(FrappeTestCase):
 				"for_value": cls.todo_one,
 				"apply_to_all_doctypes": 1,
 			}
-		).insert(ignore_permissions=True)
+		).insert()
 
 		cls.source_name = frappe.get_doc({"doctype": SOURCE, "title": f"{PREFIX} source"}).insert().name
 		cls.open_names = sorted(
@@ -148,7 +147,6 @@ class TestToolsDocuments(FrappeTestCase):
 		frappe.clear_cache(user=LIMITED_USER)
 		frappe.set_user(LIMITED_USER)
 
-	# AC1 - a User Permission limits every tool to the one document
 	def test_user_permission_limits_get_list_and_its_count(self):
 		self.as_limited_user()
 		result = tools.get_list("ToDo", filters=DESCRIPTION_FILTER)
@@ -171,7 +169,6 @@ class TestToolsDocuments(FrappeTestCase):
 		rows = json.loads(tools.query_doctypes("ToDo", filters=DESCRIPTION_FILTER))
 		self.assertEqual(rows, [{"name": self.todo_one}])
 
-	# AC2 - a DocType the user cannot read returns the error and no data
 	def test_every_tool_refuses_a_doctype_the_user_cannot_read(self):
 		self.as_limited_user()
 		error = insufficient(UNREADABLE)
@@ -181,7 +178,6 @@ class TestToolsDocuments(FrappeTestCase):
 		self.assertEqual(tools.get_linked_documents(UNREADABLE, "anything"), error)
 		self.assertEqual(json.loads(tools.query_doctypes(UNREADABLE)), error)
 
-	# AC3 - two users with different permissions, same filters, one after the other
 	def test_two_users_each_get_the_count_of_the_rows_they_can_read(self):
 		def count_as(user: str) -> int:
 			frappe.clear_cache(user=user)
@@ -193,7 +189,6 @@ class TestToolsDocuments(FrappeTestCase):
 		self.assertEqual(count_as(LIMITED_USER), 1)
 		self.assertEqual(count_as(MANAGER_USER), 2)
 
-	# AC4 - linked documents
 	def test_linked_documents_hold_only_what_the_user_can_read(self):
 		self.as_limited_user()
 		result = tools.get_linked_documents(SOURCE, self.source_name)
@@ -217,7 +212,6 @@ class TestToolsDocuments(FrappeTestCase):
 			{"error": f"Document 'ZZ No Such Document' of type '{SOURCE}' not found"},
 		)
 
-	# AC5 - the keys each tool returns
 	def test_shapes_as_administrator(self):
 		listed = tools.get_list("ToDo", filters=DESCRIPTION_FILTER)
 		self.assertEqual(
@@ -249,7 +243,6 @@ class TestToolsDocuments(FrappeTestCase):
 		rows = json.loads(tools.query_doctypes("todo", filters=DESCRIPTION_FILTER))
 		self.assertEqual(len(rows), 2)
 
-	# AC6 - an unknown DocType
 	def test_every_tool_answers_not_found_for_an_unknown_doctype(self):
 		error = not_found(UNKNOWN)
 		self.assertEqual(tools.get_list(UNKNOWN), error)
@@ -258,16 +251,20 @@ class TestToolsDocuments(FrappeTestCase):
 		self.assertEqual(tools.get_linked_documents(UNKNOWN, "anything"), error)
 		self.assertEqual(json.loads(tools.query_doctypes(UNKNOWN)), error)
 
-	# AC7 - query_doctypes returns at most 50 rows
 	def test_query_doctypes_limit_is_capped_at_50(self):
 		self.addCleanup(frappe.db.delete, "ToDo", {"description": ["like", f"{PREFIX} bulk%"]})
 		for index in range(55):
 			make_todo(f"{PREFIX} bulk {index}", "Administrator")
-		self.assertEqual(len(json.loads(tools.query_doctypes("ToDo", filters=DESCRIPTION_FILTER, limit=500))), 50)
-		self.assertEqual(len(json.loads(tools.query_doctypes("ToDo", filters=DESCRIPTION_FILTER, limit=0))), 50)
-		self.assertEqual(len(json.loads(tools.query_doctypes("ToDo", filters=DESCRIPTION_FILTER, limit=3))), 3)
+		self.assertEqual(
+			len(json.loads(tools.query_doctypes("ToDo", filters=DESCRIPTION_FILTER, limit=500))), 50
+		)
+		self.assertEqual(
+			len(json.loads(tools.query_doctypes("ToDo", filters=DESCRIPTION_FILTER, limit=0))), 50
+		)
+		self.assertEqual(
+			len(json.loads(tools.query_doctypes("ToDo", filters=DESCRIPTION_FILTER, limit=3))), 3
+		)
 
-	# AC8 - a raised error is answered with the tool's error value and one Error Log row
 	def test_a_raising_tool_returns_its_error_value_and_writes_one_error_log(self):
 		cases = (
 			("get_list", lambda: tools.get_list("ToDo"), {"doctype": "ToDo"}),
@@ -299,7 +296,6 @@ class TestToolsDocuments(FrappeTestCase):
 				self.assertEqual(isinstance(result, str), name == "query_doctypes")
 				self.assertEqual(frappe.db.count("Error Log", {"method": title}), before + 1)
 
-	# AC9, AC11 - the module itself
 	def test_the_module_reads_through_get_list_only(self):
 		with open(MODULE_PATH, encoding="utf-8") as handle:
 			source = handle.read()

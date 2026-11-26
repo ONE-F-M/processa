@@ -7,27 +7,11 @@ Every row and every count is read with frappe.get_list, which applies the user's
 import json
 
 import frappe
+from frappe.model.rename_doc import get_link_fields
 
 from processa.ai_agent_registry.definitions.shared.helpers import tool_envelope
 
 QUERY_DOCTYPES_MAX_ROWS = 50
-
-
-def _not_found(doctype: str) -> dict:
-	return {"error": f"DocType '{doctype}' not found"}
-
-
-def _no_permission(doctype: str) -> dict:
-	return {"error": f"Insufficient permissions for DocType '{doctype}'"}
-
-
-def _failed(function_name: str, doctype) -> dict:
-	return {"error": f"Failed to run {function_name} on DocType '{doctype}'."}
-
-
-def _readable_count(doctype: str, filters: dict | None) -> int:
-	"""The number of rows of the DocType the user can read that match the filters."""
-	return frappe.get_list(doctype, filters=filters or {}, fields=["count(name) as total"])[0].total
 
 
 @tool_envelope("Shared Tool - get_list", lambda doctype, **_: _failed("get_list", doctype))
@@ -74,6 +58,11 @@ def get_count(doctype: str, filters: dict | None = None) -> dict:
 	return {"doctype": doctype, "count": _readable_count(doctype, filters), "filters": filters or {}}
 
 
+def _readable_count(doctype: str, filters: dict | None) -> int:
+	"""The number of rows of the DocType the user can read that match the filters."""
+	return frappe.get_list(doctype, filters=filters or {}, fields=["count(name) as total"])[0].total
+
+
 @tool_envelope("Shared Tool - query_documents", lambda doctype, **_: _failed("query_documents", doctype))
 def query_documents(
 	doctype: str,
@@ -100,49 +89,21 @@ def query_documents(
 	return {"doctype": doctype, "data": rows, "count": len(rows)}
 
 
-def _link_field_parents(doctype: str) -> list[tuple[str, str]]:
-	"""(DocType, fieldname) of every Link field, standard or custom, whose options are the DocType."""
-	pairs = {
-		(row["parent"], row["fieldname"])
-		for row in frappe.db.get_values(
-			"DocField",
-			{"fieldtype": "Link", "options": doctype, "parenttype": "DocType"},
-			["parent", "fieldname"],
-			as_dict=True,
-		)
-	}
-	pairs |= {
-		(row["dt"], row["fieldname"])
-		for row in frappe.db.get_values(
-			"Custom Field",
-			{"fieldtype": "Link", "options": doctype},
-			["dt", "fieldname"],
-			as_dict=True,
-		)
-	}
-	if not pairs:
-		return []
-	# Single and child DocTypes have no rows of their own to link from.
-	eligible = {
-		row.name
-		for row in frappe.get_all(
-			"DocType",
-			filters={"name": ["in", sorted({parent for parent, _ in pairs})], "issingle": 0, "istable": 0},
-			fields=["name"],
-		)
-	}
-	return sorted(pair for pair in pairs if pair[0] in eligible)
-
-
-@tool_envelope("Shared Tool - get_linked_documents", lambda doctype, **_: _failed("get_linked_documents", doctype))
+@tool_envelope(
+	"Shared Tool - get_linked_documents",
+	lambda doctype, **_: _failed("get_linked_documents", doctype),
+)
 def get_linked_documents(doctype: str, name: str) -> dict:
 	"""The documents the user can read that link to the document, found through the Link fields of every DocType."""
 	if not frappe.db.exists("DocType", doctype):
 		return _not_found(doctype)
 	if not frappe.has_permission(doctype, "read"):
 		return _no_permission(doctype)
-	if not frappe.db.exists(doctype, name) or not frappe.has_permission(doctype, "read", doc=name):
-		return {"error": f"Document '{name}' of type '{doctype}' not found"}
+	missing = {"error": f"Document '{name}' of type '{doctype}' not found"}
+	if not frappe.db.exists(doctype, name):
+		return missing
+	if not frappe.has_permission(doctype, "read", doc=name):
+		return missing
 
 	linked = []
 	readable = {}
@@ -156,22 +117,19 @@ def get_linked_documents(doctype: str, name: str) -> dict:
 	return {"source_doctype": doctype, "source_name": name, "linked_documents": linked}
 
 
-def _resolve_doctype_name(doctype: str) -> str | None:
-	"""The DocType's exact name: an exact match, a case-insensitive match, or the one DocType that contains the text."""
-	# The stored name, so that a name typed in another case is returned as the DocType is spelled.
-	exact = frappe.db.get_value("DocType", doctype, "name")
-	if exact:
-		return exact
-	matched = frappe.db.get_value("DocType", {"name": ["like", doctype]}, "name")
-	if matched:
-		return matched
-	candidates = frappe.get_all(
-		"DocType",
-		filters={"name": ["like", f"%{doctype}%"], "istable": 0},
-		fields=["name"],
-		limit=2,
+def _link_field_parents(doctype: str) -> list[tuple[str, str]]:
+	"""(DocType, fieldname) of every Link field to the DocType, leaving out Single and child DocTypes."""
+	pairs = {(row.parent, row.fieldname) for row in get_link_fields(doctype) if not row.issingle}
+	if not pairs:
+		return []
+	child_tables = set(
+		frappe.get_all(
+			"DocType",
+			filters={"name": ["in", sorted({parent for parent, _ in pairs})], "istable": 1},
+			pluck="name",
+		)
 	)
-	return candidates[0].name if len(candidates) == 1 else None
+	return sorted(pair for pair in pairs if pair[0] not in child_tables)
 
 
 @tool_envelope(
@@ -202,3 +160,33 @@ def query_doctypes(
 		limit_page_length=page_length,
 	)
 	return json.dumps(rows, default=str)
+
+
+def _resolve_doctype_name(doctype: str) -> str | None:
+	"""The DocType's exact name: an exact match, a case-insensitive match, or the one DocType that contains the text."""
+	# The stored name, so that a name typed in another case is returned as the DocType is spelled.
+	exact = frappe.db.get_value("DocType", doctype, "name")
+	if exact:
+		return exact
+	matched = frappe.db.get_value("DocType", {"name": ["like", doctype]}, "name")
+	if matched:
+		return matched
+	candidates = frappe.get_all(
+		"DocType",
+		filters={"name": ["like", f"%{doctype}%"], "istable": 0},
+		fields=["name"],
+		limit=2,
+	)
+	return candidates[0].name if len(candidates) == 1 else None
+
+
+def _not_found(doctype: str) -> dict:
+	return {"error": f"DocType '{doctype}' not found"}
+
+
+def _no_permission(doctype: str) -> dict:
+	return {"error": f"Insufficient permissions for DocType '{doctype}'"}
+
+
+def _failed(function_name: str, doctype: str) -> dict:
+	return {"error": f"Failed to run {function_name} on DocType '{doctype}'."}
