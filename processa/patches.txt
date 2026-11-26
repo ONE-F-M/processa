@@ -447,3 +447,4 @@ processa.patches.v1_0.prosally_map_xml_move_to_library #26-11-2026 the ProsAlly 
 processa.patches.v1_0.platform_helpers_move_to_libraries #26-11-2026 Logix debug stage helpers and LuCrusher document search move into libraries on their maps with their approvals shipped
 processa.patches.v1_0.prosally_stage_replies_move_to_library #26-11-2026 the ProsAlly Libraries box gets Lib Stage Replies, the scripts load the stage reply helpers from it and their approvals are shipped
 processa.patches.v1_0.prosally_context_move_to_library #26-11-2026 the ProsAlly Libraries box gets Lib Context, the scripts load the context helpers from it and their approvals are shipped
+processa.patches.v1_0.prosally_layout_move_to_library #26-11-2026 the ProsAlly Libraries box gets Lib Layout, the scripts load the layout helpers from it and their approvals, subprocess included, are shipped
