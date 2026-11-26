@@ -14,7 +14,10 @@ import frappe
 from frappe.utils import now_datetime
 
 from processa.ai_agent_registry.definitions.prosally.helpers import NS
-from processa.ai_agent_registry.definitions.prosally.tools_subprocess import put_back_libraries
+from processa.ai_agent_registry.definitions.prosally.tools_subprocess import (
+	put_back_libraries,
+	take_out_libraries,
+)
 from processa.ai_agent_security.code_checks.script_gate import script_task_findings
 from processa.ai_agent_security.code_checks.script_validator import NOT_APPROVABLE
 from processa.patches.v1_0.prosally_scope_modify_to_subprocess import with_edits
@@ -88,8 +91,11 @@ def execute():
 def with_libraries_box(xml: str, box_id: str = BOX_ID, task_ids: dict | None = None) -> str:
 	"""xml with a Libraries box holding a script task per library, drawn below the flow; unchanged when present."""
 	task_ids = task_ids or TASK_IDS
-	if f'id="{box_id}"' in xml or "<bpmn:process " not in xml:
+	if "<bpmn:process " not in xml:
 		return xml
+	if f'id="{box_id}"' in xml:
+		missing = {name: task_id for name, task_id in task_ids.items() if f'id="{task_id}"' not in xml}
+		return _with_more_libraries(xml, box_id, missing) if missing else xml
 	process_id = xml.split("<bpmn:process ", 1)[1].split('id="', 1)[1].split('"', 1)[0]
 	spiff = 'xmlns:spiffworkflow="http://spiffworkflow.org/bpmn/schema/1.0/core"'
 	bpmn = 'xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"'
@@ -112,6 +118,36 @@ def with_libraries_box(xml: str, box_id: str = BOX_ID, task_ids: dict | None = N
 		for index, name in enumerate(task_ids)
 	]
 	return put_back_libraries(xml, [{"process": process_id, "element": element, "shapes": shapes}])
+
+
+def _with_more_libraries(xml: str, box_id: str, task_ids: dict) -> str:
+	"""xml whose existing Libraries box also holds a script task per library in task_ids, drawn after the others."""
+	rest, libraries = take_out_libraries(xml)
+	spiff, dc = "{" + NS["spiffworkflow"] + "}", "{" + NS["dc"] + "}"
+	for library in libraries:
+		box = ET.fromstring(library["element"])
+		if box.get("id") != box_id:
+			continue
+		shapes = [ET.fromstring(shape) for shape in library["shapes"]]
+		own = next(shape for shape in shapes if shape.get("bpmnElement") == box_id).find(dc + "Bounds")
+		count = sum(1 for child in box if child.tag.endswith("scriptTask"))
+		for index, (name, task_id) in enumerate(task_ids.items(), start=count):
+			task = ET.SubElement(
+				box, "{" + NS["bpmn"] + "}scriptTask", {"id": task_id, "name": name.split(": ", 1)[1]}
+			)
+			for attr in ("serverScript", "scriptName"):
+				task.set(spiff + attr, name)
+			task.set(spiff + "scriptType", "Server Script")
+			shape = ET.fromstring(
+				f'<bpmndi:BPMNShape xmlns:bpmndi="{NS["bpmndi"]}" xmlns:dc="{NS["dc"]}" id="{task_id}_di" '
+				f'bpmnElement="{task_id}"><dc:Bounds x="{float(own.get("x")) + 30 + 140 * index}" '
+				f'y="{float(own.get("y")) + 30}" width="100" height="80" /></bpmndi:BPMNShape>'
+			)
+			shapes.append(shape)
+			own.set("width", str(max(float(own.get("width")), 60 + 140 * index + 100)))
+		library["element"] = ET.tostring(box, encoding="unicode")
+		library["shapes"] = [ET.tostring(shape, encoding="unicode") for shape in shapes]
+	return put_back_libraries(rest, libraries)
 
 
 def task_scripts(xml: str) -> dict:

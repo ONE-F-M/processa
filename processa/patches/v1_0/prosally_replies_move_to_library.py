@@ -18,7 +18,7 @@ from processa.patches.v1_0.logix_helpers_move_to_libraries import (
 MODEL_NAME = "ProsAlly \u2013 Process Modeller (1)"
 LIBRARY = "ProsAlly: Lib Replies"
 BOX_ID = "prosally_libraries"
-TASK_IDS = {LIBRARY: "lib_replies"}
+TASK_IDS = {LIBRARY: "lib_replies", "ProsAlly: Lib IR": "lib_ir"}
 LOAD = f'_replies = import_script("{LIBRARY}")'
 MOVED = (
 	"pending_confirmation",
@@ -42,19 +42,22 @@ MOVED = (
 )
 
 
-def execute():
+def execute(
+	library: str = LIBRARY, data_file: str = "prosally_lib_replies.py", moved: tuple = MOVED, load: str = LOAD
+):
 	xml = frappe.db.get_value("BPMN Process Model", MODEL_NAME, "bpmn_xml")
 	if xml is None:
 		return
-	_ensure_library(LIBRARY, (DATA / "prosally_lib_replies.py").read_text())
-	boxed = with_libraries_box(xml, BOX_ID, TASK_IDS)
+	_ensure_library(library, (DATA / data_file).read_text())
+	task_ids = {library: TASK_IDS[library]}
+	boxed = with_libraries_box(xml, BOX_ID, task_ids)
 	if boxed != xml:
 		frappe.db.set_value("BPMN Process Model", MODEL_NAME, "bpmn_xml", boxed)
 	for task_id, name in task_scripts(boxed).items():
 		if not name or task_id in TASK_IDS.values():
 			continue
 		script = frappe.db.get_value("Server Script", name, "script") or ""
-		edited = uses_library(script, MOVED, LOAD)
+		edited = uses_library(script, moved, load)
 		if edited != script:
 			frappe.db.set_value("Server Script", name, "script", edited)
 	from processa.api.deploy import compile_process_model
