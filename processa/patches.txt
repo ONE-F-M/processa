@@ -443,3 +443,4 @@ processa.patches.v1_0.docu_library_loads_before_first_use #26-11-2026 Docu scrip
 processa.patches.v1_0.prosally_libraries_box_approval #26-11-2026 Generate Process and Modify Process get an Approved request for the Libraries box helpers
 processa.patches.v1_0.prosally_replies_move_to_library #26-11-2026 the ProsAlly map gets Lib Replies in a Libraries box and its scripts load the reply helpers from it
 processa.patches.v1_0.prosally_ir_move_to_library #26-11-2026 the ProsAlly Libraries box gets Lib IR and the scripts load the IR helpers from it
+processa.patches.v1_0.prosally_map_xml_move_to_library #26-11-2026 the ProsAlly Libraries box gets Lib Map XML, the scripts load the map XML helpers from it and their approvals are shipped

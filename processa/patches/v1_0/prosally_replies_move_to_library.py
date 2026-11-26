@@ -10,6 +10,7 @@ import frappe
 from processa.patches.v1_0.docu_helpers_move_to_library import uses_library
 from processa.patches.v1_0.logix_helpers_move_to_libraries import (
 	DATA,
+	_approve,
 	_ensure_library,
 	task_scripts,
 	with_libraries_box,
@@ -18,7 +19,7 @@ from processa.patches.v1_0.logix_helpers_move_to_libraries import (
 MODEL_NAME = "ProsAlly \u2013 Process Modeller (1)"
 LIBRARY = "ProsAlly: Lib Replies"
 BOX_ID = "prosally_libraries"
-TASK_IDS = {LIBRARY: "lib_replies", "ProsAlly: Lib IR": "lib_ir"}
+TASK_IDS = {LIBRARY: "lib_replies", "ProsAlly: Lib IR": "lib_ir", "ProsAlly: Lib Map XML": "lib_map_xml"}
 LOAD = f'_replies = import_script("{LIBRARY}")'
 MOVED = (
 	"pending_confirmation",
@@ -43,11 +44,17 @@ MOVED = (
 
 
 def execute(
-	library: str = LIBRARY, data_file: str = "prosally_lib_replies.py", moved: tuple = MOVED, load: str = LOAD
+	library: str = LIBRARY,
+	data_file: str = "prosally_lib_replies.py",
+	moved: tuple = MOVED,
+	load: str = LOAD,
+	approved_tasks: tuple = (),
+	reason: str = "",
 ):
-	xml = frappe.db.get_value("BPMN Process Model", MODEL_NAME, "bpmn_xml")
-	if xml is None:
+	model = frappe.db.get_value("BPMN Process Model", MODEL_NAME, ["bpmn_xml", "process_name"], as_dict=True)
+	if not model:
 		return
+	xml = model.bpmn_xml or ""
 	_ensure_library(library, (DATA / data_file).read_text())
 	task_ids = {library: TASK_IDS[library]}
 	boxed = with_libraries_box(xml, BOX_ID, task_ids)
@@ -60,6 +67,10 @@ def execute(
 		edited = uses_library(script, moved, load)
 		if edited != script:
 			frappe.db.set_value("Server Script", name, "script", edited)
+	scripts = task_scripts(boxed)
+	for task_id in approved_tasks:
+		if scripts.get(task_id):
+			_approve(model.process_name, task_id, scripts[task_id], reason)
 	from processa.api.deploy import compile_process_model
 
 	compile_process_model(MODEL_NAME)
