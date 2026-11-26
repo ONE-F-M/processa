@@ -32,7 +32,7 @@ class TestToolsReports(FrappeTestCase):
 					"first_name": "Outsider",
 					"send_welcome_email": 0,
 				}
-			).insert(ignore_permissions=True)
+			).insert()
 
 	def setUp(self):
 		frappe.set_user("Administrator")
@@ -44,14 +44,12 @@ class TestToolsReports(FrappeTestCase):
 
 	def _clear_cache(self):
 		for user in ("Administrator", OUTSIDER):
-			with patch.object(frappe.session, "user", user):
+			with self.set_user(user):
 				frappe.cache.delete_value(report_cache_key(REPORT, {}))
 
 	def test_the_report_data_has_the_documented_keys(self):
 		result = get_report_data(REPORT, cache=False)
-		self.assertEqual(
-			set(result), {"report_name", "columns", "data", "message", "from_cache"}
-		)
+		self.assertEqual(set(result), {"report_name", "columns", "data", "message", "from_cache"})
 		self.assertEqual(result["report_name"], REPORT)
 		self.assertFalse(result["from_cache"])
 		self.assertIsInstance(result["columns"], list)
@@ -100,9 +98,7 @@ class TestToolsReports(FrappeTestCase):
 		result = list_reports()
 		self.assertEqual(result["count"], len(result["reports"]))
 		self.assertIn(REPORT, [row["name"] for row in result["reports"]])
-		self.assertEqual(
-			set(result["reports"][0]), {"name", "module", "ref_doctype", "report_type"}
-		)
+		self.assertEqual(set(result["reports"][0]), {"name", "module", "ref_doctype", "report_type"})
 		self.assertIsNone(result["module"])
 		self.assertIsNone(result["doctype"])
 

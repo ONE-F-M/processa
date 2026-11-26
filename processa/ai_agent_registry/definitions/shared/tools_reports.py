@@ -36,35 +36,9 @@ def list_reports(module: str | None = None, doctype: str | None = None) -> dict:
 	reports = [
 		row
 		for row in rows
-		if row.get("name") in allowed_names
-		and (not row.get("ref_doctype") or frappe.has_permission(row.get("ref_doctype"), "report"))
+		if row.get("name") in allowed_names and frappe.has_permission(row.get("ref_doctype"), "report")
 	]
 	return {"count": len(reports), "reports": reports, "module": module, "doctype": doctype}
-
-
-def serialize_value(value):
-	"""The value with dates, datetimes and Decimals turned into JSON-safe values, through lists and dicts."""
-	if isinstance(value, (datetime, date)):
-		return value.isoformat()
-	if isinstance(value, Decimal):
-		return float(value)
-	if isinstance(value, (list, tuple)):
-		return [serialize_value(item) for item in value]
-	if isinstance(value, dict):
-		return {key: serialize_value(item) for key, item in value.items()}
-	return value
-
-
-def report_cache_key(report_name: str, filters: dict) -> str:
-	"""The cache key of one user's run of a report with these filters."""
-	return ":".join(
-		[
-			CACHE_KEY_PREFIX,
-			frappe.session.user,
-			report_name,
-			json.dumps(filters, sort_keys=True, default=str),
-		]
-	)
 
 
 @tool_envelope(
@@ -103,3 +77,28 @@ def get_report_data(report_name: str, filters: dict | None = None, cache: bool =
 	if cache:
 		frappe.cache.set_value(cache_key, data, expires_in_sec=CACHE_SECONDS)
 	return data
+
+
+def serialize_value(value):
+	"""The value with dates, datetimes and Decimals turned into JSON-safe values, through lists and dicts."""
+	if isinstance(value, (datetime, date)):
+		return value.isoformat()
+	if isinstance(value, Decimal):
+		return float(value)
+	if isinstance(value, (list, tuple)):
+		return [serialize_value(item) for item in value]
+	if isinstance(value, dict):
+		return {key: serialize_value(item) for key, item in value.items()}
+	return value
+
+
+def report_cache_key(report_name: str, filters: dict) -> str:
+	"""The cache key of one user's run of a report with these filters."""
+	return ":".join(
+		[
+			CACHE_KEY_PREFIX,
+			frappe.session.user,
+			report_name,
+			json.dumps(filters, sort_keys=True, default=str),
+		]
+	)
