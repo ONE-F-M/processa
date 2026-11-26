@@ -65,6 +65,7 @@ NODE_TAGS = tuple(
 )
 INSERT_GAP = 50
 SUBPROCESS_SIZE = (100, 80)
+LIBRARIES_GAP = 60
 
 
 def resolve_scope(xml: str, texts: list, scope_id: str = "") -> dict | None:
@@ -175,6 +176,80 @@ def restore_call_activities(old_xml: str, new_xml: str) -> str:
 				parent[index] = kept
 	restored = ET.tostring(root, encoding="unicode", xml_declaration=True)
 	return re.sub(r"^<\?xml\s[^?]*\?>", '<?xml version="1.0" encoding="UTF-8"?>', restored)
+
+
+def take_out_libraries(xml: str) -> tuple[str, list]:
+	"""(xml without its Libraries boxes, the boxes with their drawing), so a change to the flow never touches them."""
+	if 'scriptLibrary="true"' not in (xml or ""):
+		return xml, []
+	register_namespaces()
+	try:
+		root = ET.fromstring(xml)
+	except ET.ParseError:
+		return xml, []
+	bpmn, bpmndi = "{" + NS["bpmn"] + "}", "{" + NS["bpmndi"] + "}"
+	libraries = []
+	for process in root.iter(bpmn + "process"):
+		for box in [child for child in process if is_libraries_box(child)]:
+			ids = {e.get("id") for e in box.iter() if e.get("id")}
+			process.remove(box)
+			for lane in root.iter(bpmn + "lane"):
+				for ref in [r for r in lane.findall(bpmn + "flowNodeRef") if (r.text or "").strip() in ids]:
+					lane.remove(ref)
+			shapes = []
+			for plane in root.iter(bpmndi + "BPMNPlane"):
+				for drawn in [d for d in plane if d.get("bpmnElement") in ids]:
+					plane.remove(drawn)
+					shapes.append(ET.tostring(drawn, encoding="unicode"))
+			libraries.append(
+				{
+					"process": process.get("id"),
+					"element": ET.tostring(box, encoding="unicode"),
+					"shapes": shapes,
+				}
+			)
+	return (_serialize(root), libraries) if libraries else (xml, [])
+
+
+def put_back_libraries(xml: str, libraries: list) -> str:
+	"""xml with each Libraries box back in its process, drawn below everything else and aligned to the left edge."""
+	if not libraries or not xml:
+		return xml
+	register_namespaces()
+	root = ET.fromstring(xml)
+	bpmn, bpmndi, dc = "{" + NS["bpmn"] + "}", "{" + NS["bpmndi"] + "}", "{" + NS["dc"] + "}"
+	processes = {p.get("id"): p for p in root.iter(bpmn + "process")}
+	plane = next(root.iter(bpmndi + "BPMNPlane"), None)
+	for library in libraries:
+		process = processes.get(library["process"]) or next(iter(processes.values()))
+		box = ET.fromstring(library["element"])
+		process.append(box)
+		shapes = [ET.fromstring(s) for s in library["shapes"]]
+		own = next((s for s in shapes if s.get("bpmnElement") == box.get("id")), None)
+		if plane is None or own is None:
+			continue
+		bounds = list(plane.iter(dc + "Bounds"))
+		left = min((float(b.get("x")) for b in bounds), default=0)
+		bottom = max((float(b.get("y")) + float(b.get("height")) for b in bounds), default=0)
+		box_bounds = own.find(dc + "Bounds")
+		dx = left - float(box_bounds.get("x"))
+		dy = bottom + LIBRARIES_GAP - float(box_bounds.get("y"))
+		for shape in shapes:
+			_shift(shape, dx, dy, lambda px, py: (px, py))
+			plane.append(shape)
+	return _serialize(root)
+
+
+def is_libraries_box(element: ET.Element) -> bool:
+	return (
+		element.tag == "{" + NS["bpmn"] + "}adHocSubProcess"
+		and element.get("{" + NS["spiffworkflow"] + "}scriptLibrary") == "true"
+	)
+
+
+def _serialize(root: ET.Element) -> str:
+	text = ET.tostring(root, encoding="unicode", xml_declaration=True)
+	return re.sub(r"^<\?xml\s[^?]*\?>", '<?xml version="1.0" encoding="UTF-8"?>', text)
 
 
 def unapplied_proposal(conversation: str, current_xml: str, message: str = "") -> dict | None:

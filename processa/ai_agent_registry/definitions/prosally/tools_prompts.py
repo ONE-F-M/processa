@@ -3,17 +3,20 @@
 import copy
 import json
 import re
+from xml.etree import ElementTree as ET
 
 import frappe
 from frappe import _
 
 from processa.ai_agent_memory.text_clean import strip_html
 from processa.ai_agent_registry.definitions.prosally.helpers import (
+	NS,
 	complete_sub_prompt,
 	document_sources_line,
 	memory_notes_block,
 	prosally_config,
 )
+from processa.ai_agent_registry.definitions.prosally.tools_subprocess import take_out_libraries
 from processa.ai_agent_registry.definitions.shared.helpers import extract_json
 from processa.ai_agent_registry.definitions.shared.tools_dms import DOCUMENT_TYPES, search_dms_documents
 from processa.ai_agent_registry.provisioning.bpmn_task_config import resolve_ir_lane_roles
@@ -71,6 +74,14 @@ MAPS_RULES = (
 )
 
 
+LIBRARIES_HEADER = "Library scripts on this map, in its Libraries box:"
+LIBRARIES_RULES = (
+	"These are library scripts: shared code that other steps load with import_script. Never connect them, move "
+	"them into the flow, rename or remove them, and never draw a sequence flow to or from them. If asked to, change "
+	"nothing and tell the designer to do it on the canvas."
+)
+
+
 def stage_system_prompt(cfg: dict, sub_id: str, skills_constant: str, turn: dict | None = None) -> str:
 	"""A stage's sub-prompt, the turn's process notes, then the Active skills named in ``skills_constant``."""
 	system = ((cfg.get("sub_prompts") or {}).get(sub_id) or {}).get("prompt") or ""
@@ -89,8 +100,10 @@ def stage_system_prompt(cfg: dict, sub_id: str, skills_constant: str, turn: dict
 	documents = dms_documents_block(turn) if sub_id in DMS_STAGES else ""
 	links = process_links_block(turn) if sub_id in DMS_STAGES else ""
 	maps = process_maps_block(turn) if sub_id in DMS_STAGES else ""
+	libraries = library_scripts_block(turn)
 	sections = [system] + ([notes] if notes else []) + ([documents] if documents else []) + ([links] if links else [])
 	sections += [maps] if maps else []
+	sections += [libraries] if libraries else []
 	sections += ["## Skill: " + sk.name + "\n\n" + sk.body for sk in skills]
 	return "\n\n".join(sections)
 
@@ -172,6 +185,19 @@ def process_maps_block(turn: dict | None) -> str:
 	if not maps:
 		return ""
 	return "\n\n".join([MAPS_HEADER, MAPS_RULES, *[f"Map {row['process_model']}:\n{row['digest']}" for row in maps]])
+
+
+def library_scripts_block(turn: dict | None) -> str:
+	"""Each library script task in the map's Libraries boxes, with how to treat them; "" when the map has none."""
+	_xml, libraries = take_out_libraries((turn or {}).get("current_xml") or "")
+	tasks = []
+	for library in libraries:
+		for task in ET.fromstring(library["element"]).iter("{" + NS["bpmn"] + "}scriptTask"):
+			script = task.get("{" + NS["spiffworkflow"] + "}serverScript") or "no Server Script yet"
+			tasks.append(f"- {task.get('name') or task.get('id')}: Server Script {script}")
+	if not tasks:
+		return ""
+	return "\n".join([LIBRARIES_HEADER, *tasks, LIBRARIES_RULES])
 
 
 def stage_max_tokens(cfg: dict) -> int:
