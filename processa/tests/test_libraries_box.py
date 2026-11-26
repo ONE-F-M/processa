@@ -3,10 +3,12 @@
 
 from unittest.mock import patch
 
+import frappe
 from frappe.tests.utils import FrappeTestCase
 from SpiffWorkflow.util.task import TaskState
 
 from processa.ai_agent_registry.definitions.logix.tools import _reviewer_system
+from processa.patches.v1_0 import logix_library_contract_def_only as def_only_patch
 from processa.patches.v1_0 import logix_library_script_contract as contract_patch
 from processa.processa_engine import engine
 from processa.processa_engine.compiler.extensions import extract_script_task_config
@@ -82,3 +84,12 @@ class TestLogixLibraryContract(FrappeTestCase):
 	def test_review_script_without_the_contract_line_is_unchanged(self):
 		script = 'if _valid and shape_kind == "script_task":\n    dry_run(code, turn)\n'
 		self.assertEqual(contract_patch.review_script(script), script)
+
+
+class TestLibraryContractMatchesTheDeployCheck(FrappeTestCase):
+	def test_the_contract_says_only_def_statements(self):
+		def_only_patch.execute()
+		body = frappe.db.get_value("AI Skill", "bpmn-library-script-contract", "body")
+		self.assertIn("Only `def` statements at the top level", body)
+		self.assertNotIn("and constants they use", body)
+		self.assertIn("Clean up text a model sent back.", body)
