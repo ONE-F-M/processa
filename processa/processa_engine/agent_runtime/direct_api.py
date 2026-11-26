@@ -23,7 +23,9 @@ from processa.processa_engine.agent_runtime.executor import (
 	register_executor,
 )
 from processa.processa_engine.agent_runtime import backoff_seconds, structured_output
-from processa.processa_engine.agent_runtime.llm_types import LLMRefusedError
+from processa.processa_engine.agent_runtime.llm_anthropic import log_truncated
+from processa.processa_engine.agent_runtime.llm_factory import supports_effort, thinking_min_tokens
+from processa.processa_engine.agent_runtime.llm_types import LLMRefusedError, effort_level
 
 
 def run_coro_blocking(coro):
@@ -169,7 +171,10 @@ class DirectApiExecutor(Executor):
 			)
 			parse_fn = self._parse_openai_response
 		if native_schema and provider_type == "Anthropic":
-			payload["output_config"] = structured_output.anthropic_output_config(native_schema)
+			payload["output_config"] = {
+				**payload.get("output_config", {}),
+				**structured_output.anthropic_output_config(native_schema),
+			}
 		elif native_schema:
 			payload["response_format"] = structured_output.openai_response_format(native_schema)
 
@@ -231,6 +236,8 @@ class DirectApiExecutor(Executor):
 					)
 
 			stop_reason = self._stop_reason(provider_type, data) if error_result is None else None
+			if provider_type == "Anthropic" and stop_reason == "max_tokens":
+				log_truncated(config.agent_config_name or config.model, payload["max_tokens"])
 			if stop_reason in structured_output.SAFETY_STOPS:
 				error_result = ExecutorResult(
 					error_code=ErrorCode.MODEL_REFUSED,
@@ -350,6 +357,9 @@ class DirectApiExecutor(Executor):
 			adapter = get_llm_adapter(
 				adapter_key, model, api_key, timeout_seconds=config.timeout_seconds, max_retries=0
 			)
+			adapter.effort = config.effort if supports_effort(config.model) else ""
+			adapter.thinking_min_tokens = thinking_min_tokens(config.model, config.thinking_min_tokens)
+			adapter.stage = config.agent_config_name or config.model
 			completion, suspension = run_coro_blocking(
 				run_agent_loop(
 					adapter,
@@ -580,8 +590,13 @@ class DirectApiExecutor(Executor):
 		payload: dict = {
 			"model": model,
 			"messages": messages,
-			"max_tokens": config.max_tokens,
+			"max_tokens": max(
+				config.max_tokens, thinking_min_tokens(config.model, config.thinking_min_tokens)
+			),
 		}
+		effort = effort_level(config.effort) if supports_effort(config.model) else ""
+		if effort:
+			payload["output_config"] = {"effort": effort}
 		if config.system_prompt:
 			payload["system"] = [
 				{

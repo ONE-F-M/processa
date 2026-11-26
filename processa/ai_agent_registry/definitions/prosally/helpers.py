@@ -122,12 +122,18 @@ def complete_sub_prompt(
 	"""One model call with a sub-prompt as the system prompt, returning the reply text.
 
 	files are the turn's attachments: images go with the prompt, text files are added to it."""
+	stage = (cfg.get("sub_prompts") or {}).get(sub_id) or {}
 	if system is None:
-		system = ((cfg.get("sub_prompts") or {}).get(sub_id) or {}).get("prompt") or ""
+		system = stage.get("prompt") or ""
 	kwargs = {"system": system, **with_attachments(user, files)}
 	if max_tokens:
 		kwargs["max_tokens"] = max_tokens
-	return run_sync(get_llm_adapter_from_settings(cfg).complete(**kwargs)).text
+	stage_cfg = {
+		**cfg,
+		"effort": stage.get("effort") or cfg.get("effort"),
+		"stage": f"{cfg.get('name') or AGENT_ID} / {sub_id}",
+	}
+	return run_sync(get_llm_adapter_from_settings(stage_cfg).complete(**kwargs)).text
 
 
 def process_for_diagram(diagram_name: str, process_name: str = "") -> str:

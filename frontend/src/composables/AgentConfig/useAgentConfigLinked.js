@@ -106,6 +106,9 @@ export function useAgentConfigLinked(ac) {
 		form.value.aiSkills = Array.isArray(fields?.aiSkills) ? fields.aiSkills : [];
 		form.value.aiGuardrails = Array.isArray(fields?.aiGuardrails) ? fields.aiGuardrails : [];
 		form.value.aiAgentRoles = Array.isArray(fields?.aiAgentRoles) ? fields.aiAgentRoles : [];
+		form.value.aiStageEfforts = Array.isArray(fields?.aiStageEfforts)
+			? fields.aiStageEfforts
+			: [];
 		ac.applyGrantableRoles(fields);
 		staticContextLoaded.value = true;
 	}

@@ -8,6 +8,7 @@
   "sub_agent_id",
   "sub_agent_name",
   "temperature",
+  "effort",
   "prompt_text"
  ],
  "fields": [
@@ -32,6 +33,14 @@
    "in_list_view": 1,
    "label": "Temperature",
    "precision": "2"
+  },
+  {
+   "description": "How hard the model thinks at this stage. Blank uses the agent's Effort.",
+   "fieldname": "effort",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Effort",
+   "options": "\nLow\nMedium\nHigh\nExtra High\nMax"
   },
   {
    "fieldname": "prompt_text",

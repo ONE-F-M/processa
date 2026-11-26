@@ -125,6 +125,47 @@
 		</div>
 	</div>
 
+	<div v-if="effortSupported" class="field-row two-col">
+		<div>
+			<label>Effort</label>
+			<select v-model="form.aiEffort">
+				<option value="">Model Default</option>
+				<option v-for="level in EFFORT_LEVELS" :key="level" :value="level">
+					{{ level }}
+				</option>
+			</select>
+		</div>
+		<div>
+			<label>Minimum Tokens When Thinking</label>
+			<input v-model.number="form.aiThinkingMinTokens" type="number" min="0" step="1024" />
+		</div>
+	</div>
+	<span v-if="effortSupported" class="field-hint">
+		Effort is how hard the model thinks. Thinking counts against Max Tokens, so Max Tokens
+		cannot be below the minimum. A minimum of 0 means 8,192.
+	</span>
+	<span v-if="maxTokensBelowMinimum" class="field-hint">
+		Max Tokens ({{ form.aiMaxTokens }}) is below the minimum ({{ thinkingMinimum }}). Raise
+		Max Tokens or lower the minimum before saving.
+	</span>
+
+	<div v-if="showStageEfforts" class="field-row">
+		<label>Stage Effort <span class="hint">(blank uses the Effort above)</span></label>
+		<div
+			v-for="stage in form.aiStageEfforts"
+			:key="stage.sub_agent_id"
+			class="field-row two-col"
+		>
+			<span>{{ stage.sub_agent_name || stage.sub_agent_id }}</span>
+			<select v-model="stage.effort">
+				<option value="">Agent Effort</option>
+				<option v-for="level in EFFORT_LEVELS" :key="level" :value="level">
+					{{ level }}
+				</option>
+			</select>
+		</div>
+	</div>
+
 	<div class="field-row two-col" v-if="!isSelector">
 		<div>
 			<label>Run Token Budget <span class="hint">(0 = no budget)</span></label>
@@ -142,7 +183,7 @@
 				<label>Tool Choice <span class="hint">(first model call only)</span></label>
 				<input type="text" v-model.trim="form.aiToolChoice" placeholder="auto" />
 			</div>
-			<div>
+			<div v-if="!effortSupported">
 				<label>Thinking Budget Tokens <span class="hint">(0 = off)</span></label>
 				<input
 					type="number"
@@ -153,8 +194,10 @@
 			</div>
 		</div>
 		<span class="field-hint">
-			Tool Choice is auto, required, or a tool shape's id. A thinking budget is at least
-			1,024 and below Max Tokens. Both are saved on the linked agent.
+			Tool Choice is auto, required, or a tool shape's id, saved on the linked agent.
+			<template v-if="!effortSupported">
+				A thinking budget is for older models: at least 1,024 and below Max Tokens.
+			</template>
 		</span>
 		<div class="field-row two-col">
 			<div>
@@ -226,6 +269,8 @@
 import { inject } from "vue";
 import { AGENT_CONFIG_KEY } from "@/composables/AgentConfig/useAgentConfigState";
 
+const EFFORT_LEVELS = ["Low", "Medium", "High", "Extra High", "Max"];
+
 const ac = inject(AGENT_CONFIG_KEY);
 const {
 	providers,
@@ -234,6 +279,10 @@ const {
 	filteredCatalogModels,
 	onProviderChange,
 	samplingSupported,
+	effortSupported,
+	thinkingMinimum,
+	maxTokensBelowMinimum,
+	showStageEfforts,
 	onModelChange,
 	unlistedModelLabel,
 	modelLabel,

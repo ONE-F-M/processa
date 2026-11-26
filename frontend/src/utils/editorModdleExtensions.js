@@ -173,6 +173,8 @@ export function registerSpiffExtensions() {
 					{ name: "aiTemperature", isAttr: true, type: "String" },
 					{ name: "aiTopP", isAttr: true, type: "String" },
 					{ name: "aiMaxTokens", isAttr: true, type: "String" },
+					{ name: "aiEffort", isAttr: true, type: "String" },
+					{ name: "aiThinkingMinTokens", isAttr: true, type: "String" },
 					{ name: "aiTimeout", isAttr: true, type: "String" },
 					{ name: "aiMaxRetries", isAttr: true, type: "String" },
 					{ name: "aiWriteBackField", isAttr: true, type: "String" },
@@ -203,6 +205,7 @@ export function registerSpiffExtensions() {
 					{ name: "aiModel", isAttr: true, type: "String" },
 					{ name: "aiSystemPrompt", isAttr: true, type: "String" },
 					{ name: "aiUserPrompt", isAttr: true, type: "String" },
+					{ name: "aiEffort", isAttr: true, type: "String" },
 					// "diagram" | "registry" | "both" - stored in the diagram; the backend tool pool ignores it
 					{ name: "aiToolSources", isAttr: true, type: "String" },
 					{ name: "scriptLibrary", isAttr: true, type: "String" },

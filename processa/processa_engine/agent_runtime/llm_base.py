@@ -6,6 +6,13 @@ from processa.processa_engine.agent_runtime.llm_types import CompletionResult, S
 class BaseLLMAdapter(ABC):
 	"""Single async entry-point for any LLM provider."""
 
+	# The effort level to send; blank when none is set or the AI Model has no Support Effort.
+	effort: str = ""
+	# The agent or stage name, for the logs.
+	stage: str = ""
+	# The least max_tokens a call gets; 0 on a model that does not think.
+	thinking_min_tokens: int = 0
+
 	async def complete(
 		self,
 		system: str,

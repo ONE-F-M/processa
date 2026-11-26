@@ -20,6 +20,7 @@
   "backend",
   "provider",
   "model",
+  "effort",
   "section_break_status",
   "status",
   "error_code",
@@ -173,6 +174,13 @@
    "fieldname": "model",
    "fieldtype": "Data",
    "label": "Model"
+  },
+  {
+   "description": "The effort level sent to the model on this run; blank when none was sent.",
+   "fieldname": "effort",
+   "fieldtype": "Data",
+   "label": "Effort",
+   "read_only": 1
   },
   {
    "fieldname": "section_break_status",

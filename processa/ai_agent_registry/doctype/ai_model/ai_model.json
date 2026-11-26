@@ -31,6 +31,7 @@
   "support_tool_calling",
   "support_structured_output",
   "support_temperature",
+  "support_effort",
   "section_break_health",
   "health_status",
   "health_check_source",
@@ -176,6 +177,13 @@
    "fieldname": "support_temperature",
    "fieldtype": "Check",
    "label": "Support Temperature"
+  },
+  {
+   "default": "0",
+   "description": "Send an agent's Effort (low to max) to this model. Leave unchecked for a model that rejects it or does not take all five levels.",
+   "fieldname": "support_effort",
+   "fieldtype": "Check",
+   "label": "Support Effort"
   },
   {
    "fieldname": "api_details_section",

@@ -1,5 +1,8 @@
 import { computed } from "vue";
 
+// What a call on a model that thinks gets when the agent sets no minimum of its own.
+const DEFAULT_THINKING_MIN_TOKENS = 8192;
+
 export function useAgentConfigModels(ac) {
 	const { catalogModels, siteDefaults, form } = ac;
 
@@ -25,6 +28,26 @@ export function useAgentConfigModels(ac) {
 		const picked = catalogModels.value.find((m) => m.name === form.value.aiModel);
 		return !picked || Boolean(picked.support_temperature);
 	});
+
+	// Effort is offered only for a model whose AI Model record has Support Effort ticked.
+	const effortSupported = computed(() => {
+		const picked = catalogModels.value.find((m) => m.name === form.value.aiModel);
+		return Boolean(picked?.support_effort);
+	});
+
+	const thinkingMinimum = computed(
+		() => form.value.aiThinkingMinTokens || DEFAULT_THINKING_MIN_TOKENS,
+	);
+
+	const maxTokensBelowMinimum = computed(
+		() => effortSupported.value && form.value.aiMaxTokens < thinkingMinimum.value,
+	);
+	const showStageEfforts = computed(
+		() =>
+			effortSupported.value &&
+			Boolean(form.value.aiAgentConfig) &&
+			form.value.aiStageEfforts.length > 0,
+	);
 
 	// The pair has to agree from both directions: a model belongs to exactly one
 	// provider, so picking one settles the provider too.
@@ -67,6 +90,10 @@ export function useAgentConfigModels(ac) {
 		filteredCatalogModels,
 		onProviderChange,
 		samplingSupported,
+		effortSupported,
+		thinkingMinimum,
+		maxTokensBelowMinimum,
+		showStageEfforts,
 		onModelChange,
 		unlistedModelLabel,
 		modelLabel,

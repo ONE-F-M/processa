@@ -425,6 +425,9 @@ processa.patches.v1_0.logix_reads_step_functions #24-11-2026 Logix lists the fun
 processa.patches.v1_0.star_import_row_on_dynamic_code #24-11-2026 the Dynamic code and reflection category lists import_star, so star imports stay flagged once syntax checks follow the category rows
 processa.patches.v1_0.logix_review_keeps_kept_lines #24-11-2026 Logix's review step puts back lines the writer kept from the existing script, so the reply matches the diff
 processa.patches.v1_0.logix_library_functions_drop_the_underscore #24-11-2026 Logix drops a leading underscore when it moves a function into a library, so import_script can hand it over
+processa.patches.v1_0.ai_models_mark_effort_support #25-11-2026 Support Effort is ticked on the Claude AI Models that accept all five effort levels
+processa.patches.v1_0.lift_max_tokens_to_thinking_minimum #25-11-2026 Max Tokens is raised to Minimum Tokens When Thinking on agents whose AI Model thinks
+processa.patches.v1_0.set_stage_effort #25-11-2026 ProsAlly generate, modify and operation stages and the Logix writers, test writer and reviewer run at effort high, the classifiers at low, where no effort is set
 processa.patches.v1_0.seed_prosally_gateway_conditions_case #25-11-2026 ProsAlly Regressions gains the Overtime Request lifecycle, whose gateways must test actions and script results in Python
 processa.patches.v1_0.seed_prosally_update_field_values_case #25-11-2026 ProsAlly Regressions gains the Maintenance Work Order lifecycle, whose Update Field rows must hold only values the fields accept
 processa.patches.v1_0.logix_library_script_contract #26-11-2026 Logix writes and reviews a script in a Libraries box against a library contract and does not try it on a record

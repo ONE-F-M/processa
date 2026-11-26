@@ -37,6 +37,9 @@ export function useAgentConfigSave(ac) {
 			fields.aiToolChoice = form.value.aiToolChoice || "";
 			fields.aiParallelToolCalls = form.value.aiParallelToolCalls ? 1 : 0;
 			fields.aiThinkingBudgetTokens = form.value.aiThinkingBudgetTokens || 0;
+			fields.aiEffort = form.value.aiEffort || "";
+			fields.aiThinkingMinTokens = form.value.aiThinkingMinTokens || 0;
+			fields.aiStageEfforts = form.value.aiStageEfforts;
 			fields.aiTerminalTools = form.value.aiTerminalTools || "";
 			fields.aiSandboxUseJob = form.value.aiSandboxUseJob ? 1 : 0;
 			fields.aiSandboxRetryOnTestFailure = form.value.aiSandboxRetryOnTestFailure ? 1 : 0;
@@ -143,6 +146,15 @@ export function useAgentConfigSave(ac) {
 			return;
 		}
 
+		// The agent refuses Max Tokens below the thinking minimum, so stop here and keep the dialog open.
+		if (ac.maxTokensBelowMinimum.value) {
+			showNotice(
+				"Max Tokens too low",
+				`Max Tokens (${form.value.aiMaxTokens}) is below Minimum Tokens When Thinking (${ac.thinkingMinimum.value}). This model thinks, and thinking counts against Max Tokens. Raise Max Tokens or lower the minimum.`,
+			);
+			return;
+		}
+
 		// Validate JSON schema if provided
 		if (
 			!isSelector.value &&
@@ -177,6 +189,10 @@ export function useAgentConfigSave(ac) {
 				"spiffworkflow:aiTemperature": String(form.value.aiTemperature),
 				"spiffworkflow:aiTopP": String(form.value.aiTopP),
 				"spiffworkflow:aiMaxTokens": String(form.value.aiMaxTokens),
+				"spiffworkflow:aiEffort": form.value.aiEffort || undefined,
+				"spiffworkflow:aiThinkingMinTokens": form.value.aiThinkingMinTokens
+					? String(form.value.aiThinkingMinTokens)
+					: undefined,
 				"spiffworkflow:aiTimeout": String(form.value.aiTimeout),
 			});
 			await writeBackToConfig();
@@ -197,6 +213,10 @@ export function useAgentConfigSave(ac) {
 			"spiffworkflow:aiTemperature": String(form.value.aiTemperature),
 			"spiffworkflow:aiTopP": String(form.value.aiTopP),
 			"spiffworkflow:aiMaxTokens": String(form.value.aiMaxTokens),
+			"spiffworkflow:aiEffort": form.value.aiEffort || undefined,
+			"spiffworkflow:aiThinkingMinTokens": form.value.aiThinkingMinTokens
+				? String(form.value.aiThinkingMinTokens)
+				: undefined,
 			"spiffworkflow:aiTimeout": String(form.value.aiTimeout),
 			"spiffworkflow:aiMaxRetries": String(form.value.aiMaxRetries),
 			"spiffworkflow:aiStopOnError": form.value.aiStopOnError ? "true" : undefined,

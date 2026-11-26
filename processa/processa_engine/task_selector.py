@@ -193,6 +193,8 @@ def dispatch_ai_task_selector(instance, sp, task_cfg: dict, bpmn_id: str) -> tup
 		tool_choice=(task_cfg.get("aiToolChoice") or "auto").strip(),
 		parallel_tool_calls=cfg_truthy(task_cfg.get("aiParallelToolCalls", 1)),
 		thinking_budget_tokens=cint(task_cfg.get("aiThinkingBudgetTokens")),
+		effort=(task_cfg.get("aiEffort") or "").strip(),
+		thinking_min_tokens=cint(task_cfg.get("aiThinkingMinTokens")),
 	)
 	context = ExecutorContext(
 		context_doctype=instance.context_doctype or "",

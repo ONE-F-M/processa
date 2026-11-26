@@ -25,6 +25,7 @@ frappe.ui.form.on("AI Agent Configuration", {
 		frm.events.show_needs_attention_reason(frm);
 		frm.events.add_chat_surface_buttons(frm);
 		frm.events.render_memory_resolution_preview(frm);
+		frm.events.toggle_effort(frm);
 	},
 
 	long_term_memory(frm) {
@@ -41,6 +42,18 @@ frappe.ui.form.on("AI Agent Configuration", {
 	},
 	ai_model(frm) {
 		frm.events.render_memory_resolution_preview(frm);
+		frm.events.toggle_effort(frm);
+	},
+
+	async toggle_effort(frm) {
+		// Effort and the thinking minimum show only when the chosen AI Model has Support Effort ticked.
+		let supported = 0;
+		if (frm.doc.ai_model) {
+			const { message } = await frappe.db.get_value("AI Model", frm.doc.ai_model, "support_effort");
+			supported = message.support_effort;
+		}
+		frm.toggle_display(["effort", "thinking_min_tokens"], Boolean(supported));
+		frm.fields_dict.sub_prompts.grid.toggle_display("effort", Boolean(supported));
 	},
 
 	render_memory_resolution_preview(frm) {

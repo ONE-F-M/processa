@@ -101,6 +101,10 @@ class ExecutorConfig:
 	tool_choice: str = "auto"
 	parallel_tool_calls: bool = True
 	thinking_budget_tokens: int = 0
+	# low, medium, high, xhigh or max; blank leaves the model's default.
+	effort: str = ""
+	# The least max_tokens a call gets on a model that thinks; 0 uses the platform default.
+	thinking_min_tokens: int = 0
 	loop_compaction_threshold: int = 0
 	loop_compaction_keep_turns: int = 8
 	compaction_model: str = ""

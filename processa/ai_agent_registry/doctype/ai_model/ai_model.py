@@ -59,6 +59,7 @@ class AIModel(Document):
 		output_cost: DF.Currency
 		provider: DF.Link | None
 		support_chat: DF.Check
+		support_effort: DF.Check
 		support_structured_output: DF.Check
 		support_temperature: DF.Check
 		support_tool_calling: DF.Check
