@@ -72,7 +72,9 @@ def dispatch_update_field(instance, task, task_cfg: dict, bpmn_id: str) -> None:
 		raw_value = row.get("value", "")
 		if not fieldname:
 			continue
-		if "{{" in str(raw_value) or "{%" in str(raw_value):
+		if str(raw_value).strip() == "now":
+			raw_value = frappe.utils.now()
+		elif "{{" in str(raw_value) or "{%" in str(raw_value):
 			try:
 				raw_value = frappe.render_template(
 					raw_value,
