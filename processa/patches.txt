@@ -435,3 +435,4 @@ processa.patches.v1_0.logix_library_contract_def_only #26-11-2026 Logix's librar
 processa.patches.v1_0.logix_helpers_move_to_libraries #26-11-2026 the Logix map gets Lib Replies and Lib DocType Sources in a Libraries box and its scripts load the helpers from them
 processa.patches.v1_0.docu_helpers_move_to_library #26-11-2026 the Docu map gets Lib Schema in a Libraries box and its scripts load the schema helpers from it
 processa.patches.v1_0.docu_tools_move_to_library #26-11-2026 Docu DocType tools, read_doctype_definition, keep_unrequested_fields and timed load from Lib Schema
+processa.patches.v1_0.lucrusher_helpers_move_to_library #26-11-2026 the LuCrusher map gets Lib Codebase in a Libraries box and its codebase scripts load from it

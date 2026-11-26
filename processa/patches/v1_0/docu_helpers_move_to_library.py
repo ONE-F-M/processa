@@ -33,7 +33,7 @@ MOVED_FUNCTIONS = (
 MOVED_CONSTANT = "RESERVED_FIELDNAMES"
 MOVED = (*MOVED_FUNCTIONS, MOVED_CONSTANT)
 HELPER_IMPORT = re.compile(
-	r"^(\s*)from (processa\.ai_agent_registry\.definitions\.(?:shared\.helpers|shared\.tools|docu\.tools|docu\.validators)) import (.+)$"
+	r"^(\s*)from (processa\.ai_agent_registry\.definitions\.(?:shared\.helpers|shared\.tools|docu\.tools|docu\.validators|lucrusher\.tools)) import (.+)$"
 )
 
 
@@ -57,7 +57,7 @@ def execute(moved: tuple = MOVED):
 	compile_process_model(MODEL_NAME)
 
 
-def uses_library(script: str, moved: tuple = MOVED) -> str:
+def uses_library(script: str, moved: tuple = MOVED, load: str = LOAD) -> str:
 	"""script loading the moved names from the library instead of the backend; unchanged if it imports none."""
 	lines, found = [], False
 	for line in script.split("\n"):
@@ -69,24 +69,23 @@ def uses_library(script: str, moved: tuple = MOVED) -> str:
 			continue
 		if kept:
 			lines.append(f"{match.group(1)}from {match.group(2)} import {', '.join(kept)}")
-		if not found and LOAD not in script:
-			lines.append(match.group(1) + LOAD)
+		if not found and load not in script:
+			lines.append(match.group(1) + load)
 		found = True
 	if not found:
 		return script
 	# A moved name used as code: not inside a word, an attribute or a string.
 	use = re.compile(r"(?<![\w.\"'])\b(" + "|".join(moved) + r")\b(?![\"'])")
-	return "\n".join(_point_at_library(line, use) for line in lines)
+	return "\n".join(_point_at_library(line, use, load) for line in lines)
 
 
-def _point_at_library(line: str, use: re.Pattern) -> str:
-	if line.lstrip().startswith("#") or line.strip() == LOAD or HELPER_IMPORT.match(line):
+def _point_at_library(line: str, use: re.Pattern, load: str) -> str:
+	if line.lstrip().startswith("#") or line.strip() == load or HELPER_IMPORT.match(line):
 		return line
+	alias = load.split(" = ", 1)[0] + "."
 	code, hash_, comment = line.partition("  #")
 	code = use.sub(
-		lambda m: (
-			"_schema.reserved_fieldnames()" if m.group(1) == MOVED_CONSTANT else "_schema." + m.group(1)
-		),
+		lambda m: "_schema.reserved_fieldnames()" if m.group(1) == MOVED_CONSTANT else alias + m.group(1),
 		code,
 	)
 	return code + hash_ + comment
