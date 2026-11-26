@@ -35,6 +35,12 @@ export function AdhocSubprocessProps(props) {
 			component: CancelRemainingInstancesComponent,
 			isEdited: isCheckboxEntryEdited,
 		},
+		{
+			id: "adhoc-scriptLibrary",
+			element,
+			component: ScriptLibraryComponent,
+			isEdited: isCheckboxEntryEdited,
+		},
 	];
 }
 
@@ -74,6 +80,32 @@ function CompletionConditionComponent(props) {
 		getValue,
 		setValue,
 		debounce: useService("debounceInput"),
+	});
+}
+
+function ScriptLibraryComponent(props) {
+	const { element, id } = props;
+	const modeling = useService("modeling");
+	const translate = useService("translate");
+	const bo = getBusinessObject(element);
+
+	const getValue = () => bo.get("spiffworkflow:scriptLibrary") === "true";
+
+	const setValue = (value) => {
+		modeling.updateModdleProperties(element, bo, {
+			"spiffworkflow:scriptLibrary": value ? "true" : undefined,
+		});
+	};
+
+	return h(CheckboxEntry, {
+		element,
+		id,
+		label: translate("Libraries box"),
+		description: translate(
+			"Holds library scripts that other scripts load with import_script. No arrows and no agent tools."
+		),
+		getValue,
+		setValue,
 	});
 }
 
