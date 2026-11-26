@@ -38,6 +38,12 @@ LINT = [
 	{"id": "Task_1", "rule": "frappe/user-task-missing-assignee", "message": "No assignee", "category": "warn"},
 ]
 
+FLOW_XML = (
+	'<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">'
+	'<bpmn:process id="p1"><bpmn:sequenceFlow id="flow_a" name="Resubmit"/></bpmn:process></bpmn:definitions>'
+)
+APPLY_OFFER = "Shall I apply this fix to the diagram?"
+
 
 def _diagnosis(origin):
 	return json.dumps({"origin": origin, "root_cause": "The condition uses an unset value.", "fix_steps": ["Set it"]})
@@ -60,6 +66,56 @@ class TestProsAllyDiagnoseError(FrappeTestCase):
 		self.assertEqual(out["intent"], "CONFIRM")
 		self.assertEqual(out["action_intent"], "MODIFY_EXISTING")
 		self.assertIn("Set it", out["response"])
+
+	def _lint_output(self, rule):
+		message = f'Diagnose this lint finding on flow_a and suggest a remedy: Line crosses "Resubmit". ({rule})'
+		lint = [{"id": "flow_a", "rule": rule, "message": "Line crosses", "category": "warn"}]
+		with mock_patch.object(tools_review, "complete_sub_prompt", return_value=_diagnosis("map")), mock_patch.object(
+			tools_review, "prosally_config", return_value={}
+		):
+			return tools_review.diagnose_output(FLOW_XML, [message], lint)
+
+	def test_a_crossing_lines_finding_is_explained_without_an_offer_to_apply(self):
+		out = self._lint_output("custom/no-crossing-edges")
+		self.assertEqual(out["intent"], "CLARIFY")
+		self.assertNotIn("options", out)
+		self.assertNotIn("action_intent", out)
+		self.assertNotIn(APPLY_OFFER, out["response"])
+		self.assertIn("The condition uses an unset value.", out["response"])
+		self.assertIn(tools_review.layout_is_automatic(), out["response"])
+
+	def test_an_overlapping_elements_finding_is_treated_like_crossing_lines(self):
+		self.assertEqual(
+			self._lint_output("custom/no-overlapping-elements"), self._lint_output("custom/no-crossing-edges")
+		)
+
+	def test_a_missing_script_finding_has_no_offer_and_no_layout_sentence(self):
+		out = self._lint_output("custom/script-task-missing-script")
+		self.assertEqual(out["intent"], "CLARIFY")
+		self.assertNotIn("options", out)
+		self.assertNotIn(APPLY_OFFER, out["response"])
+		self.assertNotIn(tools_review.layout_is_automatic(), out["response"])
+
+	def test_the_rule_in_the_message_alone_is_enough(self):
+		message = 'Diagnose this lint finding: Line crosses "Resubmit". (custom/no-crossing-edges)'
+		with mock_patch.object(tools_review, "complete_sub_prompt", return_value=_diagnosis("map")), mock_patch.object(
+			tools_review, "prosally_config", return_value={}
+		):
+			out = tools_review.diagnose_output(XML, [message], [])
+		self.assertEqual(out["intent"], "CLARIFY")
+		self.assertNotIn(APPLY_OFFER, out["response"])
+
+	def test_a_fixable_finding_still_offers_to_apply_the_fix(self):
+		out = self._lint_output("custom/no-implicit-end")
+		self.assertEqual(out["intent"], "CONFIRM")
+		self.assertEqual(out["action_intent"], "MODIFY_EXISTING")
+		self.assertIn(APPLY_OFFER, out["response"])
+		self.assertEqual(out["options"], ["Yes, proceed", "No, let me adjust"])
+
+	def test_a_pasted_error_with_no_lint_finding_still_offers_to_apply_the_fix(self):
+		out = self._output(_diagnosis("map"))
+		self.assertIn(APPLY_OFFER, out["response"])
+		self.assertEqual(out["options"], ["Yes, proceed", "No, let me adjust"])
 
 	def test_script_cause_points_to_logix_and_changes_nothing(self):
 		out = self._output(_diagnosis("server_script"))
