@@ -36,25 +36,6 @@ _REDACTION_PATTERNS = (
 )
 
 
-def _sanitize_codebase_output(line: str) -> str:
-	"""line with the value of any password, secret, key or token assignment replaced by REDACTED."""
-	for pattern in _REDACTION_PATTERNS:
-		line = re.sub(pattern, r"\1=***REDACTED***", line, flags=re.IGNORECASE)
-	return line
-
-
-def _grep_command(query: str, search_path: str) -> list[str]:
-	command = ["grep", "-rnI", f"--max-count={MAX_RESULTS}"]
-	for pattern in INCLUDE_PATTERNS:
-		command += ["--include", pattern]
-	for pattern in EXCLUDE_PATTERNS:
-		command += ["--exclude", pattern]
-	for directory in EXCLUDE_DIRS:
-		command += ["--exclude-dir", directory]
-	# "--" makes a query that starts with a dash text to search for, not a grep option.
-	return [*command, "--", query, search_path]
-
-
 @tool_envelope("Shared Tool - search_codebase", lambda **_: json.dumps({"error": "Codebase search failed."}))
 def search_codebase(query: str, path: str = ".", app: str | None = None) -> str:
 	"""Lines of the installed apps' source files that contain query, as JSON with query, results, count and searched_apps."""
@@ -70,7 +51,15 @@ def search_codebase(query: str, path: str = ".", app: str | None = None) -> str:
 	else:
 		app_names = list(frappe.get_installed_apps())
 
-	results = []
+	command = ["grep", "-rnI", f"--max-count={MAX_RESULTS}"]
+	for pattern in INCLUDE_PATTERNS:
+		command += ["--include", pattern]
+	for pattern in EXCLUDE_PATTERNS:
+		command += ["--exclude", pattern]
+	for directory in EXCLUDE_DIRS:
+		command += ["--exclude-dir", directory]
+
+	results, timed_out_apps = [], []
 	for app_name in app_names:
 		if len(results) >= MAX_RESULTS:
 			break
@@ -79,8 +68,9 @@ def search_codebase(query: str, path: str = ".", app: str | None = None) -> str:
 		if os.path.commonpath([search_path, app_path]) != app_path:
 			return json.dumps({"error": f"Path '{path}' is outside the app."})
 
+		# "--" makes a query that starts with a dash text to search for, not a grep option.
 		process = subprocess.Popen(
-			_grep_command(query, search_path),
+			[*command, "--", query, search_path],
 			stdout=subprocess.PIPE,
 			stderr=subprocess.DEVNULL,
 			text=True,
@@ -91,12 +81,20 @@ def search_codebase(query: str, path: str = ".", app: str | None = None) -> str:
 		except subprocess.TimeoutExpired:
 			process.kill()
 			process.communicate()
+			timed_out_apps.append(app_name)
 			continue
 
-		for line in (stdout or "").splitlines():
-			if len(results) >= MAX_RESULTS:
-				break
-			if line.strip():
-				results.append(f"[{app_name}] {_sanitize_codebase_output(line)}")
+		for line in stdout.splitlines()[: MAX_RESULTS - len(results)]:
+			results.append(f"[{app_name}] {_sanitize_codebase_output(line)}")
 
-	return json.dumps({"query": query, "results": results, "count": len(results), "searched_apps": app_names})
+	response = {"query": query, "results": results, "count": len(results), "searched_apps": app_names}
+	if timed_out_apps:
+		response["timed_out_apps"] = timed_out_apps
+	return json.dumps(response)
+
+
+def _sanitize_codebase_output(line: str) -> str:
+	"""line with the value of any password, secret, key or token assignment replaced by REDACTED."""
+	for pattern in _REDACTION_PATTERNS:
+		line = re.sub(pattern, r"\1=***REDACTED***", line, flags=re.IGNORECASE)
+	return line

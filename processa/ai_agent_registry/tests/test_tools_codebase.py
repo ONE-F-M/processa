@@ -129,4 +129,5 @@ class TestSearchCodebase(FrappeTestCase):
 			result = json.loads(search_codebase("needle", app="processa"))
 		process.kill.assert_called_once()
 		self.assertEqual(result["results"], [])
+		self.assertEqual(result["timed_out_apps"], ["processa"])
 		self.assertEqual(process.communicate.call_args_list[0].kwargs, {"timeout": 5})
