@@ -28,6 +28,10 @@ dependencies = [
     "deep-translator>=1.11",
     # Pinned: 0.1.8 and later load protobuf 7 code, which google-api-core and the other Google libraries refuse. No Intel Mac wheel exists.
     "google-antigravity==0.1.7; platform_system != 'Darwin' or platform_machine == 'arm64'",
+    # Imported by the Threat Feed Collection fetch Server Script; same pins as onefm_mcp.
+    "cloudscraper==1.2.71",
+    "feedparser==6.0.10",
+    "praw==7.7.1",
 ]
 
 
