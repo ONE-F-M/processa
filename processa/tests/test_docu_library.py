@@ -2,15 +2,17 @@
 """The Docu schema helpers moved into 'Docu: Lib Schema' on the Docu map."""
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_registry.definitions.docu import tools, validators
 from processa.ai_agent_registry.definitions.shared import helpers
+from processa.ai_agent_registry.definitions.shared import tools as shared_tools
 from processa.ai_agent_security.code_checks.script_validator import runs_code_on_import, validate_script
 from processa.patches.v1_0 import docu_helpers_move_to_library as move
+from processa.patches.v1_0 import docu_tools_move_to_library as move_tools
 from processa.processa_engine.compiler.extensions import extract_script_task_config
 from processa.processa_engine.engine.script_engine import make_import_script
 
@@ -18,6 +20,7 @@ SCRIPTS = {
 	"classify_intent": "Docu Test Classify",
 	"edit_field_property": "Docu Test Edit Field",
 	"review_schema": "Docu Test Review Schema",
+	"writer_list_doctypes": "Docu Test Writer List Doctypes",
 }
 OLD_SCRIPTS = {
 	"classify_intent": (
@@ -35,6 +38,13 @@ OLD_SCRIPTS = {
 		"# The gate is validate_doctype_ir, so run it first.\n"
 		'tool = ToolSpec(fn=validate_doctype_json, name="validate_doctype")\n'
 		"merge_into_live_fields(_baseline, candidate)\n"
+		"_kept = keep_unrequested_fields(_baseline, candidate, '')\n"
+	),
+	"writer_list_doctypes": (
+		"from processa.ai_agent_registry.definitions.docu.tools import list_doctypes\n"
+		"from processa.ai_agent_registry.definitions.docu.tools import timed\n"
+		'with timed(_timings, "list_doctypes"):\n'
+		'    result["doctypes"] = list_doctypes(_search or "")\n'
 	),
 }
 
@@ -89,6 +99,18 @@ class TestDocuLibraryCode(FrappeTestCase):
 		other = "from processa.ai_agent_registry.definitions.docu.tools import timed\nresult['x'] = 1\n"
 		self.assertEqual(move.uses_library(other), other)
 
+	def test_a_script_that_loads_the_library_drops_the_tools_too(self):
+		review = move.uses_library(move.uses_library(OLD_SCRIPTS["review_schema"]), move_tools.MOVED)
+		self.assertEqual(review.count(move.LOAD), 1)
+		self.assertNotIn("docu.tools import", review)
+		self.assertIn("_schema.keep_unrequested_fields(_baseline", review)
+
+		writer = move.uses_library(OLD_SCRIPTS["writer_list_doctypes"], move_tools.MOVED)
+		self.assertNotIn("import", writer.replace("import_script", ""))
+		self.assertIn('with _schema.timed(_timings, "list_doctypes"):', writer)
+		self.assertIn('_schema.list_doctypes(_search or "")', writer)
+		self.assertEqual(move.uses_library(writer, move_tools.MOVED), writer)
+
 
 class TestDocuLibraryOnTheMap(FrappeTestCase):
 	def setUp(self):
@@ -132,7 +154,8 @@ class TestDocuLibraryOnTheMap(FrappeTestCase):
 		).db_insert()
 		with patch("processa.api.deploy.compile_process_model"):
 			move.execute()
-			move.execute()
+			move_tools.execute()
+			move_tools.execute()
 		self.xml = frappe.db.get_value("BPMN Process Model", move.MODEL_NAME, "bpmn_xml")
 		load = make_import_script(
 			frappe._dict(process_model=move.MODEL_NAME), extract_script_task_config(self.xml)
@@ -182,3 +205,74 @@ class TestDocuLibraryOnTheMap(FrappeTestCase):
 		self.lib.merge_into_live_fields(live_a, json.loads(json.dumps(changed)))
 		tools.merge_into_live_fields(live_b, json.loads(json.dumps(changed)))
 		self.assertEqual(live_a, live_b)
+
+	def test_read_doctype_definition_through_import_script(self):
+		custom = frappe.get_all("DocType", filters={"custom": 1, "istable": 0}, pluck="name", limit=1)
+		self.assertTrue(custom)
+		for doctype in ("ToDo", custom[0], "No Such DocType"):
+			self.assertEqual(
+				self.lib.read_doctype_definition(doctype), tools.read_doctype_definition(doctype)
+			)
+
+	def test_the_tools_through_import_script(self):
+		pairs = (
+			(self.lib.list_doctypes, tools.list_doctypes, ("To",)),
+			(self.lib.doctype_exists, tools.doctype_exists, ("ToDo",)),
+			(self.lib.list_roles, tools.list_roles, ("Sys",)),
+			(self.lib.get_doctype_definition, tools.get_doctype_definition, ("ToDo",)),
+			(self.lib.get_doctype_fields, shared_tools.get_doctype_fields, ("ToDo",)),
+		)
+		for lib_fn, backend_fn, args in pairs:
+			self.assertEqual(lib_fn(*args), backend_fn(*args), backend_fn.__name__)
+
+	def test_a_tool_error_is_logged_and_answered_as_before(self):
+		pairs = (
+			(self.lib.list_doctypes, tools.list_doctypes, "get_all", "Docu Tool - list_doctypes"),
+			(self.lib.list_roles, tools.list_roles, "get_all", "Docu Tool - list_roles"),
+			(self.lib.doctype_exists, tools.doctype_exists, "db", "Docu Tool - doctype_exists"),
+			(
+				self.lib.get_doctype_definition,
+				tools.get_doctype_definition,
+				"db",
+				"Docu Tool - get_doctype_definition",
+			),
+			(
+				self.lib.get_doctype_fields,
+				shared_tools.get_doctype_fields,
+				"db",
+				"Logix Tool - get_doctype_fields",
+			),
+		)
+		failing_db = MagicMock()
+		failing_db.exists.side_effect = RuntimeError("down")
+		for lib_fn, backend_fn, broken, title in pairs:
+			replies = []
+			for fn in (lib_fn, backend_fn):
+				log = MagicMock()
+				broken_value = failing_db if broken == "db" else MagicMock(side_effect=RuntimeError("down"))
+				with patch.object(frappe, broken, broken_value), patch.object(frappe, "log_error", log):
+					replies.append(fn("ToDo"))
+				self.assertEqual(log.call_args.kwargs["title"], title)
+			self.assertEqual(replies[0], replies[1], title)
+
+	def test_timed_adds_one_row(self):
+		timings = []
+		with self.lib.timed(timings, "list_doctypes"):
+			pass
+		self.assertEqual(len(timings), 1)
+		self.assertEqual(set(timings[0]), {"call", "started_at", "ended_at", "ms"})
+		self.assertEqual(timings[0]["call"], "list_doctypes")
+		with self.assertRaises(ValueError), self.lib.timed(timings, "x"):
+			raise ValueError
+		self.assertEqual(len(timings), 2)
+
+	def test_keep_unrequested_fields_through_import_script(self):
+		proposed = json.loads(json.dumps(self.todo))
+		proposed["fields"] = proposed["fields"][2:]
+		lib_ir, backend_ir = json.loads(json.dumps(proposed)), json.loads(json.dumps(proposed))
+		reply = self.lib.keep_unrequested_fields(self.todo, lib_ir, "Remove the priority field")
+		self.assertTrue(reply)
+		self.assertEqual(
+			reply, tools.keep_unrequested_fields(self.todo, backend_ir, "Remove the priority field")
+		)
+		self.assertEqual(lib_ir, backend_ir)

@@ -33,13 +33,11 @@ MOVED_FUNCTIONS = (
 MOVED_CONSTANT = "RESERVED_FIELDNAMES"
 MOVED = (*MOVED_FUNCTIONS, MOVED_CONSTANT)
 HELPER_IMPORT = re.compile(
-	r"^(\s*)from (processa\.ai_agent_registry\.definitions\.(?:shared\.helpers|docu\.tools|docu\.validators)) import (.+)$"
+	r"^(\s*)from (processa\.ai_agent_registry\.definitions\.(?:shared\.helpers|shared\.tools|docu\.tools|docu\.validators)) import (.+)$"
 )
-# A moved name used as code: not inside a word, an attribute, a string or after "def ".
-USE = re.compile(r"(?<![\w.\"'])\b(" + "|".join(MOVED) + r")\b(?![\"'])")
 
 
-def execute():
+def execute(moved: tuple = MOVED):
 	model = frappe.db.get_value("BPMN Process Model", MODEL_NAME, ["bpmn_xml", "process_name"], as_dict=True)
 	if not model:
 		return
@@ -51,7 +49,7 @@ def execute():
 		if not name or task_id in TASK_IDS.values():
 			continue
 		script = frappe.db.get_value("Server Script", name, "script") or ""
-		edited = uses_library(script)
+		edited = uses_library(script, moved)
 		if edited != script:
 			frappe.db.set_value("Server Script", name, "script", edited)
 	from processa.api.deploy import compile_process_model
@@ -59,33 +57,33 @@ def execute():
 	compile_process_model(MODEL_NAME)
 
 
-def uses_library(script: str) -> str:
-	"""script loading the moved helpers from the library instead of the backend; unchanged if it imports none."""
-	if LOAD in script:
-		return script
-	lines, moved = [], False
+def uses_library(script: str, moved: tuple = MOVED) -> str:
+	"""script loading the moved names from the library instead of the backend; unchanged if it imports none."""
+	lines, found = [], False
 	for line in script.split("\n"):
 		match = HELPER_IMPORT.match(line)
 		names = [n.strip() for n in match.group(3).split(",")] if match else []
-		kept = [n for n in names if n not in MOVED]
+		kept = [n for n in names if n not in moved]
 		if not match or len(kept) == len(names):
 			lines.append(line)
 			continue
 		if kept:
 			lines.append(f"{match.group(1)}from {match.group(2)} import {', '.join(kept)}")
-		if not moved:
+		if not found and LOAD not in script:
 			lines.append(match.group(1) + LOAD)
-		moved = True
-	if not moved:
+		found = True
+	if not found:
 		return script
-	return "\n".join(_point_at_library(line) for line in lines)
+	# A moved name used as code: not inside a word, an attribute or a string.
+	use = re.compile(r"(?<![\w.\"'])\b(" + "|".join(moved) + r")\b(?![\"'])")
+	return "\n".join(_point_at_library(line, use) for line in lines)
 
 
-def _point_at_library(line: str) -> str:
+def _point_at_library(line: str, use: re.Pattern) -> str:
 	if line.lstrip().startswith("#") or line.strip() == LOAD or HELPER_IMPORT.match(line):
 		return line
 	code, hash_, comment = line.partition("  #")
-	code = USE.sub(
+	code = use.sub(
 		lambda m: (
 			"_schema.reserved_fieldnames()" if m.group(1) == MOVED_CONSTANT else "_schema." + m.group(1)
 		),

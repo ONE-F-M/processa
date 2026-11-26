@@ -592,3 +592,358 @@ def merge_into_live_fields(current_ir: dict, proposed_ir: dict) -> None:
 			by_name[fieldname] = field
 		merged.append(field)
 	proposed_ir["fields"] = merged
+
+
+def _docfield_flags():
+	return (
+		"reqd",
+		"unique",
+		"in_list_view",
+		"in_standard_filter",
+		"in_global_search",
+		"in_preview",
+		"in_filter",
+		"allow_in_quick_entry",
+		"bold",
+		"translatable",
+		"fetch_if_empty",
+		"hidden",
+		"read_only",
+		"search_index",
+		"set_only_once",
+		"allow_bulk_edit",
+		"ignore_user_permissions",
+		"allow_on_submit",
+		"report_hide",
+		"remember_last_selected_value",
+		"ignore_xss_filter",
+		"no_copy",
+		"print_hide",
+		"print_hide_if_no_value",
+		"hide_days",
+		"hide_seconds",
+		"non_negative",
+		"is_virtual",
+		"sort_options",
+		"show_on_timeline",
+		"make_attachment_public",
+		"collapsible",
+	)
+
+
+def _docfield_ints():
+	return ("length", "columns", "permlevel")
+
+
+def _docfield_strs():
+	return (
+		"options",
+		"default",
+		"description",
+		"depends_on",
+		"mandatory_depends_on",
+		"read_only_depends_on",
+		"fetch_from",
+		"precision",
+		"print_width",
+		"width",
+		"max_height",
+		"documentation_url",
+		"placeholder",
+	)
+
+
+def _doctype_setting_flags():
+	return (
+		"is_submittable",
+		"issingle",
+		"editable_grid",
+		"quick_entry",
+		"track_changes",
+		"track_seen",
+		"track_views",
+		"beta",
+		"hide_toolbar",
+		"allow_copy",
+		"allow_rename",
+		"allow_import",
+		"allow_events_in_timeline",
+		"allow_auto_repeat",
+		"show_preview_popup",
+		"show_name_in_global_search",
+		"show_title_field_in_link",
+		"translated_doctype",
+		"make_attachments_public",
+		"is_tree",
+	)
+
+
+def _doctype_setting_strs():
+	return (
+		"description",
+		"image_field",
+		"title_field",
+		"search_fields",
+		"default_print_format",
+		"sort_field",
+		"sort_order",
+		"document_type",
+	)
+
+
+def _doctype_permission_flags():
+	return (
+		"select",
+		"read",
+		"write",
+		"create",
+		"delete",
+		"submit",
+		"cancel",
+		"amend",
+		"report",
+		"export",
+		"import",
+		"share",
+		"print",
+		"email",
+		"if_owner",
+	)
+
+
+def timed(timings: list, call: str):
+	"""A with-block that appends when it started and ended, and its length in ms, to timings."""
+	import time
+
+	class _Timed:
+		def __enter__(self):
+			self.started_at = frappe.utils.now_datetime()
+			self.t0 = time.perf_counter()
+
+		def __exit__(self, *exc):
+			timings.append(
+				{
+					"call": call,
+					"started_at": str(self.started_at),
+					"ended_at": str(frappe.utils.now_datetime()),
+					"ms": round((time.perf_counter() - self.t0) * 1000),
+				}
+			)
+			return False
+
+	return _Timed()
+
+
+def _enveloped(title: str, fallback, tool, *args):
+	"""tool(*args); on an error, log it under title and return fallback(*args), since a Server Script cannot catch it."""
+	try:
+		return tool(*args)
+	except Exception:
+		frappe.log_error(title=title, message=frappe.get_traceback())
+		return fallback(*args)
+
+
+def list_doctypes(search: str = "") -> str:
+	"""Up to 50 non-child DocTypes (name, module, custom), newest modified first, optionally filtered by *search*."""
+	import json
+
+	def read(search):
+		filters = {"istable": 0}
+		if search:
+			filters["name"] = ["like", f"%{search}%"]
+		rows = frappe.get_all(
+			"DocType",
+			filters=filters,
+			fields=["name", "module", "custom"],
+			order_by="modified desc",
+			limit_page_length=50,
+		)
+		return json.dumps(rows)
+
+	return _enveloped("Docu Tool - list_doctypes", lambda search: json.dumps([]), read, search)
+
+
+def doctype_exists(doctype: str) -> str:
+	"""Return whether a DocType exists and whether it is a custom DocType."""
+	import json
+
+	def read(doctype):
+		exists = bool(frappe.db.exists("DocType", doctype))
+		is_custom = bool(frappe.db.get_value("DocType", doctype, "custom")) if exists else False
+		return json.dumps({"exists": exists, "custom": is_custom})
+
+	return _enveloped(
+		"Docu Tool - doctype_exists",
+		lambda doctype: json.dumps({"exists": False, "custom": False}),
+		read,
+		doctype,
+	)
+
+
+def list_roles(search: str = "") -> str:
+	"""Role names a permission rule may name, as JSON, filtered by the search substring."""
+	import json
+
+	def read(search):
+		filters = {"disabled": 0, "name": ["not in", ("All", "Guest")]}
+		if (search or "").strip():
+			filters["name"] = ["like", f"%{search.strip()}%"]
+		names = frappe.get_all("Role", filters=filters, pluck="name", order_by="name asc", limit=400)
+		return json.dumps({"roles": names})
+
+	return _enveloped(
+		"Docu Tool - list_roles",
+		lambda search: json.dumps({"roles": [], "error": "Could not read the role list."}),
+		read,
+		search,
+	)
+
+
+def get_doctype_definition(doctype: str) -> str:
+	"""Full definition (every field + all its properties + naming) of a DocType, as JSON."""
+	import json
+
+	def read(doctype):
+		ir = read_doctype_definition(doctype)
+		if ir is None:
+			return json.dumps({"error": f"DocType '{doctype}' does not exist."})
+		return json.dumps(ir)
+
+	return _enveloped(
+		"Docu Tool - get_doctype_definition",
+		lambda doctype: json.dumps({"error": f"Failed to read DocType '{doctype}'."}),
+		read,
+		doctype,
+	)
+
+
+def get_doctype_fields(doctype: str) -> str:
+	"""The fieldname, fieldtype, label and reqd of each DocType field except Section Break, Column Break, HTML and Heading, as JSON."""
+	import json
+
+	def read(doctype):
+		if not frappe.db.exists("DocType", doctype):
+			return json.dumps({"error": f"DocType '{doctype}' does not exist."})
+		fields = [
+			{
+				"fieldname": f.fieldname,
+				"fieldtype": f.fieldtype,
+				"label": f.label or f.fieldname,
+				"reqd": bool(f.reqd),
+			}
+			for f in frappe.get_meta(doctype).fields
+			if f.fieldtype not in ("Section Break", "Column Break", "HTML", "Heading")
+		]
+		return json.dumps(fields)
+
+	return _enveloped(
+		"Logix Tool - get_doctype_fields",
+		lambda doctype: json.dumps({"error": f"Failed to fetch fields for DocType '{doctype}'."}),
+		read,
+		doctype,
+	)
+
+
+def read_doctype_definition(doctype: str) -> dict | None:
+	"""An existing DocType in the full Docu IR shape, or None when it does not exist."""
+	if not frappe.db.exists("DocType", doctype):
+		return None
+	try:
+		meta = frappe.get_meta(doctype)
+	except Exception:
+		return None
+	flags, ints = _docfield_flags(), _docfield_ints()
+	fields = []
+	for f in meta.fields:
+		# A layout break keeps an empty label, so Customize Form writes no label Property Setter for it.
+		label = f.label or ("" if f.fieldtype in _layout_fieldtypes() else f.fieldname)
+		row = {"fieldname": f.fieldname, "fieldtype": f.fieldtype, "label": label}
+		for attr in _docfield_strs() + ints + flags:
+			val = f.get(attr)
+			if attr in flags:
+				row[attr] = int(bool(val))
+			elif attr in ints:
+				row[attr] = int(val or 0)
+			else:
+				row[attr] = val or ""
+		fields.append(row)
+	out = {
+		"doctype_name": doctype,
+		"module": meta.get("module"),
+		"is_child_table": int(bool(meta.get("istable"))),
+		"custom": int(bool(meta.get("custom"))),
+		"autoname": meta.get("autoname") or "",
+		"fields": fields,
+	}
+	for attr in _doctype_setting_flags():
+		out[attr] = int(bool(meta.get(attr)))
+	out["max_attachments"] = int(meta.get("max_attachments") or 0)
+	for attr in _doctype_setting_strs():
+		out[attr] = meta.get(attr) or ""
+	out["permissions"] = _read_doctype_permissions(doctype)
+	return out
+
+
+def _read_doctype_permissions(doctype: str) -> list:
+	source = "Custom DocPerm" if frappe.db.exists("Custom DocPerm", {"parent": doctype}) else "DocPerm"
+	filters = {"parent": doctype}
+	if source == "DocPerm":
+		filters["parenttype"] = "DocType"
+	rows = []
+	for p in frappe.get_all(
+		source,
+		filters=filters,
+		fields=["role", "permlevel", *_doctype_permission_flags()],
+		order_by="idx asc",
+	):
+		row = {"role": p.get("role") or "", "permlevel": int(p.get("permlevel") or 0)}
+		for flag in _doctype_permission_flags():
+			row[flag] = int(bool(p.get(flag)))
+		rows.append(row)
+	return rows
+
+
+def keep_unrequested_fields(current_ir: dict, proposed_ir: dict, request: str) -> str:
+	"""Put back into proposed_ir each field and child table column the request did not ask to remove; the reply line or ""."""
+	kept = _restore_fields(current_ir.get("fields") or [], proposed_ir.setdefault("fields", []), request)
+	for field in proposed_ir["fields"]:
+		if field.get("fieldtype") not in frappe.model.table_fields or not field.get("child_fields"):
+			continue
+		live = read_doctype_definition((field.get("options") or "").strip())
+		if live:
+			kept += _restore_fields(live["fields"], field["child_fields"], request)
+	if not kept:
+		return ""
+	return frappe._("I kept {0}, which your request did not ask to remove.").format(", ".join(kept))
+
+
+def _restore_fields(current: list, proposed: list, request: str) -> list:
+	present = {f.get("fieldname") for f in proposed}
+	kept = []
+	for position, field in enumerate(current):
+		fieldname = field.get("fieldname")
+		if not fieldname or fieldname in present:
+			continue
+		if _asked_to_remove(field, request):
+			continue
+		before = next(
+			(f.get("fieldname") for f in reversed(current[:position]) if f.get("fieldname") in present), None
+		)
+		at = next((i + 1 for i, f in enumerate(proposed) if f.get("fieldname") == before), 0)
+		proposed.insert(at, field)
+		present.add(fieldname)
+		kept.append(field.get("label") or fieldname)
+	return kept
+
+
+def _asked_to_remove(field: dict, request: str) -> bool:
+	import re
+
+	if field["fieldname"] in reserved_fieldnames():
+		return False
+	removal = r"\b(?:remove|delete|drop|get\s+rid\s+of|take\s+out|replace|without)\b"
+	if not re.search(removal, request, re.I):
+		return False
+	names = {(field.get("label") or "").strip(), field["fieldname"].replace("_", " ")}
+	names.discard("")
+	return any(re.search(r"\b" + re.escape(name) + r"\b", request, re.I) for name in names)
