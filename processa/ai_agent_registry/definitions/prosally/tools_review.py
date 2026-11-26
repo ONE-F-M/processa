@@ -37,6 +37,10 @@ from processa.ai_agent_registry.definitions.prosally.tools_replies import (
 	layout_is_automatic,
 	layout_limits,
 )
+from processa.ai_agent_registry.definitions.prosally.tools_subprocess import (
+	put_back_libraries,
+	take_out_libraries,
+)
 from processa.ai_agent_registry.definitions.shared.helpers import extract_json
 
 DIAGNOSE_ERROR_CHARS = 3000
@@ -101,6 +105,7 @@ def xml_to_ir(xml: str) -> dict | None:
 
 def relayout(xml: str) -> tuple[str | None, str]:
 	"""(xml with every shape and line moved to a fresh layout, "") or (None, why not); only coordinates change."""
+	xml, libraries = take_out_libraries(xml)
 	ir = xml_to_ir(xml)
 	if ir is None:
 		return None, "unsupported"
@@ -112,7 +117,7 @@ def relayout(xml: str) -> tuple[str | None, str]:
 		return None, "unplaced"
 	if _coordinates(moved) == _coordinates(xml):
 		return None, "same"
-	return moved, ""
+	return put_back_libraries(moved, libraries), ""
 
 
 DI_ELEMENT = re.compile(
