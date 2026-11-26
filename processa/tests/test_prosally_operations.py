@@ -1,14 +1,15 @@
 # Copyright (c) 2026, one-fm and contributors
 """A short list of operations edits a map's IR and leaves everything it does not name as it was."""
 
+from processa.tests.library import library
 import copy
 import unittest
 
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import tools_pipeline, tools_review
-from processa.ai_agent_registry.definitions.prosally.tools_operations import apply_operations
-from processa.ai_agent_registry.definitions.prosally.tools_properties import transfer_properties
+from processa.ai_agent_registry.definitions.prosally import tools_pipeline
+apply_operations = library("prosally_lib_ir.py").apply_operations
+transfer_properties = library("prosally_lib_map_xml.py").transfer_properties
 
 
 def nine_task_map() -> dict:
@@ -141,7 +142,7 @@ class TestOperationsThroughThePipeline(FrappeTestCase):
 	"""Needs node to compile."""
 
 	def test_the_edited_map_keeps_ids_names_conditions_and_configured_properties(self):
-		compiled = tools_pipeline.compile_ir(nine_task_map())
+		compiled = library("prosally_lib_layout.py").compile_ir(nine_task_map())
 		if not compiled.get("ok"):
 			raise unittest.SkipTest("node or pipeline.mjs unavailable")
 		current = compiled["xml"].replace(
@@ -150,8 +151,8 @@ class TestOperationsThroughThePipeline(FrappeTestCase):
 			1,
 		)
 
-		edited, problem = apply_operations(tools_review.xml_to_ir(current), DELETE_THREE_AND_A_GATEWAY)
-		new_xml, removed = transfer_properties(current, tools_pipeline.compile_ir(edited)["xml"])
+		edited, problem = apply_operations(library("prosally_lib_map_xml.py").xml_to_ir(current), DELETE_THREE_AND_A_GATEWAY)
+		new_xml, removed = transfer_properties(current, library("prosally_lib_layout.py").compile_ir(edited)["xml"])
 
 		self.assertEqual(problem, "")
 		names = tools_pipeline.element_names(new_xml)

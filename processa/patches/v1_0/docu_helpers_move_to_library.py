@@ -75,7 +75,7 @@ def uses_library(script: str, moved: tuple = MOVED, load: str = LOAD) -> str:
 	if not found:
 		return script
 	# A moved name used as code: not inside a word, an attribute or a string.
-	use = re.compile(r"(?<![\w.\"'])\b(" + "|".join(moved) + r")\b(?![\"'])")
+	use = re.compile(r"(?<![\w.\"'])(?<!def )\b(" + "|".join(moved) + r")\b(?![\"'])")
 	return load_before_first_use("\n".join(_point_at_library(line, use, load) for line in lines), load)
 
 

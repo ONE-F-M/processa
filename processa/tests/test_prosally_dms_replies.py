@@ -5,13 +5,14 @@ Run with:
     bench run-tests --app processa --module processa.tests.test_prosally_dms_replies
 """
 
+from processa.tests.library import library
 import json
 from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import helpers, tools_prompts
+from processa.ai_agent_registry.definitions.prosally import tools_prompts
 from processa.ai_agent_registry.definitions.shared.tools_dms import DOCUMENT_TYPES
 from processa.processa_engine.agent_runtime.turn_state import clear_turn, get_turn, set_turn
 from processa.patches.v1_0 import prosally_answers_dms_questions as dms_patch
@@ -153,7 +154,7 @@ class TestAddDocumentSources(FrappeTestCase):
 
 	def test_a_drawn_or_changed_diagram_names_the_documents_once_each(self):
 		for intent in ("BPMN_GENERATED", "BPMN_MODIFIED"):
-			text = helpers.add_document_sources("Drew it.", intent, {"dms_documents": self.DOCS})
+			text = library("prosally_lib_replies.py").add_document_sources("Drew it.", intent, {"dms_documents": self.DOCS})
 
 			self.assertEqual(
 				text,
@@ -162,16 +163,16 @@ class TestAddDocumentSources(FrappeTestCase):
 
 	def test_other_replies_are_left_alone(self):
 		for intent in ("CLARIFY", "CONFIRM", "IRRELEVANT", None):
-			self.assertEqual(helpers.add_document_sources("Hello", intent, {"dms_documents": self.DOCS}), "Hello")
+			self.assertEqual(library("prosally_lib_replies.py").add_document_sources("Hello", intent, {"dms_documents": self.DOCS}), "Hello")
 
 	def test_no_documents_found_adds_nothing(self):
-		self.assertEqual(helpers.add_document_sources("Drew it.", "BPMN_GENERATED", {}), "Drew it.")
-		self.assertEqual(helpers.add_document_sources("Drew it.", "BPMN_GENERATED", {"dms_documents": []}), "Drew it.")
+		self.assertEqual(library("prosally_lib_replies.py").add_document_sources("Drew it.", "BPMN_GENERATED", {}), "Drew it.")
+		self.assertEqual(library("prosally_lib_replies.py").add_document_sources("Drew it.", "BPMN_GENERATED", {"dms_documents": []}), "Drew it.")
 
 	def test_at_most_four_documents_are_named(self):
 		many = [{"document_code": f"D-{i}", "title": f"T{i}", "document_type": "SOP"} for i in range(7)]
 
-		line = helpers.add_document_sources("x", "BPMN_GENERATED", {"dms_documents": many}).split("\n\n")[1]
+		line = library("prosally_lib_replies.py").add_document_sources("x", "BPMN_GENERATED", {"dms_documents": many}).split("\n\n")[1]
 
 		self.assertEqual(line.count(";"), 3)
 

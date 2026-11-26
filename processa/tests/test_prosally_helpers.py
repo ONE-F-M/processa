@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """The shared ProsAlly helpers behave as the inlined copies did; the routed replies, the lost reply and the confirmed briefs."""
 
+from processa.tests.library import as_on_site, import_script, library
 import json
 import re
 from types import SimpleNamespace
@@ -10,7 +11,11 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_observability.observability import terminal_tool_failure
-from processa.ai_agent_registry.definitions.prosally import helpers, tools_prompts, tools_properties, tools_replies
+from processa.ai_agent_registry.definitions.prosally import (
+	helpers,
+	tools_prompts,
+	tools_properties,
+)
 from processa.ai_agent_registry.definitions.shared import helpers as shared_helpers
 from processa.patches.v1_0 import seed_prosally_confirmed_brief_cases as seed
 from processa.patches.v1_0 import seed_prosally_route_and_constraint_cases as route_seed
@@ -72,23 +77,23 @@ class TestPreserverMatchesTheInlinedCopy(FrappeTestCase):
 		self.assertEqual(sorted(configured), ["approve", "notify"])
 
 	def test_transfer_is_unchanged(self):
-		merged, removed = tools_properties.transfer_properties(OLD_XML, NEW_XML)
+		merged, removed = library("prosally_lib_map_xml.py").transfer_properties(OLD_XML, NEW_XML)
 		self.assertEqual((merged, removed), self.inlined("transfer", OLD_XML, NEW_XML))
 		self.assertIn('spiffworkflow:roundRobinRole="HR Manager"', merged)
 		self.assertIn("The HR manager approves or rejects.", merged)
 		self.assertEqual([r["id"] for r in removed], ["notify"])
 
 	def test_warnings_name_the_configured_shapes(self):
-		_, removed = tools_properties.transfer_properties(OLD_XML, NEW_XML)
+		_, removed = library("prosally_lib_map_xml.py").transfer_properties(OLD_XML, NEW_XML)
 		self.assertIn(
 			"**Notify Employee** (Script Task) - Server Script: Leave Notify",
-			tools_properties.format_removal_warning(removed),
+			library("prosally_lib_replies.py").format_removal_warning(removed),
 		)
-		warning = tools_properties.overwrite_warning(OLD_XML)
+		warning = library("prosally_lib_map_xml.py").overwrite_warning(OLD_XML)
 		self.assertIn(
 			"**Approve Leave** (User Task) - Assignment Mode, Round Robin Role, Documentation", warning
 		)
-		self.assertEqual(tools_properties.overwrite_warning(NEW_XML), "")
+		self.assertEqual(library("prosally_lib_map_xml.py").overwrite_warning(NEW_XML), "")
 
 	def test_a_diagram_that_is_not_xml_raises(self):
 		from xml.etree import ElementTree as ET
@@ -96,14 +101,17 @@ class TestPreserverMatchesTheInlinedCopy(FrappeTestCase):
 		with self.assertRaises(ET.ParseError):
 			tools_properties.extract_configured_elements("<bpmn:definitions")
 		with self.assertRaises(ET.ParseError):
-			tools_properties.transfer_properties(OLD_XML, "<bpmn:definitions")
+			library("prosally_lib_map_xml.py").transfer_properties(OLD_XML, "<bpmn:definitions")
 
 
 class TestExtractJson(FrappeTestCase):
 	def test_plain_fenced_and_embedded_objects(self):
-		self.assertEqual(shared_helpers.extract_json('{"intent": "GENERATE_NEW"}'), {"intent": "GENERATE_NEW"})
 		self.assertEqual(
-			shared_helpers.extract_json('```json\n{"intent": "MODIFY_EXISTING"}\n```'), {"intent": "MODIFY_EXISTING"}
+			shared_helpers.extract_json('{"intent": "GENERATE_NEW"}'), {"intent": "GENERATE_NEW"}
+		)
+		self.assertEqual(
+			shared_helpers.extract_json('```json\n{"intent": "MODIFY_EXISTING"}\n```'),
+			{"intent": "MODIFY_EXISTING"},
 		)
 		self.assertEqual(shared_helpers.extract_json('```{"nodes": []}```'), {"nodes": []})
 		self.assertEqual(
@@ -132,10 +140,16 @@ class TestHistoryAndBudget(FrappeTestCase):
 		self.assertEqual(shared_helpers.format_history([]), "")
 
 	def test_stage_budget_has_a_floor_and_the_model_ceiling(self):
-		self.assertEqual(tools_prompts.stage_max_tokens({"max_tokens": 1024}), tools_prompts.MIN_STAGE_TOKENS)
-		self.assertEqual(tools_prompts.stage_max_tokens({"max_tokens": 40000}), 40000)
+		self.assertEqual(
+			library("prosally_lib_replies.py").stage_max_tokens({"max_tokens": 1024}),
+			tools_prompts.MIN_STAGE_TOKENS,
+		)
+		self.assertEqual(library("prosally_lib_replies.py").stage_max_tokens({"max_tokens": 40000}), 40000)
 		with patch.object(frappe.db, "get_value", return_value=20000):
-			self.assertEqual(tools_prompts.stage_max_tokens({"max_tokens": 40000, "ai_model": "m"}), 20000)
+			self.assertEqual(
+				library("prosally_lib_replies.py").stage_max_tokens({"max_tokens": 40000, "ai_model": "m"}),
+				20000,
+			)
 
 
 class TestModelCalls(FrappeTestCase):
@@ -173,7 +187,10 @@ class TestModelCalls(FrappeTestCase):
 		cfg = {
 			"name": "prosally",
 			"effort": "medium",
-			"sub_prompts": {"modifier": {"prompt": "p", "effort": "high"}, "explainer": {"prompt": "p", "effort": ""}},
+			"sub_prompts": {
+				"modifier": {"prompt": "p", "effort": "high"},
+				"explainer": {"prompt": "p", "effort": ""},
+			},
 		}
 		with patch.object(helpers, "get_llm_adapter_from_settings", side_effect=adapter_for):
 			helpers.complete_sub_prompt(cfg, "modifier", "u")
@@ -192,7 +209,9 @@ class TestModelCalls(FrappeTestCase):
 						"body": name + " body",
 					}
 				).insert()
-		system = tools_prompts.stage_system_prompt(self._cfg(), "modifier", "modify_skills")
+		system = library("prosally_lib_map_xml.py").stage_system_prompt(
+			self._cfg(), "modifier", "modify_skills"
+		)
 		self.assertEqual(
 			system, "You modify BPMN.\n\n## Skill: _Test ProsAlly Rules\n\n_Test ProsAlly Rules body"
 		)
@@ -282,34 +301,41 @@ def _run_build_context(script, metadata, confirmed_action="GENERATE_NEW"):
 		},
 	}
 	with _last_bot_message(metadata):
-		exec(as_deployed(script), namespace)
+		namespace.setdefault("import_script", import_script)
+		exec(as_on_site(as_deployed(script)), namespace)
 	return get_turn(CONVERSATION)
 
 
 class TestPendingConfirmation(FrappeTestCase):
 	def test_a_confirmation_card_gives_its_action(self):
 		with _last_bot_message(CARD):
-			self.assertEqual(helpers.pending_confirmation(CONVERSATION), "GENERATE_NEW")
+			self.assertEqual(
+				library("prosally_lib_replies.py").pending_confirmation(CONVERSATION), "GENERATE_NEW"
+			)
 
 	def test_a_clarify_or_no_bot_message_gives_empty(self):
 		with _last_bot_message(CLARIFY):
-			self.assertEqual(helpers.pending_confirmation(CONVERSATION), "")
+			self.assertEqual(library("prosally_lib_replies.py").pending_confirmation(CONVERSATION), "")
 		with _last_bot_message(None):
-			self.assertEqual(helpers.pending_confirmation(CONVERSATION), "")
+			self.assertEqual(library("prosally_lib_replies.py").pending_confirmation(CONVERSATION), "")
 
 	def test_a_card_without_an_action_gives_empty(self):
 		with _last_bot_message({"intent": "CONFIRM", "agent_result": {}}):
-			self.assertEqual(helpers.pending_confirmation(CONVERSATION), "")
+			self.assertEqual(library("prosally_lib_replies.py").pending_confirmation(CONVERSATION), "")
 
 	def test_answer_to_confirmation_reuses_it(self):
-		with patch.object(helpers, "pending_confirmation", return_value="MODIFY_EXISTING") as pending:
+		with patch.object(
+			library("prosally_lib_stage_replies.py"), "pending_confirmation", return_value="MODIFY_EXISTING"
+		) as pending:
 			self.assertEqual(
-				helpers.answer_to_confirmation(CONVERSATION, "Yes, proceed"),
+				library("prosally_lib_stage_replies.py").answer_to_confirmation(CONVERSATION, "Yes, proceed"),
 				{"confirmed_action": "MODIFY_EXISTING"},
 			)
 		pending.assert_called_once_with(CONVERSATION)
-		with patch.object(helpers, "pending_confirmation", return_value=""):
-			self.assertEqual(helpers.answer_to_confirmation(CONVERSATION, "yes"), {})
+		with patch.object(library("prosally_lib_stage_replies.py"), "pending_confirmation", return_value=""):
+			self.assertEqual(
+				library("prosally_lib_stage_replies.py").answer_to_confirmation(CONVERSATION, "yes"), {}
+			)
 
 
 class TestBuildContextPatch(FrappeTestCase):
@@ -478,17 +504,28 @@ class TestClassifyAfterBuildContext(FrappeTestCase):
 			},
 		}
 		with _last_bot_message(metadata):
-			exec(as_deployed(build_context_patch.rewrite(REAL_BUILD_CONTEXT)), namespace)
+			namespace.setdefault("import_script", import_script)
+			exec(as_on_site(as_deployed(build_context_patch.rewrite(REAL_BUILD_CONTEXT))), namespace)
 		result = {}
 		# The script reaches the model through complete_sub_prompt on BA and through the adapter on older sites.
 		with (
-			patch.object(helpers, "complete_sub_prompt", return_value=model_reply) as helper,
+			patch.object(
+				library("prosally_lib_context.py"), "complete_sub_prompt", return_value=model_reply
+			) as helper,
 			patch(
 				"processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter_from_settings",
 				return_value=FakeAdapter(model_reply),
 			) as adapter,
 		):
-			exec(as_deployed(self.script), {"frappe": frappe, "context_docname": CONVERSATION, "result": result})
+			exec(
+				as_on_site(as_deployed(self.script)),
+				{
+					"frappe": frappe,
+					"context_docname": CONVERSATION,
+					"result": result,
+					"import_script": import_script,
+				},
+			)
 		return result, helper.call_count + adapter.call_count
 
 	def test_a_stale_yes_after_a_clarify_classifies_normally(self):
@@ -556,7 +593,7 @@ class TestRouteHelpers(FrappeTestCase):
 	def test_no_stage_reply_names_the_failure_and_marks_the_turn(self):
 		set_turn(CONV, {"user_text": "Yes, proceed"})
 
-		envelope = tools_replies.no_stage_reply(CONV)
+		envelope = library("prosally_lib_stage_replies.py").no_stage_reply(CONV)
 
 		turn = get_turn(CONV)
 		self.assertEqual(envelope["error_code"], "NO_STAGE_REPLY")
@@ -566,16 +603,25 @@ class TestRouteHelpers(FrappeTestCase):
 		self.assertTrue(turn["done"])
 
 	def test_the_missing_piece_question_follows_the_reason(self):
-		self.assertIn("lane", tools_replies.missing_piece_question("no lanes named"))
-		self.assertIn("starts", tools_replies.missing_piece_question("the trigger is unknown"))
-		self.assertIn("finished", tools_replies.missing_piece_question("end state missing"))
-		self.assertIn("called", tools_replies.missing_piece_question(""))
+		self.assertIn(
+			"lane", library("prosally_lib_stage_replies.py").missing_piece_question("no lanes named")
+		)
+		self.assertIn(
+			"starts",
+			library("prosally_lib_stage_replies.py").missing_piece_question("the trigger is unknown"),
+		)
+		self.assertIn(
+			"finished", library("prosally_lib_stage_replies.py").missing_piece_question("end state missing")
+		)
+		self.assertIn("called", library("prosally_lib_stage_replies.py").missing_piece_question(""))
 
 	def test_clarify_without_a_model_answer_asks_for_the_missing_piece(self):
 		set_turn(CONV, {"user_text": "draw it", "intent_reason": "no lanes named", "chat_history": []})
 
-		with patch.object(tools_replies, "complete_sub_prompt", return_value="not json"):
-			out = tools_replies.clarify_output(CONV)
+		with patch.object(
+			library("prosally_lib_stage_replies.py"), "complete_sub_prompt", return_value="not json"
+		):
+			out = library("prosally_lib_stage_replies.py").clarify_output(CONV)
 
 		self.assertIn("lane", out["response"])
 		self.assertEqual(get_turn(CONV)["output"]["intent"], "CLARIFY")
@@ -584,8 +630,10 @@ class TestRouteHelpers(FrappeTestCase):
 		set_turn(CONV, {"user_text": "draw it", "intent_reason": "", "chat_history": []})
 		reply = json.dumps({"question": "Who starts it?", "options": ["HR", "Employee"]})
 
-		with patch.object(tools_replies, "complete_sub_prompt", return_value=reply):
-			out = tools_replies.clarify_output(CONV)
+		with patch.object(
+			library("prosally_lib_stage_replies.py"), "complete_sub_prompt", return_value=reply
+		):
+			out = library("prosally_lib_stage_replies.py").clarify_output(CONV)
 
 		self.assertEqual((out["response"], out["options"]), ("Who starts it?", ["HR", "Employee"]))
 
@@ -614,7 +662,9 @@ class TestFinalizeRunsTheRoutedTool(FrappeTestCase):
 
 	def test_a_skipped_clarify_runs_in_finalize(self):
 		reply = '{"question": "Which lanes?", "options": []}'
-		with patch.object(tools_replies, "complete_sub_prompt", return_value=reply):
+		with patch.object(
+			library("prosally_lib_stage_replies.py"), "complete_sub_prompt", return_value=reply
+		):
 			result = self._finalize(
 				{"user_text": "x", "routed_tool": "clarify", "intent_reason": "no lanes", "chat_history": []}
 			)
@@ -658,9 +708,14 @@ class TestConfirmedBriefCases(FrappeTestCase):
 			[c.tool_name for c in case.expected_tool_calls], ["classify_intent", "generate_process"]
 		)
 		residency = frappe.get_doc(
-			"AI Eval Case", {"title": "A Residency brief is drawn as a residency map, never a Leave Request map"}
+			"AI Eval Case",
+			{"title": "A Residency brief is drawn as a residency map, never a Leave Request map"},
 		)
-		checks = [json.loads(a.value)["expected"] for a in residency.assertions if a.assertion_type == "tool_artifact"]
+		checks = [
+			json.loads(a.value)["expected"]
+			for a in residency.assertions
+			if a.assertion_type == "tool_artifact"
+		]
 		self.assertIn(r"(?i)^(?![\s\S]*leave request)", checks)
 		self.assertFalse(re.search(checks[-1], '<bpmn:participant name="Leave Request" />'))
 

@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """The ProsAlly context helpers moved into 'ProsAlly: Lib Context', with their platform calls approved."""
 
+from processa.tests.library import library
 import copy
 import json
 from types import SimpleNamespace
@@ -9,9 +10,9 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import helpers, tools_links, tools_lint, tools_prompts
+from processa.ai_agent_registry.definitions.prosally import helpers, tools_links, tools_prompts
 from processa.ai_agent_security.code_checks.script_gate import collect_script_security_violations
-from processa.ai_agent_security.code_checks.script_validator import runs_code_on_import, validate_script
+from processa.ai_agent_security.code_checks.script_validator import runs_code_on_import
 from processa.patches.v1_0 import prosally_context_move_to_library as move
 from processa.patches.v1_0 import prosally_ir_move_to_library as ir
 from processa.patches.v1_0 import prosally_map_xml_move_to_library as map_xml
@@ -20,7 +21,6 @@ from processa.patches.v1_0 import prosally_stage_replies_move_to_library as stag
 from processa.processa_engine.agent_runtime import turn_state
 from processa.processa_engine.compiler.extensions import extract_script_task_config
 from processa.processa_engine.engine.script_engine import make_import_script
-from processa.tests.test_prosally_convert_step import _diagram
 
 PROCESS = "ProsAlly Context Test"
 P = "processa.ai_agent_registry.definitions.prosally"
@@ -189,17 +189,17 @@ class TestProsAllyContextLibraryOnTheMap(FrappeTestCase):
 		self.assertSame("prosally_config", helpers.prosally_config)
 		self.assertSame(
 			"queue_process_memory",
-			helpers.queue_process_memory,
+			library("prosally_lib_context.py").queue_process_memory,
 			{"memory_process": ""},
 			{"intent": "CLARIFY"},
 		)
-		self.assertSame("recall_process_memory", helpers.recall_process_memory, replies.MODEL_NAME, PROCESS)
+		self.assertSame("recall_process_memory", library("prosally_lib_context.py").recall_process_memory, replies.MODEL_NAME, PROCESS)
 
 	def test_turn_readers_through_import_script(self):
 		self.assertSame(
 			"process_links_for_turn", tools_links.process_links_for_turn, "ctx-1", conversation="ctx-1"
 		)
-		self.assertSame("links_review_output", tools_links.links_review_output, "ctx-2", conversation="ctx-2")
+		self.assertSame("links_review_output", library("prosally_lib_context.py").links_review_output, "ctx-2", conversation="ctx-2")
 		for model in (replies.MODEL_NAME, "no such map words"):
 			self.assertSame(
 				"read_process_map_for_turn",
@@ -219,11 +219,11 @@ class TestProsAllyContextLibraryOnTheMap(FrappeTestCase):
 	def test_text_helpers_through_import_script(self):
 		ir = {"lanes": [{"id": "u", "name": "Employee"}, {"id": "s", "name": "System"}]}
 		history = [{"role": "user", "content": "Add a Manager lane"}]
-		self.assertSame("describe_lanes", tools_prompts.describe_lanes, history, "Add a Manager lane", ir)
-		self.assertSame("describe_lanes", tools_prompts.describe_lanes, history, "x", None)
+		self.assertSame("describe_lanes", library("prosally_lib_context.py").describe_lanes, history, "Add a Manager lane", ir)
+		self.assertSame("describe_lanes", library("prosally_lib_context.py").describe_lanes, history, "x", None)
 		for texts in (
 			["Fix the lint findings"],
 			["yes", "fix the lint errors please"],
 			["Draw a leave process"],
 		):
-			self.assertSame("lint_fix_requested", tools_lint.lint_fix_requested, texts)
+			self.assertSame("lint_fix_requested", library("prosally_lib_context.py").lint_fix_requested, texts)

@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """The LuCrusher codebase helpers moved into 'LuCrusher: Lib Codebase' on the LuCrusher map."""
 
+from processa.tests.library import library
 from unittest.mock import patch
 
 import frappe
@@ -141,7 +142,7 @@ class TestLuCrusherLibraryOnTheMap(FrappeTestCase):
 	def test_find_whitelisted_methods_through_import_script(self):
 		found = self.lib.find_whitelisted_methods(["processa"], ["ai_agent"])
 		self.assertTrue(found)
-		self.assertEqual(found, tools.find_whitelisted_methods(["processa"], ["ai_agent"]))
+		self.assertEqual(found, library("lucrusher_lib_codebase.py").find_whitelisted_methods(["processa"], ["ai_agent"]))
 
 	def test_read_doctype_sources_through_import_script(self):
 		names = ["ToDo", "No Such DocType"]

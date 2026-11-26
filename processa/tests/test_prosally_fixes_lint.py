@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """A request to fix lint findings edits the process or sub-process they sit in, and says what it left alone."""
 
+from processa.tests.library import library
 import ast
 import json
 from types import SimpleNamespace
@@ -9,8 +10,13 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_replies import describe_flow_references, describe_links
-from processa.ai_agent_registry.definitions.prosally.tools_lint import lint_findings, lint_fix_requested, lint_leftovers, lint_prompt, no_lint_fix_reply
+describe_flow_references = library("prosally_lib_map_xml.py").describe_flow_references
+describe_links = library("prosally_lib_map_xml.py").describe_links
+lint_findings = library("prosally_lib_map_xml.py").lint_findings
+lint_fix_requested = library("prosally_lib_context.py").lint_fix_requested
+lint_leftovers = library("prosally_lib_replies.py").lint_leftovers
+lint_prompt = library("prosally_lib_replies.py").lint_prompt
+no_lint_fix_reply = library("prosally_lib_replies.py").no_lint_fix_reply
 from processa.processa_engine.agent_runtime.turn_state import clear_turn, get_turn, set_turn
 from processa.patches.v1_0 import prosally_counts_rebuilt_flow_references as references_patch
 from processa.patches.v1_0 import prosally_fixes_lint_findings as lint_patch

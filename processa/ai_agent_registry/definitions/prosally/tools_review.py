@@ -1,48 +1,19 @@
 """ProsAlly answers without a redraw: diagnose an error, compare with a spec, tidy the layout, type plain tasks, edit the diagram."""
 
 import html
-import json
 import re
 from xml.etree import ElementTree as ET
 
 import frappe
-from frappe import _
 
-from processa.ai_agent_memory.text_clean import strip_html
 from processa.ai_agent_registry.definitions.prosally.helpers import (
-	IR_NODE_TYPES,
 	NS,
-	REQUEST_STOPWORDS,
 	STEP_TAGS,
-	complete_sub_prompt,
-	confirmation_reply,
-	prosally_config,
-	quoted,
 	register_namespaces,
 )
-from processa.ai_agent_registry.definitions.prosally.tools_lint import LINT_NOT_FIXABLE
-from processa.ai_agent_registry.definitions.prosally.tools_operations import (
-	add_subprocess_output,
-	add_workflow_state_output,
-	reroute_arrow_output,
-	switch_gateways_output,
-)
 from processa.ai_agent_registry.definitions.prosally.tools_pipeline import (
-	audit_layout,
-	compile_ir,
 	has_lanes,
 )
-from processa.ai_agent_registry.definitions.prosally.tools_replies import (
-	layout_asks,
-	layout_change_summary,
-	layout_is_automatic,
-	layout_limits,
-)
-from processa.ai_agent_registry.definitions.prosally.tools_subprocess import (
-	put_back_libraries,
-	take_out_libraries,
-)
-from processa.ai_agent_registry.definitions.shared.helpers import extract_json
 
 DIAGNOSE_ERROR_CHARS = 3000
 DIAGNOSE_ELEMENT_CHARS = 1500
@@ -52,73 +23,6 @@ DIAGNOSE_MIN_NAME_CHARS = 3
 DIAGNOSE_ORIGINS = frozenset({"map", "server_script", "unknown"})
 
 IR_SKIPPED_TAGS = frozenset({"laneSet", "extensionElements", "incoming", "outgoing", "documentation"})
-
-
-def xml_to_ir(xml: str) -> dict | None:
-	"""The IR that draws xml again, or None when xml has an element the IR cannot hold."""
-	bpmn = "{" + NS["bpmn"] + "}"
-	process = next(iter(ET.fromstring(xml).iter(bpmn + "process")), None)
-	if process is None:
-		return None
-	lane_of = {}
-	lanes = []
-	for lane in process.iter(bpmn + "lane"):
-		lanes.append({"id": lane.get("id"), "name": lane.get("name") or lane.get("id")})
-		for ref in lane.findall(bpmn + "flowNodeRef"):
-			lane_of[(ref.text or "").strip()] = lane.get("id")
-
-	def scope(parent):
-		nodes, flows = [], []
-		for elem in parent:
-			tag = elem.tag.removeprefix(bpmn)
-			if tag in IR_NODE_TYPES:
-				node = {"id": elem.get("id"), "name": elem.get("name") or "", "type": tag}
-				if elem.get("id") in lane_of:
-					node["lane"] = lane_of[elem.get("id")]
-				if elem.get("calledElement"):
-					node["calledElement"] = elem.get("calledElement")
-				if tag == "subProcess":
-					inner = scope(elem)
-					if inner is None:
-						return None
-					node["children"] = inner
-				nodes.append(node)
-			elif tag == "sequenceFlow":
-				flow = {"id": elem.get("id"), "from": elem.get("sourceRef"), "to": elem.get("targetRef")}
-				if elem.get("name"):
-					flow["name"] = elem.get("name")
-				body = elem.find(bpmn + "conditionExpression")
-				if body is not None and body.text:
-					flow["condition"] = body.text
-				if parent.get("default") == elem.get("id"):
-					flow["default"] = True
-				flows.append(flow)
-			elif tag not in IR_SKIPPED_TAGS:
-				return None
-		return {"nodes": nodes, "flows": flows}
-
-	body = scope(process)
-	if body is None:
-		return None
-	kind = {} if process.get("isExecutable", "false").strip().lower() == "true" else {"executable": False}
-	return {"name": process.get("name") or "", "lanes": lanes, **kind, **body}
-
-
-def relayout(xml: str) -> tuple[str | None, str]:
-	"""(xml with every shape and line moved to a fresh layout, "") or (None, why not); only coordinates change."""
-	xml, libraries = take_out_libraries(xml)
-	ir = xml_to_ir(xml)
-	if ir is None:
-		return None, "unsupported"
-	compiled = compile_ir(ir)
-	if not compiled.get("ok") or not compiled.get("xml"):
-		return None, "failed"
-	moved = move_drawing(xml, compiled)
-	if moved is None:
-		return None, "unplaced"
-	if _coordinates(moved) == _coordinates(xml):
-		return None, "same"
-	return put_back_libraries(moved, libraries), ""
 
 
 DI_ELEMENT = re.compile(
@@ -131,44 +35,6 @@ BOUNDS = re.compile(
 )
 LABEL = re.compile(r"<bpmndi:BPMNLabel\b.*?</bpmndi:BPMNLabel>", re.S)
 COMPILED_POOL = "Participant_1"
-
-
-def move_drawing(xml: str, compiled: dict) -> str | None:
-	"""xml with each shape and line placed where the compiled drawing has it and every other byte kept, or None."""
-	if any(f'xmlns:{prefix}="{NS[prefix]}"' not in xml for prefix in ("bpmndi", "dc", "di")):
-		return None
-	drawn = {m["id"]: m["body"] for m in DI_ELEMENT.finditer(compiled["xml"])}
-	flows = {
-		_attribute(m[1], "id"): (_attribute(m[1], "sourceRef"), _attribute(m[1], "targetRef"))
-		for m in re.finditer(r"<bpmn:sequenceFlow\b([^>]*)>", compiled["xml"])
-	}
-	inferred = {n["id"] for n in compiled["normalizedIR"]["nodes"] if n.get("inferred")}
-	pools = set(re.findall(r'<bpmn:participant\b[^>]*?\bid="([^"]+)"', xml))
-	unplaced = []
-
-	def place(m):
-		key = COMPILED_POOL if m["id"] in pools else m["id"]
-		body = drawn.get(key)
-		through_added_gateway = bool(set(flows.get(key, ())) & inferred)
-		if body is not None and through_added_gateway:
-			points = _route(key, flows, drawn, inferred)
-			label = LABEL.search(body)
-			body = (
-				None
-				if points is None
-				else "".join(f'<di:waypoint x="{x}" y="{y}" />' for x, y in points)
-				+ (label[0] if label else "")
-			)
-		if body is None:
-			unplaced.append(m["id"])
-			return m[0]
-		return m["open"] + body + m["close"]
-
-	moved = DI_ELEMENT.sub(place, xml)
-	every = len(re.findall(r"<\w*:?BPMN(?:Shape|Edge)\b", xml))
-	if unplaced or every != len(DI_ELEMENT.findall(xml)):
-		return None
-	return moved
 
 
 def _route(flow_id: str, flows: dict, drawn: dict, inferred: set) -> list | None:
@@ -190,13 +56,6 @@ def _route(flow_id: str, flows: dict, drawn: dict, inferred: set) -> list | None
 	return points
 
 
-def _coordinates(xml: str) -> list[float]:
-	return [
-		float(v)
-		for v in re.findall(r'\b(?:x|y|width|height)="(-?[\d.]+)"', xml[xml.find("<bpmndi:BPMNDiagram") :])
-	]
-
-
 def _centre(body: str) -> tuple[str, str]:
 	x, y, width, height = (float(v) for v in BOUNDS.search(body).groups())
 	return f"{x + width / 2:g}", f"{y + height / 2:g}"
@@ -214,56 +73,6 @@ def spec_items(text: str) -> list[str]:
 	plain = html.unescape(re.sub(r"<[^>]+>", "", re.sub(r"<(?:br|/p|/li|/div)[^>]*>", "\n", text or "")))
 	lines = re.sub(r"[,:]\s+(?=[-*\u2022]\s)", "\n", plain).splitlines()
 	return [m.group(1) for line in lines if (m := LIST_ITEM.match(line))]
-
-
-def missing_spec_items(xml: str, spec: str) -> list[str]:
-	"""The list items of spec with no step on the diagram that holds at least 60% of the item's significant words."""
-
-	def stems(text):
-		return {word[:5] for word in re.findall(r"[a-z]{4,}", text.lower()) if word not in REQUEST_STOPWORDS}
-
-	steps = [stems(e.get("name")) for e in ET.fromstring(xml).iter() if e.tag in STEP_TAGS and e.get("name")]
-	return [
-		item
-		for item in spec_items(spec)
-		if len(item.split()) > 1 and not any(stems(item) and len(stems(item) & step) / len(stems(item)) >= 0.6 for step in steps)
-	]
-
-
-def compare_output(xml: str, texts: list) -> dict:
-	"""The reply to a pasted specification asked about "what is missing": the gaps, and a question before adding them."""
-	spec = next((text for text in texts if len(spec_items(text or "")) > 1), "")
-	if not spec:
-		return {
-			"intent": "CLARIFY",
-			"response": _("Paste the list of steps you want to check, one per line, and I will tell you which are missing."),
-		}
-	missing = missing_spec_items(xml, spec)
-	if not missing:
-		return {"intent": "CLARIFY", "response": _("Every item in your list is already on the diagram, so I changed nothing.")}
-	listing = "\n".join("- " + item for item in missing)
-	return {
-		"intent": "CONFIRM",
-		"action_intent": "MODIFY_EXISTING",
-		"response": _("These items from your list are not on the diagram:") + "\n" + listing + "\n\n" + _("Shall I add them?"),
-		"options": [_("Yes, proceed"), _("No, let me adjust")],
-	}
-
-
-def diagnose_inputs(xml: str, error_text: str, lint_issues: list) -> dict:
-	"""The pasted error, the lint findings and the diagram elements it names, each capped."""
-	elements = {}
-	if (xml or "").strip():
-		register_namespaces()
-		elements = {e.get("id"): e for e in ET.fromstring(xml).iter() if e.get("id")}
-	named = [i for i, e in elements.items() if _mentions(error_text, i) or _mentions(error_text, e.get("name"))]
-	findings = [i for i in lint_issues or [] if i.get("id") in named]
-	return {
-		"error": error_text[-DIAGNOSE_ERROR_CHARS:],
-		"lint_findings": findings,
-		"elements": [ET.tostring(elements[i], encoding="unicode")[:DIAGNOSE_ELEMENT_CHARS] for i in named[:DIAGNOSE_MAX_ELEMENTS]],
-		"script_task": script_task_for_error(xml, error_text),
-	}
 
 
 def _mentions(text: str, value: str | None) -> bool:
@@ -294,163 +103,10 @@ def script_task_for_error(xml: str, error_text: str) -> dict | None:
 	return None
 
 
-def diagnose_output(xml: str, texts: list, lint_issues: list) -> dict:
-	"""The reply to a pasted error or a lint finding: the cause and the fix, or a fallback with manual steps."""
-	error_text = next((strip_html(text) for text in texts if text and not confirmation_reply(text)), "")
-	inputs = {}
-	diagnosis = None
-	try:
-		inputs = diagnose_inputs(xml, error_text, lint_issues)
-		raw = complete_sub_prompt(prosally_config(), "error_diagnoser", json.dumps(inputs))
-		diagnosis = extract_json(raw)
-	except Exception:
-		frappe.log_error(title="ProsAlly could not diagnose an error")
-	if not diagnosis or diagnosis.get("origin") not in DIAGNOSE_ORIGINS or not diagnosis.get("root_cause"):
-		return {"intent": "CLARIFY", "response": diagnose_fallback_reply()}
-	steps = [str(step) for step in diagnosis.get("fix_steps") or []]
-	body = diagnosis["root_cause"] + ("\n\n" + "\n".join("- " + step for step in steps) if steps else "")
-	if diagnosis["origin"] == "server_script":
-		task = inputs.get("script_task")
-		lead = _("This error comes from a server script, not from the process map, so changing the map will not fix it.")
-		if task:
-			lead = _(
-				'This error comes from the script behind the task "{0}", not from the process map configuration, so changing the map will not fix it.'
-			).format(task["name"] or task["id"])
-		return {"intent": "CLARIFY", "response": lead + "\n\n" + body + "\n\n" + _("Open the script in Logix to make this change.")}
-	if diagnosis["origin"] == "unknown":
-		return {"intent": "CLARIFY", "response": body + "\n\n" + diagnose_fallback_reply()}
-	rules = {str(finding.get("rule") or "").rsplit("/", 1)[-1] for finding in inputs["lint_findings"]}
-	unfixable = next((rule for rule in sorted(LINT_NOT_FIXABLE) if rule in rules or rule in error_text), None)
-	if unfixable:
-		response = body + "\n\n" + _("I cannot make this fix from the chat, so make it in the editor.")
-		if unfixable in ("no-crossing-edges", "no-overlapping-elements"):
-			response += " " + layout_is_automatic()
-		return {"intent": "CLARIFY", "response": response}
-	return {
-		"intent": "CONFIRM",
-		"action_intent": "MODIFY_EXISTING",
-		"response": _("The cause is in the process map.") + "\n\n" + body + "\n\n" + _("Shall I apply this fix to the diagram?"),
-		"options": [_("Yes, proceed"), _("No, let me adjust")],
-	}
-
-
-def diagnose_fallback_reply() -> str:
-	"""What to try when ProsAlly cannot find the cause of an error."""
-	return _(
-		"I could not work out the cause of this error. You can:\n"
-		"- Open the Error Log for this process and paste the full traceback here.\n"
-		"- Check the configuration of the task, event or gateway named in the error.\n"
-		"- Ask Logix if the error mentions a server script.\n"
-		"- Contact your Processa administrator with the error text."
-	)
-
-
-def relayout_output(xml: str, text: str = "") -> dict:
-	"""The reply to a layout request: the diagram laid out again with only positions changed, or what was tried and why not."""
-	asks = layout_asks(text)
-	new_xml, reason = relayout(xml)
-	if new_xml:
-		before, after = audit_layout(xml), audit_layout(new_xml)
-		if after["crossings"] > before["crossings"]:
-			say = _(
-				"I drew the diagram again, but it came out with {0} crossing line(s) where yours has {1}, so I kept your layout."
-			).format(after["crossings"], before["crossings"])
-			return {"intent": "CLARIFY", "response": say + " " + layout_is_automatic()}
-		return {
-			"intent": "BPMN_MODIFIED",
-			"action_intent": "RELAYOUT",
-			"bpmn_xml": new_xml,
-			"response": _(
-				"I laid the diagram out again and moved only shapes and lines. Every id, name, condition and timer is unchanged."
-			)
-			+ layout_change_summary(before, after, asks)
-			+ " "
-			+ _("Review it on the canvas.")
-			+ " "
-			+ layout_is_automatic(),
-			"options": [],
-		}
-	if reason == "same":
-		say = _(
-			"I drew the diagram again and every shape and line came out where it already is, so I changed nothing."
-		)
-		say += layout_limits(xml, audit_layout(xml), asks)
-	elif reason == "unsupported":
-		kinds = unsupported_kinds(xml)
-		say = _(
-			"This diagram has {0}, which the layout cannot place, so I changed nothing to keep them safe."
-		).format(", ".join(kinds) if kinds else _("elements"))
-	elif reason == "unplaced":
-		say = _(
-			"Some shapes or lines, such as notes, message lines or a second pool, have no place in the new layout, so I changed nothing."
-		)
-	else:
-		say = _("I could not lay the diagram out again without risking your steps, so I changed nothing.")
-	return {"intent": "CLARIFY", "response": say + " " + layout_is_automatic()}
-
-
-def unsupported_kinds(xml: str) -> list[str]:
-	"""The kinds of element in xml that the layout cannot place, in plain words."""
-	bpmn = "{" + NS["bpmn"] + "}"
-	allowed = IR_NODE_TYPES | IR_SKIPPED_TAGS | {"sequenceFlow"}
-	kinds = set()
-	for scope in ET.fromstring(xml).iter():
-		if scope.tag in (bpmn + "process", bpmn + "subProcess"):
-			kinds |= {e.tag.rsplit("}", 1)[-1] for e in scope} - allowed
-	return sorted(re.sub(r"(?<!^)(?=[A-Z])", " ", kind).lower() for kind in kinds)
-
-
-def diagram_edit_output(xml: str, text: str) -> dict | None:
-	"""The reply to a message that only asks for one edit ProsAlly makes in code, or None to leave it to the model."""
-	if not (xml or "").strip():
-		return None
-	for operation in (
-		move_to_lane_output,
-		add_subprocess_output,
-		add_workflow_state_output,
-		switch_gateways_output,
-		reroute_arrow_output,
-	):
-		reply = operation(xml, text)
-		if reply:
-			return reply
-	return None
-
-
 LANE_MOVE_VERBS = r"\b(?:move|put|bring|shift|place|drag|relocate)\b"
 # Words a move may carry before the lane is named, and after it, without asking for anything else.
 LANE_MOVE_LEAD = re.compile(LANE_MOVE_VERBS + r"|\b(?:back|the|and|both|steps?|tasks?|please)\b", re.I)
 LANE_MOVE_TAIL = re.compile(r"\b(?:lane|swimlane|swim|please)\b", re.I)
-
-
-def move_to_lane_output(xml: str, text: str) -> dict | None:
-	"""The reply to "move this step to that lane": the step moved and the diagram laid out again, no redraw by a model."""
-	move = lane_move(xml, text)
-	if not move:
-		return None
-	register_namespaces()
-	bpmn = "{" + NS["bpmn"] + "}"
-	root = ET.fromstring(xml)
-	moving = {step["id"] for step in move["steps"]}
-	for lane in root.iter(bpmn + "lane"):
-		for ref in [r for r in lane.findall(bpmn + "flowNodeRef") if (r.text or "").strip() in moving]:
-			lane.remove(ref)
-		if lane.get("id") == move["lane"]["id"]:
-			for step in move["steps"]:
-				ET.SubElement(lane, bpmn + "flowNodeRef").text = step["id"]
-	moved = ET.tostring(root, encoding="unicode", xml_declaration=True)
-	new_xml, _reason = relayout(re.sub(r"^<\?xml\s[^?]*\?>", '<?xml version="1.0" encoding="UTF-8"?>', moved))
-	if not new_xml:
-		return None
-	return {
-		"intent": "BPMN_MODIFIED",
-		"action_intent": "MOVE_TO_LANE",
-		"bpmn_xml": new_xml,
-		"response": _(
-			"I moved {0} to the lane {1}. Every step, arrow and setting is kept. Review it on the canvas."
-		).format(", ".join(quoted(step["name"]) for step in move["steps"]), quoted(move["lane"]["name"])),
-		"options": [],
-	}
 
 
 def lane_move(xml: str, text: str) -> dict | None:
@@ -503,46 +159,3 @@ NONE_TASK_KEPT_ATTRIBUTES = ("id", "name", "default")
 NONE_TASK_KEPT_CHILDREN = ("incoming", "outgoing", "documentation")
 
 
-def none_tasks_output(xml: str) -> dict:
-	"""The reply to a confirmed replace-all-with-None: every typed task made a plain task, or why nothing changed."""
-	if not (xml or "").strip():
-		return {"intent": "CLARIFY", "response": _("There is no diagram yet, so I changed nothing.")}
-	root = ET.fromstring(xml)
-	bpmn = "{" + NS["bpmn"] + "}"
-	if any(p.get("isExecutable", "false").strip().lower() == "true" for p in root.iter(bpmn + "process")):
-		return {
-			"intent": "CLARIFY",
-			"response": _("Only a non-executable process can use None tasks. This process is executable, so I changed nothing."),
-		}
-	register_namespaces()
-	typed = [bpmn + tag for tag in ("userTask", "serviceTask", "scriptTask", "manualTask", "businessRuleTask")]
-	changed = 0
-	for elem in root.iter():
-		if elem.tag not in typed:
-			continue
-		elem.tag = bpmn + "task"
-		for attr in [a for a in elem.attrib if a not in NONE_TASK_KEPT_ATTRIBUTES]:
-			del elem.attrib[attr]
-		for child in [c for c in elem if c.tag.removeprefix(bpmn) not in NONE_TASK_KEPT_CHILDREN]:
-			elem.remove(child)
-		changed += 1
-	if not changed:
-		return {"intent": "CLARIFY", "response": _("Every task is already a None task, so I changed nothing.")}
-	new_xml = ET.tostring(root, encoding="unicode", xml_declaration=True)
-	new_xml = re.sub(r"^<\?xml\s[^?]*\?>", '<?xml version="1.0" encoding="UTF-8"?>', new_xml)
-	return {
-		"intent": "BPMN_MODIFIED",
-		"action_intent": "TASKS_TO_NONE",
-		"bpmn_xml": new_xml,
-		"response": _("I made {0} tasks None tasks. Every step, arrow and name is kept, and the task settings are removed. Review it on the canvas.").format(changed),
-		"options": [],
-	}
-
-
-def keep_process_kind(ir: dict, xml: str) -> None:
-	"""Mark ir non-executable, in place, when the diagram being modified is, so its tasks stay None tasks."""
-	if not (xml or "").strip():
-		return
-	flags = [p.get("isExecutable", "false").strip().lower() for p in ET.fromstring(xml).iter("{" + NS["bpmn"] + "}process")]
-	if flags and "true" not in flags:
-		ir["executable"] = False

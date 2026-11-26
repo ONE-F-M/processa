@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """A typed yes confirms, a typed no goes to clarify, and an instruction not to ask skips the question."""
 
+from processa.tests.library import library
 import json
 from unittest.mock import patch
 
@@ -33,7 +34,7 @@ class TestAnswerToConfirmation(FrappeTestCase):
 	def _answer(self, metadata, text):
 		rows = [frappe._dict(metadata=json.dumps(metadata))] if metadata is not None else []
 		with patch.object(frappe, "get_all", return_value=rows):
-			return helpers.answer_to_confirmation(CONVERSATION, text)
+			return library("prosally_lib_stage_replies.py").answer_to_confirmation(CONVERSATION, text)
 
 	def test_yes_to_a_confirmation_confirms_its_action(self):
 		meta = {"intent": "CONFIRM", "agent_result": {"action_intent": "MODIFY_EXISTING"}}

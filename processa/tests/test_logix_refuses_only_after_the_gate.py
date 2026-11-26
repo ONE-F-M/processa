@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """Logix refuses only when a written script failed the gate, asks what is missing otherwise, and reverts from history."""
 
+from processa.tests.library import library
 import json
 from unittest.mock import patch
 
@@ -38,7 +39,7 @@ class TestRevertOutput(FrappeTestCase):
 		self.script.save(ignore_version=False)  # the test runner skips versions by default
 		set_turn(CONV, {"current_script": self.script.name})
 
-		result = tools.revert_output(CONV)
+		result = library("logix_lib_debug.py").revert_output(CONV)
 
 		output = get_turn(CONV)["output"]
 		self.assertTrue(result["has_fix"])
@@ -59,7 +60,7 @@ class TestRevertOutput(FrappeTestCase):
 		frappe.set_user(agent_user)
 		self.addCleanup(frappe.set_user, "Administrator")
 
-		result = tools.revert_output(CONV)
+		result = library("logix_lib_debug.py").revert_output(CONV)
 
 		self.assertTrue(result["has_fix"])
 		self.assertEqual(get_turn(CONV)["output"]["modified_script"], FIRST)
@@ -67,7 +68,7 @@ class TestRevertOutput(FrappeTestCase):
 	def test_a_script_without_history_says_so(self):
 		set_turn(CONV, {"current_script": self.script.name})
 
-		tools.revert_output(CONV)
+		library("logix_lib_debug.py").revert_output(CONV)
 
 		output = get_turn(CONV)["output"]
 		self.assertEqual(output["intent"], "REVERT")
@@ -77,7 +78,7 @@ class TestRevertOutput(FrappeTestCase):
 	def test_no_linked_script_means_nothing_to_revert(self):
 		set_turn(CONV, {"current_script": ""})
 
-		tools.revert_output(CONV)
+		library("logix_lib_debug.py").revert_output(CONV)
 
 		self.assertIn("nothing to revert", get_turn(CONV)["output"]["response"])
 

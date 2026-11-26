@@ -57,68 +57,6 @@ ATTR_FAMILY_LABELS = {
 }
 
 
-def overwrite_warning(xml: str) -> str:
-	"""The warning listing the configured shapes an overwrite would discard, or "" when none are."""
-	configured = extract_configured_elements(xml)
-	if not configured:
-		return ""
-	return summarize_configured_elements(configured)
-
-
-def transfer_properties(old_xml: str, new_xml: str, skip_ids: tuple = ()) -> tuple:
-	"""Copy configuration from old_xml onto the same ids in new_xml, except skip_ids; return (merged_xml, removed)."""
-	if not (old_xml or "").strip():
-		return new_xml, []
-	if not (new_xml or "").strip():
-		return new_xml, []
-	old_configured = {k: v for k, v in extract_configured_elements(old_xml).items() if k not in skip_ids}
-	if not old_configured:
-		return new_xml, []
-	register_namespaces()
-	new_root = ET.fromstring(new_xml)
-	new_by_id = {elem.get("id"): elem for elem in new_root.iter() if elem.get("id")}
-	removed = []
-	for elem_id, old_data in old_configured.items():
-		if elem_id in new_by_id:
-			_copy_configuration(new_by_id[elem_id], old_data)
-		else:
-			removed.append(
-				{
-					"id": elem_id,
-					"name": old_data["name"],
-					"type": old_data["type"],
-					"configs": _config_descriptions(old_data),
-				}
-			)
-	merged_xml = ET.tostring(new_root, encoding="unicode", xml_declaration=True)
-	merged_xml = re.sub(r"^<\?xml\s[^?]*\?>", '<?xml version="1.0" encoding="UTF-8"?>', merged_xml)
-	return merged_xml, removed
-
-
-def format_removal_warning(removed_elements: list) -> str:
-	"""The message asking the user to confirm a change that drops configured shapes."""
-	lines = [
-		_(
-			"I've prepared the changes, but the following configured shapes will be removed and their settings will be lost:\n"
-		)
-	]
-	for elem in removed_elements:
-		line = _("• **{0}** ({1})").format(elem["name"], elem["type"])
-		configs = elem["configs"]
-		if configs:
-			detail = list(configs[:3])
-			if len(configs) > 3:
-				detail.append(_("and {0} more").format(len(configs) - 3))
-			line = line + " - " + ", ".join(detail)
-		lines.append(line)
-	lines.append(
-		_(
-			"\nThese configurations (scripts, assignments, triggers, documentation, etc.) cannot be recovered after applying the changes.\n\nShall I apply the changes anyway?"
-		)
-	)
-	return "\n".join(lines)
-
-
 def extract_configured_elements(xml: str) -> dict:
 	"""Every BPMN element carrying extension attributes, extension elements or documentation, by id."""
 	if not xml or not xml.strip():
@@ -150,67 +88,6 @@ def extract_configured_elements(xml: str) -> dict:
 	return configured
 
 
-def summarize_configured_elements(configured: dict) -> str:
-	"""The overwrite warning text for shapes that carry configuration."""
-	lines = [
-		_(
-			"This will completely replace the existing diagram. The following shapes have configurations that will be lost:\n"
-		)
-	]
-	for data in configured.values():
-		config_labels = []
-		for clark in data["attrs"]:
-			label = _attr_label(clark)
-			if label not in config_labels:
-				config_labels.append(label)
-		if data.get("extension_elements_xml"):
-			config_labels.append(_("Extension Elements"))
-		if data.get("documentation"):
-			config_labels.append(_("Documentation"))
-		line = _("• **{0}** ({1})").format(data["name"], data["type"])
-		if config_labels:
-			line = line + " - " + ", ".join(config_labels[:4])
-			if len(config_labels) > 4:
-				line = line + " " + _("and {0} more").format(len(config_labels) - 4)
-		lines.append(line)
-	lines.append(_("\nAll of these configurations will be lost. Are you sure you want to proceed?"))
-	return "\n".join(lines)
-
-
-def describe_task_config(xml: str, previous_xml: str = "", problems: list | None = None) -> str:
-	"""The settings on the diagram's shapes as plain sentences, leaving out any previous_xml already had; "" when none.
-	Config problems from the compile follow, each naming its step."""
-	return _settings_text(xml, previous_xml) + _config_problems_text(problems or [], xml)
-
-
-def _settings_text(xml: str, previous_xml: str) -> str:
-	before = extract_configured_elements(previous_xml)
-	lines = []
-	for elem_id, data in extract_configured_elements(xml).items():
-		config = {_local_name(clark): value for clark, value in data["attrs"].items()}
-		previous = {_local_name(clark): value for clark, value in before.get(elem_id, {}).get("attrs", {}).items()}
-		if elem_id in before and previous == config:
-			continue
-		kind = data["type"].replace(" ", "")
-		if kind == "StartEvent" and config.get("triggerDoctype"):
-			lines.append(_("The process starts when a new {0} is created.").format(config["triggerDoctype"]))
-		elif kind == "ServiceTask":
-			lines.append(_service_task_sentence(data["name"], config))
-		elif kind == "UserTask":
-			lines.append(_user_task_sentence(data["name"], config))
-	before_ids = _script_task_names(previous_xml)
-	lines += [
-		_("{0} is a Script Task, so it needs a script. Ask Logix to write it.").format(name)
-		for elem_id, name in _script_task_names(xml).items()
-		if elem_id not in before_ids
-	]
-	lines = [line for line in lines if line]
-	decisions = _condition_text(xml, previous_xml)
-	if not lines:
-		return decisions
-	return "\n\n" + _("I also set these up on the steps:") + "\n" + "\n".join("- " + line for line in lines) + decisions
-
-
 def _condition_text(xml: str, previous_xml: str) -> str:
 	"""The gateway conditions and check steps in xml that cannot route as drawn, leaving out any previous_xml had."""
 	from processa.processa_engine.compiler.deploy_warnings import gateway_condition_gaps
@@ -235,20 +112,6 @@ def _script_task_names(xml: str) -> dict:
 	from processa.ai_agent_registry.definitions.prosally.tools_pipeline import element_names
 
 	return {elem_id: name or elem_id for elem_id, (kind, name) in element_names(xml).items() if kind == "scriptTask"}
-
-
-def _config_problems_text(problems: list, xml: str) -> str:
-	from processa.ai_agent_registry.definitions.prosally.tools_pipeline import element_names
-
-	names = {elem_id: name for elem_id, (_type, name) in element_names(xml).items()}
-	lines = [
-		_("{0}: {1}").format(names.get(p["elementId"]) or p["elementId"], p["message"])
-		for p in problems
-		if p.get("kind") == "config" and p.get("rule") != "lane-role"
-	]
-	if not lines:
-		return ""
-	return "\n\n" + _("These step settings need your attention:") + "\n" + "\n".join("- " + line for line in lines)
 
 
 def _service_task_sentence(name: str, config: dict) -> str:
@@ -297,31 +160,6 @@ def _user_task_sentence(name: str, config: dict) -> str:
 	if not parts:
 		return ""
 	return _("{0} {1}.").format(name, ", ".join(parts))
-
-
-def _copy_configuration(new_elem, old_data: dict) -> None:
-	for clark, value in old_data["attrs"].items():
-		new_elem.set(clark, value)
-	if old_data["extension_elements_xml"]:
-		new_ext_el = new_elem.find("{" + NS["bpmn"] + "}extensionElements")
-		if new_ext_el is None:
-			new_ext_el = ET.SubElement(new_elem, "{" + NS["bpmn"] + "}extensionElements")
-		for child in ET.fromstring(old_data["extension_elements_xml"]):
-			new_ext_el.append(child)
-	if old_data.get("documentation"):
-		_set_documentation(new_elem, old_data["documentation"])
-
-
-def _config_descriptions(old_data: dict) -> list:
-	configs = [_attr_label(clark) + ": " + value for clark, value in old_data["attrs"].items()]
-	if old_data["extension_elements_xml"]:
-		configs.append(_("Extension Elements (pre/post scripts or other)"))
-	if old_data.get("documentation"):
-		preview = old_data["documentation"][:80]
-		if len(old_data["documentation"]) > 80:
-			preview = preview + "…"
-		configs.append(_("Documentation: {0}").format(preview))
-	return configs
 
 
 def _is_extension_attr(attr_name: str) -> bool:

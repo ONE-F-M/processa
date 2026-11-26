@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """The ProsAlly stage reply helpers moved into 'ProsAlly: Lib Stage Replies', with their platform calls approved."""
 
+from processa.tests.library import library
 import copy
 import json
 from types import SimpleNamespace
@@ -9,12 +10,6 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import (
-	helpers,
-	tools_replies,
-	tools_review,
-	tools_subprocess,
-)
 from processa.ai_agent_security.code_checks.script_gate import collect_script_security_violations
 from processa.ai_agent_security.code_checks.script_validator import runs_code_on_import, validate_script
 from processa.patches.v1_0 import prosally_ir_move_to_library as ir
@@ -192,38 +187,64 @@ class TestProsAllyStageRepliesLibraryOnTheMap(FrappeTestCase):
 	def test_turn_replies_through_import_script(self):
 		with patch("frappe.log_error"):
 			self.assertSame(
-				"no_stage_reply", tools_replies.no_stage_reply, "stage-test-1", conversation="stage-test-1"
+				"no_stage_reply",
+				library("prosally_lib_stage_replies.py").no_stage_reply,
+				"stage-test-1",
+				conversation="stage-test-1",
 			)
 		self.assertSame(
-			"clarify_output", tools_replies.clarify_output, "stage-test-2", conversation="stage-test-2"
+			"clarify_output",
+			library("prosally_lib_stage_replies.py").clarify_output,
+			"stage-test-2",
+			conversation="stage-test-2",
 		)
 		self.assertSame(
-			"redirect_output", tools_replies.redirect_output, "stage-test-3", conversation="stage-test-3"
+			"redirect_output",
+			library("prosally_lib_stage_replies.py").redirect_output,
+			"stage-test-3",
+			conversation="stage-test-3",
 		)
 		self.assertSame(
-			"answer_to_confirmation", helpers.answer_to_confirmation, "no-such-conversation", "yes"
+			"answer_to_confirmation",
+			library("prosally_lib_stage_replies.py").answer_to_confirmation,
+			"no-such-conversation",
+			"yes",
 		)
 
 	def test_diagram_replies_through_import_script(self):
 		diagram = _diagram()
 		texts = ["Turn Complete Payroll Clearance into a sub-process"]
-		self.assertSame("similar_steps", tools_replies.similar_steps, diagram, texts)
+		self.assertSame(
+			"similar_steps", library("prosally_lib_stage_replies.py").similar_steps, diagram, texts
+		)
 		self.assertSame(
 			"similar_steps",
-			tools_replies.similar_steps,
+			library("prosally_lib_stage_replies.py").similar_steps,
 			diagram,
 			["Change the payroll clearance step"],
 			"",
 		)
 		self.assertSame(
-			"unapplied_proposal", tools_subprocess.unapplied_proposal, "no-such-conversation", diagram, ""
+			"unapplied_proposal",
+			library("prosally_lib_stage_replies.py").unapplied_proposal,
+			"no-such-conversation",
+			diagram,
+			"",
 		)
 		self.assertSame(
-			"unapplied_proposal", tools_subprocess.unapplied_proposal, "no-such-conversation", "", ""
+			"unapplied_proposal",
+			library("prosally_lib_stage_replies.py").unapplied_proposal,
+			"no-such-conversation",
+			"",
+			"",
 		)
 		with patch("frappe.log_error"):
 			self.assertSame(
-				"diagnose_output", tools_review.diagnose_output, diagram, ["Error: a flow has no target"], []
+				"diagnose_output",
+				library("prosally_lib_stage_replies.py").diagnose_output,
+				diagram,
+				["Error: a flow has no target"],
+				[],
 			)
 
 	def test_a_lint_finding_the_chat_cannot_fix_is_explained_not_offered(self):
@@ -243,8 +264,7 @@ class TestProsAllyStageRepliesLibraryOnTheMap(FrappeTestCase):
 		reply = json.dumps({"origin": "map", "root_cause": "Two paths cross.", "fix_steps": ["Move a step"]})
 		fakes = {"complete_sub_prompt": lambda *args, **kwargs: reply, "prosally_config": dict}
 		with patch.dict(self.lib.diagnose_output.__globals__, fakes):
-			from_library = self.lib.diagnose_output(xml, [message], lint)
-		with patch.multiple(tools_review, **fakes):
-			from_backend = tools_review.diagnose_output(xml, [message], lint)
-		self.assertEqual(from_library, from_backend)
-		self.assertEqual(from_library["intent"], "CLARIFY")
+			answer = self.lib.diagnose_output(xml, [message], lint)
+		self.assertEqual(answer["intent"], "CLARIFY")
+		self.assertNotIn("options", answer)
+		self.assertIn(self.lib.diagnose_output.__globals__["layout_is_automatic"](), answer["response"])

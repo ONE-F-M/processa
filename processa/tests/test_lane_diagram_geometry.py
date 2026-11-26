@@ -19,12 +19,13 @@ measured output of the current router. Improving the router should mean lowering
 them; nothing should ever raise them without a reason in the commit message.
 """
 
+from processa.tests.library import library
 import itertools
 import xml.etree.ElementTree as ET
 
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import compile_ir
+compile_ir = library("prosally_lib_layout.py").compile_ir
 
 DI = "http://www.omg.org/spec/BPMN/20100524/DI"
 DC = "http://www.omg.org/spec/DD/20100524/DC"

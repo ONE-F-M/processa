@@ -1,20 +1,12 @@
 # Copyright (c) 2026, one-fm and contributors
 """The ProsAlly reply, lint and prompt helpers moved into 'ProsAlly: Lib Replies' on the ProsAlly map."""
 
+from processa.tests.library import library
 from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import (
-	helpers,
-	tools_links,
-	tools_lint,
-	tools_prompts,
-	tools_properties,
-	tools_replies,
-	tools_subprocess,
-)
 from processa.ai_agent_security.code_checks.script_validator import runs_code_on_import, validate_script
 from processa.patches.v1_0 import prosally_replies_move_to_library as move
 from processa.processa_engine.compiler.extensions import extract_script_task_config
@@ -192,27 +184,27 @@ class TestProsAllyLibraryOnTheMap(FrappeTestCase):
 			]
 		}
 		self.assertSame(
-			"add_document_sources", helpers.add_document_sources, "Here it is.", "BPMN_GENERATED", turn
+			"add_document_sources", library("prosally_lib_replies.py").add_document_sources, "Here it is.", "BPMN_GENERATED", turn
 		)
-		self.assertSame("add_document_sources", helpers.add_document_sources, "Hi", "CLARIFY", turn)
-		self.assertSame("pending_confirmation", helpers.pending_confirmation, "no-such-conversation")
+		self.assertSame("add_document_sources", library("prosally_lib_replies.py").add_document_sources, "Hi", "CLARIFY", turn)
+		self.assertSame("pending_confirmation", library("prosally_lib_replies.py").pending_confirmation, "no-such-conversation")
 		self.assertSame(
-			"join_confirmation", tools_prompts.join_confirmation, "Add an Approve step.", "Shall I apply it?"
+			"join_confirmation", library("prosally_lib_replies.py").join_confirmation, "Add an Approve step.", "Shall I apply it?"
 		)
 		self.assertSame(
-			"join_confirmation", tools_prompts.join_confirmation, {"steps": ["Add Approve"]}, "Go ahead?"
+			"join_confirmation", library("prosally_lib_replies.py").join_confirmation, {"steps": ["Add Approve"]}, "Go ahead?"
 		)
-		self.assertSame("stage_max_tokens", tools_prompts.stage_max_tokens, {"max_tokens": 1000})
-		self.assertSame("stage_max_tokens", tools_prompts.stage_max_tokens, {})
+		self.assertSame("stage_max_tokens", library("prosally_lib_replies.py").stage_max_tokens, {"max_tokens": 1000})
+		self.assertSame("stage_max_tokens", library("prosally_lib_replies.py").stage_max_tokens, {})
 		self.assertSame(
 			"format_removal_warning",
-			tools_properties.format_removal_warning,
+			library("prosally_lib_replies.py").format_removal_warning,
 			[{"name": "Check", "type": "scriptTask", "configs": ["script", "assignee", "timer", "docs"]}],
 		)
 		self.assertSame(
-			"no_change_reply", tools_replies.no_change_reply, "the main process", ["Approve", "Review"]
+			"no_change_reply", library("prosally_lib_replies.py").no_change_reply, "the main process", ["Approve", "Review"]
 		)
-		self.assertSame("no_change_reply", tools_replies.no_change_reply, "the main process", [])
+		self.assertSame("no_change_reply", library("prosally_lib_replies.py").no_change_reply, "the main process", [])
 
 	def test_request_readers_through_import_script(self):
 		for text in (
@@ -221,25 +213,25 @@ class TestProsAllyLibraryOnTheMap(FrappeTestCase):
 			"Space the steps out and line them up, only change the Approve step",
 			"Add a gateway after Review",
 		):
-			self.assertSame("asks_for_links_review", tools_links.asks_for_links_review, text)
-			self.assertSame("asks_to_make_call_activity", tools_subprocess.asks_to_make_call_activity, text)
-			self.assertSame("layout_asks", tools_replies.layout_asks, text)
-			constraints = tools_replies.request_constraints(text)
-			self.assertSame("request_constraints", tools_replies.request_constraints, text)
-			self.assertSame("constraint_prompt", tools_replies.constraint_prompt, constraints)
+			self.assertSame("asks_for_links_review", library("prosally_lib_replies.py").asks_for_links_review, text)
+			self.assertSame("asks_to_make_call_activity", library("prosally_lib_replies.py").asks_to_make_call_activity, text)
+			self.assertSame("layout_asks", library("prosally_lib_replies.py").layout_asks, text)
+			constraints = library("prosally_lib_replies.py").request_constraints(text)
+			self.assertSame("request_constraints", library("prosally_lib_replies.py").request_constraints, text)
+			self.assertSame("constraint_prompt", library("prosally_lib_replies.py").constraint_prompt, constraints)
 			self.assertSame(
-				"unrequested_changes", tools_replies.unrequested_changes, BEFORE, AFTER, text, constraints
+				"unrequested_changes", library("prosally_lib_replies.py").unrequested_changes, BEFORE, AFTER, text, constraints
 			)
 
 	def test_change_and_lint_replies_through_import_script(self):
-		self.assertSame("describe_changes", tools_replies.describe_changes, BEFORE, AFTER)
-		self.assertSame("describe_changes", tools_replies.describe_changes, BEFORE, BEFORE)
+		self.assertSame("describe_changes", library("prosally_lib_replies.py").describe_changes, BEFORE, AFTER)
+		self.assertSame("describe_changes", library("prosally_lib_replies.py").describe_changes, BEFORE, BEFORE)
 		topology = {"planar": False, "obstruction": ["a", "b"]}
 		nodes = [{"id": "a", "name": "Check"}, {"id": "b", "name": "Approve"}]
-		self.assertSame("crossing_line_note", tools_replies.crossing_line_note, nodes, topology, None)
-		self.assertSame("crossing_line_note", tools_replies.crossing_line_note, nodes, {"planar": True}, None)
-		self.assertSame("lint_prompt", tools_lint.lint_prompt, FINDINGS)
-		self.assertSame("lint_leftovers", tools_lint.lint_leftovers, FINDINGS)
-		self.assertSame("lint_unfixed_reply", tools_lint.lint_unfixed_reply, "the main process", FINDINGS)
-		self.assertSame("no_lint_fix_reply", tools_lint.no_lint_fix_reply, FINDINGS)
-		self.assertSame("no_lint_fix_reply", tools_lint.no_lint_fix_reply, None)
+		self.assertSame("crossing_line_note", library("prosally_lib_replies.py").crossing_line_note, nodes, topology, None)
+		self.assertSame("crossing_line_note", library("prosally_lib_replies.py").crossing_line_note, nodes, {"planar": True}, None)
+		self.assertSame("lint_prompt", library("prosally_lib_replies.py").lint_prompt, FINDINGS)
+		self.assertSame("lint_leftovers", library("prosally_lib_replies.py").lint_leftovers, FINDINGS)
+		self.assertSame("lint_unfixed_reply", library("prosally_lib_replies.py").lint_unfixed_reply, "the main process", FINDINGS)
+		self.assertSame("no_lint_fix_reply", library("prosally_lib_replies.py").no_lint_fix_reply, FINDINGS)
+		self.assertSame("no_lint_fix_reply", library("prosally_lib_replies.py").no_lint_fix_reply, None)

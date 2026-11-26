@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """The ProsAlly map XML helpers moved into 'ProsAlly: Lib Map XML', with xml.etree approved by the patch."""
 
+from processa.tests.library import library
 import copy
 from unittest.mock import patch
 
@@ -8,11 +9,6 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_registry.definitions.prosally import (
-	tools_lint,
-	tools_prompts,
-	tools_properties,
-	tools_replies,
-	tools_review,
 	tools_subprocess,
 	validators,
 )
@@ -174,53 +170,53 @@ class TestProsAllyMapXMLLibraryOnTheMap(FrappeTestCase):
 
 	def test_reading_helpers_through_import_script(self):
 		texts = ["Turn Complete Payroll Clearance into a sub-process", "Make Audit Trail a sub-process"]
-		self.assertSame("find_missing_target", tools_subprocess.find_missing_target, self.diagram, texts[1:])
-		self.assertSame("resolve_scope", tools_subprocess.resolve_scope, self.diagram, texts)
-		self.assertSame("resolve_step", tools_subprocess.resolve_step, self.diagram, texts[:1])
-		self.assertSame("xml_to_ir", tools_review.xml_to_ir, CHILD)
+		self.assertSame("find_missing_target", library("prosally_lib_map_xml.py").find_missing_target, self.diagram, texts[1:])
+		self.assertSame("resolve_scope", library("prosally_lib_map_xml.py").resolve_scope, self.diagram, texts)
+		self.assertSame("resolve_step", library("prosally_lib_map_xml.py").resolve_step, self.diagram, texts[:1])
+		self.assertSame("xml_to_ir", library("prosally_lib_map_xml.py").xml_to_ir, CHILD)
 		self.assertSame("validate_bpmn_xml", validators.validate_bpmn_xml, self.diagram)
 		self.assertSame("validate_bpmn_xml", validators.validate_bpmn_xml, CHILD)
-		self.assertSame("describe_task_config", tools_properties.describe_task_config, self.diagram)
+		self.assertSame("describe_task_config", library("prosally_lib_map_xml.py").describe_task_config, self.diagram)
 		self.assertSame(
-			"describe_task_config", tools_properties.describe_task_config, self.diagram, CHILD, []
+			"describe_task_config", library("prosally_lib_map_xml.py").describe_task_config, self.diagram, CHILD, []
 		)
-		self.assertSame("overwrite_warning", tools_properties.overwrite_warning, self.diagram)
+		self.assertSame("overwrite_warning", library("prosally_lib_map_xml.py").overwrite_warning, self.diagram)
 		issues = [{"id": "below", "rule": "no-disconnected", "message": "not connected", "category": "error"}]
-		self.assertSame("lint_findings", tools_lint.lint_findings, self.diagram, issues)
+		self.assertSame("lint_findings", library("prosally_lib_map_xml.py").lint_findings, self.diagram, issues)
 
 	def test_diagram_edits_through_import_script(self):
 		self.assertSame(
 			"convert_step_to_subprocess",
-			tools_subprocess.convert_step_to_subprocess,
+			library("prosally_lib_map_xml.py").convert_step_to_subprocess,
 			self.diagram,
 			"conv",
 			CHILD,
 		)
-		converted = tools_subprocess.convert_step_to_subprocess(self.diagram, "conv", CHILD)
-		self.assertSame("splice_subprocess", tools_subprocess.splice_subprocess, converted, CHILD, "conv")
+		converted = library("prosally_lib_map_xml.py").convert_step_to_subprocess(self.diagram, "conv", CHILD)
+		self.assertSame("splice_subprocess", library("prosally_lib_map_xml.py").splice_subprocess, converted, CHILD, "conv")
 		self.assertSame(
-			"restore_call_activities", tools_subprocess.restore_call_activities, self.diagram, CHILD
+			"restore_call_activities", library("prosally_lib_map_xml.py").restore_call_activities, self.diagram, CHILD
 		)
-		self.assertSame("transfer_properties", tools_properties.transfer_properties, self.diagram, CHILD)
+		self.assertSame("transfer_properties", library("prosally_lib_map_xml.py").transfer_properties, self.diagram, CHILD)
 		self.assertSame(
-			"transfer_properties", tools_properties.transfer_properties, self.diagram, self.diagram, ("prep",)
+			"transfer_properties", library("prosally_lib_map_xml.py").transfer_properties, self.diagram, self.diagram, ("prep",)
 		)
 		self.assertSame(
-			"describe_flow_references", tools_replies.describe_flow_references, self.diagram, converted
+			"describe_flow_references", library("prosally_lib_map_xml.py").describe_flow_references, self.diagram, converted
 		)
-		self.assertSame("describe_links", tools_replies.describe_links, self.diagram, CHILD)
+		self.assertSame("describe_links", library("prosally_lib_map_xml.py").describe_links, self.diagram, CHILD)
 		ir_dict = {"nodes": [], "flows": []}
 		self.assertSame(
 			"keep_process_kind",
-			tools_review.keep_process_kind,
+			library("prosally_lib_map_xml.py").keep_process_kind,
 			ir_dict,
 			self.diagram.replace('isExecutable="true"', 'isExecutable="false"'),
 		)
-		self.assertSame("none_tasks_output", tools_review.none_tasks_output, self.diagram)
-		self.assertSame("none_tasks_output", tools_review.none_tasks_output, "")
+		self.assertSame("none_tasks_output", library("prosally_lib_map_xml.py").none_tasks_output, self.diagram)
+		self.assertSame("none_tasks_output", library("prosally_lib_map_xml.py").none_tasks_output, "")
 		self.assertSame(
 			"compare_output",
-			tools_review.compare_output,
+			library("prosally_lib_map_xml.py").compare_output,
 			self.diagram,
 			["1. Prepare\n2. Approve payslip\n3. Pay out"],
 		)
@@ -233,7 +229,7 @@ class TestProsAllyMapXMLLibraryOnTheMap(FrappeTestCase):
 		cfg = {"sub_prompts": {"modify": {"prompt": "Change the diagram."}}}
 		self.assertSame(
 			"stage_system_prompt",
-			tools_prompts.stage_system_prompt,
+			library("prosally_lib_map_xml.py").stage_system_prompt,
 			cfg,
 			"modify",
 			"",

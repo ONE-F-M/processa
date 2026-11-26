@@ -5,6 +5,7 @@ Run with:
     bench run-tests --app processa --module processa.tests.test_prosally_cross_process
 """
 
+from processa.tests.library import library
 from unittest.mock import patch
 
 import frappe
@@ -48,7 +49,7 @@ class TestProsallyProcessLinksTool(FrappeTestCase):
 		frappe.db.rollback()
 
 	def prompt(self, sub_id):
-		return tools_prompts.stage_system_prompt(CFG, sub_id, "", get_turn(CONVERSATION))
+		return library("prosally_lib_map_xml.py").stage_system_prompt(CFG, sub_id, "", get_turn(CONVERSATION))
 
 	def test_tool_reads_the_open_map_and_keeps_the_findings_for_the_turn(self):
 		found = process_links_for_turn(CONVERSATION)
@@ -85,12 +86,12 @@ class TestProsallyProcessLinksTool(FrappeTestCase):
 	def test_block_is_empty_when_there_is_nothing_related(self):
 		empty = {"process_model": "m", "related": [], "gaps": [], "truncated": False}
 
-		self.assertEqual(tools_prompts.process_links_block({"process_links": empty}), "")
+		self.assertEqual(library("prosally_lib_map_xml.py").process_links_block({"process_links": empty}), "")
 
 	def test_block_says_when_related_maps_were_cut(self):
 		cut = {"process_model": "m", "related": [{"process_model": "x", "reason": "r"}], "gaps": [], "truncated": True}
 
-		self.assertIn("More related maps exist than are listed.", tools_prompts.process_links_block({"process_links": cut}))
+		self.assertIn("More related maps exist than are listed.", library("prosally_lib_map_xml.py").process_links_block({"process_links": cut}))
 
 	def test_the_tool_never_changes_a_related_map(self):
 		before = frappe.db.get_value("BPMN Process Model", self.thrower, ["modified", "bpmn_xml"])

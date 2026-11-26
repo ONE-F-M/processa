@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """auto_fix_ir fixes what the compiler names exactly, so ProsAlly spends no repair pass on it."""
 
+from processa.tests.library import library
 import copy
 import json
 from unittest.mock import patch
@@ -9,7 +10,8 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_registry.definitions.prosally import helpers
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import auto_fix_ir, compile_ir
+compile_ir = library("prosally_lib_layout.py").compile_ir
+auto_fix_ir = library("prosally_lib_ir.py").auto_fix_ir
 from processa.processa_engine.agent_runtime.turn_state import clear_turn, set_turn
 from processa.patches.v1_0 import prosally_stages_read_the_latest_message as message_patch
 from processa.patches.v1_0.prosally_auto_fix_ir import with_auto_fix

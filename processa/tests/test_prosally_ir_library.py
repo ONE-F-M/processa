@@ -1,13 +1,14 @@
 # Copyright (c) 2026, one-fm and contributors
 """The ProsAlly IR helpers moved into 'ProsAlly: Lib IR', in the same Libraries box as 'ProsAlly: Lib Replies'."""
 
+from processa.tests.library import library
 import copy
 from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import tools_operations, tools_pipeline
+from processa.ai_agent_registry.definitions.prosally import tools_pipeline
 from processa.ai_agent_registry.definitions.shared import helpers
 from processa.ai_agent_security.code_checks.script_validator import runs_code_on_import, validate_script
 from processa.patches.v1_0 import prosally_ir_move_to_library as move
@@ -182,16 +183,16 @@ class TestProsAllyIRLibraryOnTheMap(FrappeTestCase):
 		self.assertSame("extract_element_ids", tools_pipeline.extract_element_ids, XML)
 
 	def test_ir_helpers_through_import_script(self):
-		self.assertSame("auto_fix_ir", tools_pipeline.auto_fix_ir, IR)
-		self.assertSame("ensure_default_lanes", tools_pipeline.ensure_default_lanes, {"nodes": IR["nodes"]})
-		self.assertSame("ensure_default_lanes", tools_pipeline.ensure_default_lanes, IR)
+		self.assertSame("auto_fix_ir", library("prosally_lib_ir.py").auto_fix_ir, IR)
+		self.assertSame("ensure_default_lanes", library("prosally_lib_ir.py").ensure_default_lanes, {"nodes": IR["nodes"]})
+		self.assertSame("ensure_default_lanes", library("prosally_lib_ir.py").ensure_default_lanes, IR)
 		chunks = [
 			{"nodes": IR["nodes"][:2], "flows": IR["flows"][:1]},
 			{"nodes": IR["nodes"][2:], "flows": []},
 		]
-		self.assertSame("merge_chunked_ir", tools_pipeline.merge_chunked_ir, IR["lanes"], chunks)
-		self.assertSame("chunk_exit_node_id", tools_pipeline.chunk_exit_node_id, chunks[0])
-		self.assertSame("chunk_exit_node_id", tools_pipeline.chunk_exit_node_id, {"nodes": []})
+		self.assertSame("merge_chunked_ir", library("prosally_lib_ir.py").merge_chunked_ir, IR["lanes"], chunks)
+		self.assertSame("chunk_exit_node_id", library("prosally_lib_ir.py").chunk_exit_node_id, chunks[0])
+		self.assertSame("chunk_exit_node_id", library("prosally_lib_ir.py").chunk_exit_node_id, {"nodes": []})
 
 	def test_problem_text_and_operations_through_import_script(self):
 		problems = [
@@ -200,7 +201,7 @@ class TestProsAllyIRLibraryOnTheMap(FrappeTestCase):
 			{"kind": "layout", "message": "crowded"},
 			{"rule": "single-start", "elementId": "s2", "message": "two starts"},
 		]
-		self.assertSame("translate_problems", tools_pipeline.translate_problems, problems)
+		self.assertSame("translate_problems", library("prosally_lib_ir.py").translate_problems, problems)
 		violations = ["[single-start] two starts", "[no-bpmndi] x", "free text", "[single-start] again"]
 		self.assertSame("translate_violations", tools_pipeline.translate_violations, violations)
 		operations = [
@@ -208,5 +209,5 @@ class TestProsAllyIRLibraryOnTheMap(FrappeTestCase):
 			{"op": "rename", "id": "a", "name": "Approve request"},
 			{"op": "reconnect", "id": "f9", "from": "s", "to": "c"},
 		]
-		self.assertSame("apply_operations", tools_operations.apply_operations, IR, operations)
-		self.assertSame("apply_operations", tools_operations.apply_operations, IR, [{"op": "explode"}])
+		self.assertSame("apply_operations", library("prosally_lib_ir.py").apply_operations, IR, operations)
+		self.assertSame("apply_operations", library("prosally_lib_ir.py").apply_operations, IR, [{"op": "explode"}])

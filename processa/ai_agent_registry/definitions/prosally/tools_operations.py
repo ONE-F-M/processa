@@ -1,7 +1,6 @@
 # Copyright (c) 2026, one-fm and contributors
 """ProsAlly's map edits: operations applied to a map's IR, and the single edits it makes on the XML."""
 
-import copy
 import re
 from xml.etree import ElementTree as ET
 
@@ -20,30 +19,6 @@ from processa.ai_agent_registry.definitions.prosally.tools_subprocess import (
 	insert_after,
 	named_node,
 )
-
-
-def apply_operations(ir: dict, operations: list) -> tuple[dict | None, str]:
-	"""(ir with every operation applied, "") or (None, which operation failed and why); ir itself never changes."""
-	edited = copy.deepcopy(ir)
-	for number, operation in enumerate(operations, 1):
-		problem = _apply(edited, operation) if isinstance(operation, dict) else _("it is not an operation")
-		if problem:
-			return None, _('Change {0} ({1} "{2}") could not be made: {3}.').format(
-				number,
-				operation.get("op", "") if isinstance(operation, dict) else "",
-				_label(operation),
-				problem,
-			)
-	return edited, ""
-
-
-def _apply(ir: dict, operation: dict) -> str:
-	handler = {"add": _add, "remove": _remove, "rename": _rename, "reconnect": _reconnect}.get(
-		operation.get("op")
-	)
-	if handler is None:
-		return _("it is not one of add, remove, rename or reconnect")
-	return handler(ir, operation)
 
 
 def _add(ir: dict, operation: dict) -> str:
@@ -155,14 +130,6 @@ def _by_id(items: list, element_id: str | None) -> dict | None:
 
 def _missing(element_id: str | None) -> str:
 	return _("there is no step, arrow or lane called {0} on the diagram").format(element_id)
-
-
-def _label(operation) -> str:
-	return (
-		(operation.get("name") or operation.get("id") or "")
-		if isinstance(operation, dict)
-		else str(operation)
-	)
 
 
 ADD_SUBPROCESS = re.compile(

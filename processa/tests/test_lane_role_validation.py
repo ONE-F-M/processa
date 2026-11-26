@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 """Lane names are checked against the site's enabled Roles, with suggestions for near misses."""
 
+from processa.tests.library import library
 from unittest.mock import patch
 
 import frappe
@@ -188,7 +189,7 @@ class TestDescribeLanesSuggestsRoles(FrappeTestCase):
 	def _reply(self, *lane_names):
 		ir = {"lanes": [{"id": f"l{i}", "name": n} for i, n in enumerate(lane_names)]}
 		with patch.object(tools_prompts.frappe, "get_all", return_value=ROLES):
-			return tools_prompts.describe_lanes([], "", ir)
+			return library("prosally_lib_context.py").describe_lanes([], "", ir)
 
 	def test_a_near_miss_lane_gets_a_did_you_mean(self):
 		text = self._reply("HR Manager", "HR Managr")

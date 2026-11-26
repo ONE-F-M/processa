@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """Logix tries a draft on a record, reads the newest error of a script, and shows the real error of a check."""
 
+from processa.tests.library import library
 import ast
 from unittest.mock import patch
 
@@ -9,7 +10,9 @@ from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_registry.definitions.logix import dry_run as trial
 from processa.ai_agent_registry.definitions.logix import tools
-from processa.ai_agent_registry.definitions.logix.helpers import debug_inputs, doctype_inputs, field_findings
+debug_inputs = library("logix_lib_replies.py").debug_inputs
+doctype_inputs = library("logix_lib_replies.py").doctype_inputs
+field_findings = library("logix_lib_doctype_sources.py").field_findings
 from processa.api.server_scripts import run_logix_test_case
 from processa.patches.v1_0 import logix_review_trial_reads_no_undefined_name as repair
 from processa.patches.v1_0 import logix_tries_drafts_on_a_record as p

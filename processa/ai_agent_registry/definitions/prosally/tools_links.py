@@ -101,43 +101,6 @@ def _open_map(turn: dict) -> str:
 	return (process and frappe.db.get_value(DOCTYPE, {"process_name": process, "is_active": 1})) or ""
 
 
-def asks_for_links_review(text: str) -> bool:
-	"""True when the message asks about links to other process maps and does not ask to draw or change steps."""
-	text = text or ""
-	return bool(OTHER_MAPS.search(text) and LINK_WORDS.search(text) and not DRAW_WORDS.search(text))
-
-
-def links_review_output(conversation: str) -> dict:
-	"""The reply to a review of the open map's links to related maps, built from get_process_links alone."""
-	found = process_links_for_turn(conversation)
-	if "error" in found:
-		response = found["error"]
-	else:
-		response = "\n\n".join(_review_paragraphs(found))
-	return {"intent": "CLARIFY", "action_intent": None, "response": response, "options": []}
-
-
-def _review_paragraphs(found: dict) -> list[str]:
-	if not (found["catches"] or found["throws"] or found["calls"]):
-		return [_("This map has no message or signal events and no call activities, so it has no links to other maps.")]
-
-	if found["related"]:
-		related = "\n".join(f"- {row['process_model']} ({row['reason']})" for row in found["related"])
-		paragraphs = [_("Related maps I can read:") + "\n\n" + related]
-	else:
-		paragraphs = [_("No map you can read is linked to this one.")]
-	if found["truncated"]:
-		paragraphs.append(_("There are more related maps than I read. These findings cover the first {0}.").format(len(found["related"])))
-
-	if found["gaps"]:
-		gaps = "\n".join(f"- {gap['label'] or gap['element']}: {gap['message']}" for gap in found["gaps"])
-		paragraphs.append(_("What to change:") + "\n\n" + gaps)
-	else:
-		paragraphs.append(_("Every message, signal and call activity in this map matches a map you can read."))
-	paragraphs.append(_("I read the saved map and the related maps and changed none of them. Make any change in the map it names."))
-	return paragraphs
-
-
 def _error_unless_readable(process_model: str) -> dict | None:
 	if not process_model:
 		return {"error": _("I cannot tell which saved map is open. Save the map, then ask again.")}

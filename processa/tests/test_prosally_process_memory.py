@@ -6,14 +6,16 @@ Run with:
 """
 
 from __future__ import annotations
+from processa.tests.library import library
 
 from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import helpers, tools_prompts
 from processa.patches.v1_0 import prosally_stage_tools_read_process_memory as memory_patch
+from processa.patches.v1_0 import prosally_context_move_to_library as context_move
+from processa.patches.v1_0.docu_helpers_move_to_library import uses_library
 from processa.tests.site_scripts import as_deployed
 
 PROMOTION = "Zz Test Employee Promotion"
@@ -55,15 +57,21 @@ class TestProcessForDiagram(FrappeTestCase):
 		_process(PROMOTION)
 
 	def test_version_suffix_is_removed(self):
-		self.assertEqual(helpers.process_for_diagram(PROMOTION + " - v1"), PROMOTION)
-		self.assertEqual(helpers.process_for_diagram(PROMOTION + " - v12"), PROMOTION)
+		self.assertEqual(
+			library("prosally_lib_context.py").process_for_diagram(PROMOTION + " - v1"), PROMOTION
+		)
+		self.assertEqual(
+			library("prosally_lib_context.py").process_for_diagram(PROMOTION + " - v12"), PROMOTION
+		)
 
 	def test_name_without_a_suffix_resolves(self):
-		self.assertEqual(helpers.process_for_diagram(PROMOTION), PROMOTION)
+		self.assertEqual(library("prosally_lib_context.py").process_for_diagram(PROMOTION), PROMOTION)
 
 	def test_name_matching_no_process_is_blank(self):
-		self.assertEqual(helpers.process_for_diagram("Zz Made Up Process - v1"), "")
-		self.assertEqual(helpers.process_for_diagram(""), "")
+		self.assertEqual(
+			library("prosally_lib_context.py").process_for_diagram("Zz Made Up Process - v1"), ""
+		)
+		self.assertEqual(library("prosally_lib_context.py").process_for_diagram(""), "")
 
 
 class TestRecall(FrappeTestCase):
@@ -79,12 +87,12 @@ class TestRecall(FrappeTestCase):
 		_user_row(OTHER_USER, "guest prefers long names")
 
 	def setUp(self):
-		patcher = patch.object(helpers, "_memory_fields", return_value=MEMORY_ON)
+		patcher = patch.object(library("prosally_lib_context.py"), "_memory_fields", return_value=MEMORY_ON)
 		patcher.start()
 		self.addCleanup(patcher.stop)
 
 	def test_recall_is_the_process_plus_the_requesters_own_rows(self):
-		recalled = helpers.recall_process_memory(PROMOTION + " - v1")
+		recalled = library("prosally_lib_context.py").recall_process_memory(PROMOTION + " - v1")
 		self.assertEqual(recalled["memory_process"], PROMOTION)
 		self.assertEqual(
 			sorted(recalled["memory_notes"]),
@@ -92,14 +100,17 @@ class TestRecall(FrappeTestCase):
 		)
 
 	def test_a_diagram_matching_no_process_recalls_only_the_preferences(self):
-		recalled = helpers.recall_process_memory("Zz Made Up Process - v1")
-		self.assertEqual(recalled, {"memory_process": "", "memory_notes": ["administrator prefers short names"]})
+		recalled = library("prosally_lib_context.py").recall_process_memory("Zz Made Up Process - v1")
+		self.assertEqual(
+			recalled, {"memory_process": "", "memory_notes": ["administrator prefers short names"]}
+		)
 
 	def test_guest_with_no_process_recalls_nothing(self):
 		frappe.set_user("Guest")
 		self.addCleanup(frappe.set_user, "Administrator")
 		self.assertEqual(
-			helpers.recall_process_memory("Zz Made Up Process - v1"), {"memory_process": "", "memory_notes": []}
+			library("prosally_lib_context.py").recall_process_memory("Zz Made Up Process - v1"),
+			{"memory_process": "", "memory_notes": []},
 		)
 
 
@@ -108,19 +119,29 @@ class TestPrompt(FrappeTestCase):
 	TURN = {"memory_notes": ["promotion needs the board lane"]}
 
 	def test_notes_sit_under_their_heading_after_the_sub_prompt(self):
-		prompt = tools_prompts.stage_system_prompt(self.CFG, "modifier", "modify_skills", self.TURN)
+		prompt = library("prosally_lib_map_xml.py").stage_system_prompt(
+			self.CFG, "modifier", "modify_skills", self.TURN
+		)
 		self.assertTrue(prompt.startswith("MODIFIER\n\nNotes from earlier work on this process:"))
 		self.assertIn("- promotion needs the board lane", prompt)
 		self.assertNotIn("Offboarding", prompt)
 
 	def test_without_notes_the_prompt_is_unchanged(self):
-		self.assertEqual(tools_prompts.stage_system_prompt(self.CFG, "modifier", "modify_skills"), "MODIFIER")
+		self.assertEqual(
+			library("prosally_lib_map_xml.py").stage_system_prompt(self.CFG, "modifier", "modify_skills"),
+			"MODIFIER",
+		)
 		turn = {"memory_notes": []}
-		self.assertEqual(tools_prompts.stage_system_prompt(self.CFG, "modifier", "modify_skills", turn), "MODIFIER")
+		self.assertEqual(
+			library("prosally_lib_map_xml.py").stage_system_prompt(
+				self.CFG, "modifier", "modify_skills", turn
+			),
+			"MODIFIER",
+		)
 
 	def test_blank_skills_constant_loads_no_skills(self):
 		with patch.object(frappe, "get_all") as get_all:
-			tools_prompts.stage_system_prompt(self.CFG, "modifier", "", self.TURN)
+			library("prosally_lib_map_xml.py").stage_system_prompt(self.CFG, "modifier", "", self.TURN)
 		get_all.assert_not_called()
 
 
@@ -129,16 +150,23 @@ class TestQueueProcessMemory(FrappeTestCase):
 
 	def _queue(self, turn, intent, fields=MEMORY_ON):
 		cfg = {"name": "CFG", "ai_model": "m", "ai_provider": "p"}
-		with patch.object(helpers, "prosally_config", return_value=cfg), patch.object(helpers, "_memory_fields", return_value=fields
-		), patch.object(frappe, "enqueue") as enqueue:
-			helpers.queue_process_memory(turn, {"intent": intent, "response": "Drew it."})
+		with (
+			patch.object(library("prosally_lib_context.py"), "prosally_config", return_value=cfg),
+			patch.object(library("prosally_lib_context.py"), "_memory_fields", return_value=fields),
+			patch.object(frappe, "enqueue") as enqueue,
+		):
+			library("prosally_lib_context.py").queue_process_memory(
+				turn, {"intent": intent, "response": "Drew it."}
+			)
 		return enqueue
 
 	def test_a_drawn_or_changed_diagram_queues_a_write_keyed_to_the_process(self):
 		for intent in ("BPMN_GENERATED", "BPMN_MODIFIED"):
 			kwargs = self._queue(self.TURN, intent).call_args.kwargs
 			self.assertEqual(kwargs["scope"], "Entity")
-			self.assertEqual(kwargs["scope_key"], {"reference_doctype": "Process", "reference_name": PROMOTION})
+			self.assertEqual(
+				kwargs["scope_key"], {"reference_doctype": "Process", "reference_name": PROMOTION}
+			)
 			self.assertEqual(kwargs["user"], "Administrator")
 			self.assertIn("Drew it.", kwargs["agent_output"])
 			self.assertIn("a note", kwargs["exclude_context"])
@@ -189,11 +217,12 @@ class TestStageToolsPatch(FrappeTestCase):
 		def exists(doctype, name=None):
 			return name in store
 
-		with patch.object(frappe.db, "exists", side_effect=exists), patch.object(
-			frappe.db, "get_value", side_effect=get_value
-		), patch.object(frappe.db, "set_value", side_effect=set_value), patch.object(
-			frappe, "log_error"
-		) as log_error:
+		with (
+			patch.object(frappe.db, "exists", side_effect=exists),
+			patch.object(frappe.db, "get_value", side_effect=get_value),
+			patch.object(frappe.db, "set_value", side_effect=set_value),
+			patch.object(frappe, "log_error") as log_error,
+		):
 			memory_patch.execute()
 			memory_patch.execute()
 		return store, writes, log_error
@@ -221,9 +250,13 @@ class TestStageToolsPatch(FrappeTestCase):
 		lines = memory_patch.EDITS[BUILD_CONTEXT][2].split("# The AI Agent Task")[0]
 		recalled = {"memory_process": PROMOTION, "memory_notes": ["a note"]}
 		scope = {"conversation_id": "CONV-1", "task_data": {"diagram_name": PROMOTION + " - v1"}}
-		with patch.object(helpers, "recall_process_memory", return_value=recalled) as recall, patch(
-			"processa.processa_engine.agent_runtime.turn_state.update_turn"
-		) as update:
-			exec(as_deployed(lines), scope)  # nosemgrep
+		with (
+			patch.object(
+				library("prosally_lib_context.py"), "recall_process_memory", return_value=recalled
+			) as recall,
+			patch("processa.processa_engine.agent_runtime.turn_state.update_turn") as update,
+		):
+			scope["import_script"] = lambda name: library("prosally_lib_context.py")
+			exec(uses_library(as_deployed(lines), context_move.MOVED, context_move.LOAD), scope)  # nosemgrep
 		recall.assert_called_once_with(PROMOTION + " - v1")
 		update.assert_called_once_with("CONV-1", **recalled)

@@ -1,13 +1,13 @@
 # Copyright (c) 2026, one-fm and contributors
 """The script shown in the Logix reply is the script applied to the task, and a pagination request is a Baseline case."""
 
+from processa.tests.library import library
 import json
 import re
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.logix import tools
 from processa.patches.v1_0 import seed_logix_pagination_case as seed
 from processa.processa_engine.agent_runtime.turn_state import clear_turn, get_turn, set_turn
 
@@ -22,18 +22,18 @@ class TestReplyWithCode(FrappeTestCase):
 	def test_the_code_block_is_replaced_by_the_applied_script(self):
 		text = f"Done.\n\n```python\n{SHOWN}\n```\n\nIt lists employees."
 
-		out = tools.reply_with_code(text, APPLIED)
+		out = library("logix_lib_replies.py").reply_with_code(text, APPLIED)
 
 		self.assertEqual(FENCE.search(out).group(1), APPLIED + "\n")
 		self.assertTrue(out.startswith("Done.") and out.endswith("It lists employees."))
 
 	def test_a_reply_without_a_block_gains_one(self):
-		out = tools.reply_with_code("Here it is.", APPLIED)
+		out = library("logix_lib_replies.py").reply_with_code("Here it is.", APPLIED)
 
 		self.assertEqual(FENCE.search(out).group(1), APPLIED + "\n")
 
 	def test_no_code_leaves_the_words_alone(self):
-		self.assertEqual(tools.reply_with_code("Just words.", ""), "Just words.")
+		self.assertEqual(library("logix_lib_replies.py").reply_with_code("Just words.", ""), "Just words.")
 
 
 class TestFinalizeShowsTheAppliedScript(FrappeTestCase):

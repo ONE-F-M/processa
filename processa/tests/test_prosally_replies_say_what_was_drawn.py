@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """ProsAlly's replies say which lanes it drew, which named lane it missed, and what a modify changed."""
 
+from processa.tests.library import library
 import json
 import re
 import unittest
@@ -10,7 +11,7 @@ from xml.etree import ElementTree as ET
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import helpers, tools_pipeline, tools_prompts, tools_replies, tools_review, tools_subprocess
+from processa.ai_agent_registry.definitions.prosally import helpers, tools_pipeline, tools_review, tools_subprocess
 from processa.processa_engine.agent_runtime.turn_state import clear_turn, get_turn, set_turn
 from processa.patches.v1_0.prosally_replies_say_what_was_drawn import STAGES, with_reply_call
 
@@ -36,9 +37,9 @@ TWO_LANE_IR = {
 
 class TestRequestedLanes(FrappeTestCase):
 	def test_named_lane_lists_are_read(self):
-		self.assertEqual(tools_prompts.requested_lanes([THREE_LANES]), ["Recruiter", "GRD Operator", "GRD Manager"])
+		self.assertEqual(library("prosally_lib_context.py").requested_lanes([THREE_LANES]), ["Recruiter", "GRD Operator", "GRD Manager"])
 		self.assertEqual(
-			tools_prompts.requested_lanes(
+			library("prosally_lib_context.py").requested_lanes(
 				["Draw it with lanes Requester, Finance and Stores: the requester asks."]
 			),
 			["Requester", "Finance", "Stores"],
@@ -46,21 +47,21 @@ class TestRequestedLanes(FrappeTestCase):
 
 	def test_the_latest_list_wins_and_vague_mentions_name_nothing(self):
 		self.assertEqual(
-			tools_prompts.requested_lanes(["lanes A, B", "now use lanes Employee and Manager"]),
+			library("prosally_lib_context.py").requested_lanes(["lanes A, B", "now use lanes Employee and Manager"]),
 			["Employee", "Manager"],
 		)
-		self.assertEqual(tools_prompts.requested_lanes(["add swimlanes for each role", "use lanes for HR"]), [])
+		self.assertEqual(library("prosally_lib_context.py").requested_lanes(["add swimlanes for each role", "use lanes for HR"]), [])
 
 
 class TestDescribeLanes(FrappeTestCase):
 	def test_a_missing_named_lane_is_named(self):
-		text = tools_prompts.describe_lanes([{"role": "user", "content": THREE_LANES}], "Yes, proceed", TWO_LANE_IR)
+		text = library("prosally_lib_context.py").describe_lanes([{"role": "user", "content": THREE_LANES}], "Yes, proceed", TWO_LANE_IR)
 		self.assertIn("Lanes drawn:\n- Recruiter\n- GRD Manager\n\nYou also asked for GRD Operator", text)
 
 	def test_all_lanes_drawn_names_nothing_missing(self):
-		text = tools_prompts.describe_lanes([], "Draw it with lanes Recruiter and GRD Manager.", TWO_LANE_IR)
+		text = library("prosally_lib_context.py").describe_lanes([], "Draw it with lanes Recruiter and GRD Manager.", TWO_LANE_IR)
 		self.assertNotIn("You also asked", text)
-		self.assertEqual(tools_prompts.describe_lanes([], THREE_LANES, {"lanes": []}), "")
+		self.assertEqual(library("prosally_lib_context.py").describe_lanes([], THREE_LANES, {"lanes": []}), "")
 
 
 class TestDescribeChanges(FrappeTestCase):
@@ -77,10 +78,10 @@ class TestDescribeChanges(FrappeTestCase):
 		old = '<bpmn:serviceTask id="t" name="Set Inactive" spiffworkflow:updateFieldRows="[{&#34;fieldname&#34;: &#34;status&#34;}]" />'
 		new = '<bpmn:serviceTask id="t" name="Set Inactive" spiffworkflow:updateFieldRows="[{&quot;fieldname&quot;: &quot;status&quot;}]" />'
 
-		self.assertIn("could not find any change", tools_replies.describe_changes(old, new))
+		self.assertIn("could not find any change", library("prosally_lib_replies.py").describe_changes(old, new))
 
 	def test_added_removed_and_renamed_are_listed(self):
-		text = tools_replies.describe_changes(self.OLD, self.NEW)
+		text = library("prosally_lib_replies.py").describe_changes(self.OLD, self.NEW)
 		self.assertIn('Added the decision "DSOT possible?".', text)
 		self.assertIn('Added the path "No".', text)
 		self.assertIn('Removed the step "Site Visit".', text)
@@ -89,10 +90,10 @@ class TestDescribeChanges(FrappeTestCase):
 	def test_a_path_given_a_new_id_is_not_a_change(self):
 		old = '<bpmn:userTask id="a" name="Raise" /><bpmn:sequenceFlow id="f1" name="Done" sourceRef="a" targetRef="a" />'
 		new = old.replace('id="f1"', 'id="flow_7"')
-		self.assertIn("could not find any change", tools_replies.describe_changes(old, new))
+		self.assertIn("could not find any change", library("prosally_lib_replies.py").describe_changes(old, new))
 
 	def test_no_change_is_said_out_loud(self):
-		self.assertIn("could not find any change", tools_replies.describe_changes(self.OLD, self.OLD))
+		self.assertIn("could not find any change", library("prosally_lib_replies.py").describe_changes(self.OLD, self.OLD))
 
 	STEPS = (
 		'<bpmn:userTask id="a" name="Raise" /><bpmn:userTask id="b" name="Review" />'
@@ -102,19 +103,19 @@ class TestDescribeChanges(FrappeTestCase):
 	def test_a_rerouted_arrow_without_a_label_is_a_move(self):
 		old = self.STEPS + '<bpmn:sequenceFlow id="f1" sourceRef="a" targetRef="b" />'
 		new = self.STEPS + '<bpmn:sequenceFlow id="f1" sourceRef="a" targetRef="c" />'
-		text = tools_replies.describe_changes(old, new)
+		text = library("prosally_lib_replies.py").describe_changes(old, new)
 		self.assertIn('Moved the arrow from "Raise" to "Approve".', text)
 		self.assertNotIn("could not find any change", text)
 
 	def test_a_rerouted_labeled_arrow_is_a_move(self):
 		old = self.STEPS + '<bpmn:sequenceFlow id="f1" name="Yes" sourceRef="a" targetRef="b" />'
 		new = self.STEPS + '<bpmn:sequenceFlow id="f9" name="Yes" sourceRef="a" targetRef="c" />'
-		self.assertIn('Moved the arrow from "Raise" to "Approve".', tools_replies.describe_changes(old, new))
+		self.assertIn('Moved the arrow from "Raise" to "Approve".', library("prosally_lib_replies.py").describe_changes(old, new))
 
 	def test_an_unlabeled_arrow_given_a_new_id_is_not_a_change(self):
 		old = self.STEPS + '<bpmn:sequenceFlow id="f1" sourceRef="a" targetRef="b" />'
 		new = old.replace('id="f1"', 'id="flow_7"')
-		self.assertIn("could not find any change", tools_replies.describe_changes(old, new))
+		self.assertIn("could not find any change", library("prosally_lib_replies.py").describe_changes(old, new))
 
 
 class TestRequestConstraints(FrappeTestCase):
@@ -133,21 +134,21 @@ class TestRequestConstraints(FrappeTestCase):
 		)
 
 	def test_the_request_names_what_it_rules_out_and_whether_the_rest_may_change(self):
-		constraints = tools_replies.request_constraints(
+		constraints = library("prosally_lib_replies.py").request_constraints(
 			"Add a step that emails the employee. No script tasks and no new gateways; do not change anything else."
 		)
 
 		self.assertEqual(constraints, {"ruled_out": ["script task", "gateway"], "only_what_is_named": True})
-		self.assertEqual(tools_replies.request_constraints("Add an email step")["ruled_out"], [])
-		self.assertIn("Do not add any script task.", tools_replies.constraint_prompt(constraints))
-		self.assertEqual(tools_replies.constraint_prompt({"ruled_out": [], "only_what_is_named": False}), "")
+		self.assertEqual(library("prosally_lib_replies.py").request_constraints("Add an email step")["ruled_out"], [])
+		self.assertIn("Do not add any script task.", library("prosally_lib_replies.py").constraint_prompt(constraints))
+		self.assertEqual(library("prosally_lib_replies.py").constraint_prompt({"ruled_out": [], "only_what_is_named": False}), "")
 
 	def test_a_ruled_out_kind_the_change_adds_is_a_problem(self):
 		text = "Add a step that emails the employee. No script tasks."
 		new = self._new('<bpmn:scriptTask id="mail" name="Email the employee" />')
 
-		problems = tools_replies.unrequested_changes(
-			self.OLD, new, text, tools_replies.request_constraints(text)
+		problems = library("prosally_lib_replies.py").unrequested_changes(
+			self.OLD, new, text, library("prosally_lib_replies.py").request_constraints(text)
 		)
 
 		self.assertEqual(problems, ["The request says no script task, and the change adds one."])
@@ -160,8 +161,8 @@ class TestRequestConstraints(FrappeTestCase):
 			'<bpmn:userTask id="audit" name="Audit the payroll" />',
 		)
 
-		problems = tools_replies.unrequested_changes(
-			self.OLD, new, text, tools_replies.request_constraints(text)
+		problems = library("prosally_lib_replies.py").unrequested_changes(
+			self.OLD, new, text, library("prosally_lib_replies.py").request_constraints(text)
 		)
 
 		self.assertEqual(len(problems), 2)
@@ -172,8 +173,8 @@ class TestRequestConstraints(FrappeTestCase):
 		text = 'Rename "Record leave" to "Record leave in HR". Do not change anything else.'
 		new = self._new(review='name="Review request"').replace("Record leave", "Record leave in HR")
 
-		problems = tools_replies.unrequested_changes(
-			self.OLD, new, text, tools_replies.request_constraints(text)
+		problems = library("prosally_lib_replies.py").unrequested_changes(
+			self.OLD, new, text, library("prosally_lib_replies.py").request_constraints(text)
 		)
 
 		self.assertEqual(
@@ -188,7 +189,7 @@ class TestRequestConstraints(FrappeTestCase):
 		new = self._new().replace("Record leave", "Record leave in HR")
 
 		self.assertEqual(
-			tools_replies.unrequested_changes(self.OLD, new, text, tools_replies.request_constraints(text)),
+			library("prosally_lib_replies.py").unrequested_changes(self.OLD, new, text, library("prosally_lib_replies.py").request_constraints(text)),
 			[],
 		)
 
@@ -259,32 +260,32 @@ class TestRelayout(FrappeTestCase):
 		path = frappe.get_app_path("processa", "tests", "fixtures", "lane_layout_fuel_requisition_ir.json")
 		with open(path) as f:
 			cls.ir = json.load(f)
-		compiled = tools_pipeline.compile_ir(cls.ir)
+		compiled = library("prosally_lib_layout.py").compile_ir(cls.ir)
 		if not compiled.get("ok"):
 			raise unittest.SkipTest("node or pipeline.mjs unavailable")
 		cls.xml = compiled["xml"]
 
 	def test_the_ir_read_back_keeps_every_step_and_arrow(self):
-		ir = tools_review.xml_to_ir(self.xml)
+		ir = library("prosally_lib_map_xml.py").xml_to_ir(self.xml)
 		self.assertEqual({n["id"] for n in ir["nodes"]}, {n["id"] for n in self.ir["nodes"]})
 		self.assertEqual(len(ir["flows"]), len(self.ir["flows"]))
 		self.assertEqual(len(ir["lanes"]), len(self.ir["lanes"]))
 
 	def test_a_diagram_already_laid_out_says_so(self):
-		self.assertEqual(tools_review.relayout(self.xml), (None, "same"))
+		self.assertEqual(library("prosally_lib_layout.py").relayout(self.xml), (None, "same"))
 
 	def test_a_moved_shape_is_put_back_and_ids_and_settings_are_kept(self):
 		step = self.ir["nodes"][1]["id"]
 		messy = re.sub(
 			rf'(<bpmndi:BPMNShape id="[^"]*" bpmnElement="{step}">\s*<dc:Bounds x=")[\d.]+', r"\g<1>9999", self.xml
 		).replace(f'<bpmn:userTask id="{step}"', f'<bpmn:userTask id="{step}" spiffworkflow:assignee="kept"')
-		new_xml, reason = tools_review.relayout(messy)
+		new_xml, reason = library("prosally_lib_layout.py").relayout(messy)
 		self.assertEqual(reason, "")
 		self.assertEqual(tools_pipeline.element_names(new_xml).keys(), tools_pipeline.element_names(messy).keys())
 		self.assertNotIn('x="9999"', new_xml)
 
 	def test_a_layout_changes_only_coordinates_with_and_without_lanes(self):
-		lane_less = tools_pipeline.compile_ir(
+		lane_less = library("prosally_lib_layout.py").compile_ir(
 			{
 				"name": "Leave",
 				"lanes": [],
@@ -313,7 +314,7 @@ class TestRelayout(FrappeTestCase):
 				r"\g<1>9999",
 				xml,
 			)
-			new_xml, reason = tools_review.relayout(messy)
+			new_xml, reason = library("prosally_lib_layout.py").relayout(messy)
 			self.assertEqual(reason, "")
 			self.assertNotIn('x="9999"', new_xml)
 			cut = messy.index("<bpmndi:BPMNDiagram")
@@ -325,8 +326,8 @@ class TestRelayout(FrappeTestCase):
 
 	def test_a_diagram_with_an_element_the_layout_cannot_place_is_refused_by_name(self):
 		xml = self.xml.replace("</bpmn:process>", '<bpmn:textAnnotation id="note" /></bpmn:process>')
-		self.assertEqual(tools_review.relayout(xml), (None, "unsupported"))
-		self.assertEqual(tools_review.unsupported_kinds(xml), ["text annotation"])
+		self.assertEqual(library("prosally_lib_layout.py").relayout(xml), (None, "unsupported"))
+		self.assertEqual(library("prosally_lib_layout.py").unsupported_kinds(xml), ["text annotation"])
 
 	def _classify(self, turn, llm_reply="{}"):
 		script = frappe.db.get_value("Server Script", {"api_method": "prosally_tool_classify_intent"}, "script")
@@ -393,7 +394,7 @@ class TestCompareReadsInlineLists(FrappeTestCase):
 		self.assertEqual(tools_review.spec_items("- Review - then approve\n- Close"), ["Review - then approve", "Close"])
 
 	def test_the_missing_items_of_an_inline_list_are_asked_about(self):
-		output = tools_review.compare_output(self.XML, [self.SPEC])
+		output = library("prosally_lib_map_xml.py").compare_output(self.XML, [self.SPEC])
 		self.assertEqual(output["intent"], "CONFIRM")
 		self.assertIn("- Manager approves the request", output["response"])
 		self.assertIn("- Send reminder to HR", output["response"])
@@ -407,11 +408,11 @@ class TestCompareReadsInlineLists(FrappeTestCase):
 
 	def test_an_item_that_shares_only_some_of_its_words_with_a_step_is_missing(self):
 		spec = "- Set to Draft\n- Manager approves the monthly action\n- Update linked Goal progress"
-		self.assertEqual(tools_review.missing_spec_items(self.MONTHLY, spec), ["Manager approves the monthly action"])
+		self.assertEqual(library("prosally_lib_map_xml.py").missing_spec_items(self.MONTHLY, spec), ["Manager approves the monthly action"])
 
 	def test_an_item_whose_words_are_mostly_in_one_step_is_found(self):
 		spec = "- Update the linked goal progress\n- Submit the monthly action"
-		self.assertEqual(tools_review.missing_spec_items(self.MONTHLY, spec), [])
+		self.assertEqual(library("prosally_lib_map_xml.py").missing_spec_items(self.MONTHLY, spec), [])
 
 
 class TestNoChangeIsNotAnUpdate(FrappeTestCase):
@@ -436,7 +437,7 @@ class TestNoChangeIsNotAnUpdate(FrappeTestCase):
 	@classmethod
 	def setUpClass(cls):
 		super().setUpClass()
-		compiled = tools_pipeline.compile_ir(cls.IR)
+		compiled = library("prosally_lib_layout.py").compile_ir(cls.IR)
 		if not compiled.get("ok"):
 			raise unittest.SkipTest("node or pipeline.mjs unavailable")
 		helpers.register_namespaces()

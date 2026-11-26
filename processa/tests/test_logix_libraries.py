@@ -1,13 +1,13 @@
 # Copyright (c) 2026, one-fm and contributors
 """The Logix helpers moved into 'Logix: Lib Replies' and 'Logix: Lib DocType Sources' on the Logix map."""
 
+from processa.tests.library import library
 from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.logix import helpers
-from processa.ai_agent_registry.definitions.logix.tools import reply_with_code
+reply_with_code = library("logix_lib_replies.py").reply_with_code
 from processa.ai_agent_registry.definitions.lucrusher.tools import read_doctype_sources
 from processa.ai_agent_security.code_checks.script_validator import runs_code_on_import, validate_script
 from processa.patches.v1_0 import logix_helpers_move_to_libraries as move
@@ -158,12 +158,12 @@ class TestLogixLibrariesOnTheMap(FrappeTestCase):
 	def test_debug_inputs_through_import_script(self):
 		replies, _sources = self._libraries()
 		args = ("Fix the Leave Application script, it fails", "x = 1", "")
-		self.assertEqual(replies.debug_inputs(*args), helpers.debug_inputs(*args))
+		self.assertEqual(replies.debug_inputs(*args), library("logix_lib_replies.py").debug_inputs(*args))
 
 	def test_doctype_inputs_through_import_script(self):
 		replies, _sources = self._libraries()
 		args = ("Update each ToDo record", {"element_name": "Approve"}, "")
-		self.assertEqual(replies.doctype_inputs(*args), helpers.doctype_inputs(*args))
+		self.assertEqual(replies.doctype_inputs(*args), library("logix_lib_replies.py").doctype_inputs(*args))
 
 	def test_reply_with_code_through_import_script(self):
 		replies, _sources = self._libraries()
@@ -176,7 +176,7 @@ class TestLogixLibrariesOnTheMap(FrappeTestCase):
 		turn = {"user_text": "Update the ToDo record", "process_context": {}}
 		found = sources.field_findings(code, turn)
 		self.assertTrue(found)
-		self.assertEqual(found, helpers.field_findings(code, turn))
+		self.assertEqual(found, library("logix_lib_doctype_sources.py").field_findings(code, turn))
 
 	def test_read_doctype_sources_through_import_script(self):
 		_replies, sources = self._libraries()

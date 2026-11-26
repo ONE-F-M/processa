@@ -1,15 +1,17 @@
 # Copyright (c) 2026, one-fm and contributors
 """A request about a sub-process changes the inside of that sub-process and nothing else."""
 
+from processa.tests.library import library
 import json
 import re
 from xml.etree import ElementTree as ET
 
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import compile_ir
-from processa.ai_agent_registry.definitions.prosally.tools_subprocess import resolve_scope, splice_subprocess
-from processa.ai_agent_registry.definitions.prosally.tools_properties import transfer_properties
+compile_ir = library("prosally_lib_layout.py").compile_ir
+resolve_scope = library("prosally_lib_map_xml.py").resolve_scope
+splice_subprocess = library("prosally_lib_map_xml.py").splice_subprocess
+transfer_properties = library("prosally_lib_map_xml.py").transfer_properties
 
 BPMN = "{http://www.omg.org/spec/BPMN/20100524/MODEL}"
 BPMNDI = "{http://www.omg.org/spec/BPMN/20100524/DI}"

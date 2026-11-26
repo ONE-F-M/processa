@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """A request to fix a failing script gets a diagnosis and a diff against that script, not a new script."""
 
+from processa.tests.library import library
 import json
 from unittest.mock import patch
 
@@ -42,7 +43,7 @@ class FakeAdapter:
 class TestLogixDebugsAnExistingScript(FrappeTestCase):
 	def setUp(self):
 		self.addCleanup(clear_turn, CONV)
-		set_turn(CONV, {"user_text": USER_TEXT, **helpers.debug_inputs(USER_TEXT, "", "")})
+		set_turn(CONV, {"user_text": USER_TEXT, **library("logix_lib_replies.py").debug_inputs(USER_TEXT, "", "")})
 
 	def _run(self, adapter):
 		with (
@@ -145,7 +146,7 @@ class TestLogixDebugsAnExistingScript(FrappeTestCase):
 				"error": TRACE,
 			}
 		).insert(ignore_permissions=True)
-		inputs = helpers.debug_inputs("it shows a white screen then fails", PASTED, "ZZ Rate")
+		inputs = library("logix_lib_replies.py").debug_inputs("it shows a white screen then fails", PASTED, "ZZ Rate")
 
 		self.assertEqual(inputs["script_text"], PASTED)
 		self.assertTrue(inputs["last_error"].startswith("Logged "), inputs["last_error"])
