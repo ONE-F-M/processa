@@ -256,6 +256,7 @@ class TestToolsDocuments(FrappeTestCase):
 
 	# AC7 - query_doctypes returns at most 50 rows
 	def test_query_doctypes_limit_is_capped_at_50(self):
+		self.addCleanup(frappe.db.delete, "ToDo", {"description": ["like", f"{PREFIX} bulk%"]})
 		for index in range(55):
 			make_todo(f"{PREFIX} bulk {index}", "Administrator")
 		self.assertEqual(len(json.loads(tools.query_doctypes("ToDo", filters=DESCRIPTION_FILTER, limit=500))), 50)
