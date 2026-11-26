@@ -19,7 +19,12 @@ from processa.patches.v1_0.logix_helpers_move_to_libraries import (
 MODEL_NAME = "ProsAlly \u2013 Process Modeller (1)"
 LIBRARY = "ProsAlly: Lib Replies"
 BOX_ID = "prosally_libraries"
-TASK_IDS = {LIBRARY: "lib_replies", "ProsAlly: Lib IR": "lib_ir", "ProsAlly: Lib Map XML": "lib_map_xml"}
+TASK_IDS = {
+	LIBRARY: "lib_replies",
+	"ProsAlly: Lib IR": "lib_ir",
+	"ProsAlly: Lib Map XML": "lib_map_xml",
+	"ProsAlly: Lib Stage Replies": "lib_stage_replies",
+}
 LOAD = f'_replies = import_script("{LIBRARY}")'
 MOVED = (
 	"pending_confirmation",
