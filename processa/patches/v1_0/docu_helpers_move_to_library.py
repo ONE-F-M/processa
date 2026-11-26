@@ -33,7 +33,7 @@ MOVED_FUNCTIONS = (
 MOVED_CONSTANT = "RESERVED_FIELDNAMES"
 MOVED = (*MOVED_FUNCTIONS, MOVED_CONSTANT)
 HELPER_IMPORT = re.compile(
-	r"^(\s*)from (processa\.ai_agent_registry\.definitions\.(?:shared\.helpers|shared\.tools|docu\.tools|docu\.validators|lucrusher\.tools)) import (.+)$"
+	r"^(\s*)from (processa\.ai_agent_registry\.definitions\.(?:shared\.helpers|shared\.tools|docu\.tools|docu\.validators|lucrusher\.tools|prosally\.helpers|prosally\.tools_\w+)) import (.+)$"
 )
 
 

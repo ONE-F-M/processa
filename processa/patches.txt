@@ -441,3 +441,4 @@ processa.patches.v1_0.docu_tools_move_to_library #26-11-2026 Docu DocType tools,
 processa.patches.v1_0.lucrusher_helpers_move_to_library #26-11-2026 the LuCrusher map gets Lib Codebase in a Libraries box and its codebase scripts load from it
 processa.patches.v1_0.docu_library_loads_before_first_use #26-11-2026 Docu scripts load Lib Schema above the first line that uses it
 processa.patches.v1_0.prosally_libraries_box_approval #26-11-2026 Generate Process and Modify Process get an Approved request for the Libraries box helpers
+processa.patches.v1_0.prosally_replies_move_to_library #26-11-2026 the ProsAlly map gets Lib Replies in a Libraries box and its scripts load the reply helpers from it
