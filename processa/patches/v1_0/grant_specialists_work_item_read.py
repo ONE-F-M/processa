@@ -1,10 +1,4 @@
-"""Let the coding agents read the Work Item they are working on.
-
-A specialist used to start from the delegator's summary alone; read_work_item
-lets it read the record, but only as its own identity — and until now three of
-the four had a user with no roles and the Dev Agent had no user at all.
-Developer already holds Work Item read, so that is the role each gets.
-"""
+"""Give the Dev, Frontend, Mobile App and Connector agents the Developer role and a user of their own, so read_work_item can read the Work Item they work on."""
 
 import frappe
 
