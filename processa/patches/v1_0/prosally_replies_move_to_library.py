@@ -25,6 +25,7 @@ TASK_IDS = {
 	"ProsAlly: Lib Map XML": "lib_map_xml",
 	"ProsAlly: Lib Stage Replies": "lib_stage_replies",
 	"ProsAlly: Lib Context": "lib_context",
+	"ProsAlly: Lib Layout": "lib_layout",
 }
 LOAD = f'_replies = import_script("{LIBRARY}")'
 MOVED = (
