@@ -158,8 +158,10 @@ def get_linked_documents(doctype: str, name: str) -> dict:
 
 def _resolve_doctype_name(doctype: str) -> str | None:
 	"""The DocType's exact name: an exact match, a case-insensitive match, or the one DocType that contains the text."""
-	if frappe.db.exists("DocType", doctype):
-		return doctype
+	# The stored name, so that a name typed in another case is returned as the DocType is spelled.
+	exact = frappe.db.get_value("DocType", doctype, "name")
+	if exact:
+		return exact
 	matched = frappe.db.get_value("DocType", {"name": ["like", doctype]}, "name")
 	if matched:
 		return matched

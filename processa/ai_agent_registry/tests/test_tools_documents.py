@@ -284,7 +284,15 @@ class TestToolsDocuments(FrappeTestCase):
 			with self.subTest(tool=name):
 				title = f"Shared Tool - {name}"
 				before = frappe.db.count("Error Log", {"method": title})
-				with patch.object(frappe, "get_list", side_effect=BROKEN):
+				real_get_list = frappe.get_list
+
+				def broken_get_list(doctype, *args, **kwargs):
+					# Only the tool's own read fails; writing the Error Log row may read through get_list too.
+					if doctype in ("ToDo", "User"):
+						raise BROKEN
+					return real_get_list(doctype, *args, **kwargs)
+
+				with patch.object(frappe, "get_list", side_effect=broken_get_list):
 					result = call()
 				expected = {"error": f"Failed to run {name} on DocType '{arguments['doctype']}'."}
 				self.assertEqual(json.loads(result) if isinstance(result, str) else result, expected)
