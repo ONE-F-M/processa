@@ -1,0 +1,206 @@
+# Logix debug stage: find and fix a failing script with the model, and put back the previous version of a script.
+# ruff: noqa: F821 - import_script gives a library frappe; it has no imports at the top level.
+
+
+def _agent_id():
+	return "logix_agent"
+
+
+def _debug_schema():
+	return {
+		"type": "object",
+		"properties": {"explanation": {"type": "string"}, "fixed_script": {"type": "string"}},
+		"required": ["explanation", "fixed_script"],
+	}
+
+
+def _review_schema():
+	return {
+		"type": "object",
+		"properties": {
+			"approved": {"type": "boolean"},
+			"issues": {"type": "array", "items": {"type": "string"}},
+			"suggestions": {"type": "array", "items": {"type": "string"}},
+		},
+		"required": ["approved", "issues", "suggestions"],
+	}
+
+
+def run_debug_stage(conversation: str) -> dict:
+	"""Diagnose, propose a minimal fix, review only the diff, then gate the fixed script."""
+	import difflib
+
+	from processa.ai_agent_registry.doctype.ai_agent_configuration.ai_agent_configuration import (
+		get_agent_config,
+	)
+	from processa.ai_agent_security.code_checks.script_validator import (
+		NOT_APPROVABLE,
+		request_findings,
+		validate_script,
+	)
+	from processa.processa_engine.agent_runtime.llm_factory import get_llm_adapter_from_settings
+	from processa.processa_engine.agent_runtime.turn_state import get_turn
+
+	turn = get_turn(conversation)
+	script = turn.get("script_text") or ""
+	if not script:
+		return _reply(
+			conversation,
+			frappe._("Paste the script that fails, and the error if you have one, and I will look at it."),
+		)
+
+	config = get_agent_config(_agent_id()) or {}
+	config.setdefault("agent_id", _agent_id())
+	subs = config.get("sub_prompts") or {}
+	adapter = get_llm_adapter_from_settings(config)
+	shape_kind = (turn.get("process_context") or {}).get("shape_kind") or "script_task"
+	is_library = bool((turn.get("process_context") or {}).get("is_library"))
+
+	debugger = (subs.get("script_debugger") or {}).get("prompt") or ""
+	debug = _ask(adapter, debugger, _debug_prompt(turn, shape_kind), _debug_schema())
+	fixed = (debug.get("fixed_script") or "").strip()
+	explanation = debug.get("explanation") or ""
+	diff = "".join(
+		difflib.unified_diff(
+			script.splitlines(keepends=True),
+			(fixed + "\n").splitlines(keepends=True),
+			fromfile="your script",
+			tofile="with the fix",
+		)
+	)
+	if not fixed or _code_lines(fixed) == _code_lines(script):
+		return _reply(conversation, explanation)
+
+	review = _ask(
+		adapter,
+		_reviewer_system(subs, shape_kind, is_library),
+		_review_prompt(shape_kind, diff),
+		_review_schema(),
+	)
+	gate = validate_script(fixed)
+	syntax_errors = [f for f in gate["findings"] if f["category"] in NOT_APPROVABLE]
+	needs_approval = [f for f in gate["findings"] if f["category"] not in NOT_APPROVABLE]
+	checks = request_findings(fixed, turn.get("user_text") or "")
+	if review.get("approved") and not syntax_errors and not checks:
+		if needs_approval:
+			items = ", ".join(dict.fromkeys(f"{f['name']} ({f['category']})" for f in needs_approval))
+			explanation += "\n\n" + frappe._("This fix needs approval before it can run: {0}.").format(items)
+		return _reply(conversation, explanation, original=script, fixed=fixed, diff=diff)
+
+	lines = [
+		explanation,
+		"",
+		frappe._("I drafted a fix, but it does not pass review, so I am not offering it:"),
+	]
+	lines += [f"- {issue}" for issue in review.get("issues") or []]
+	for f in syntax_errors + checks:
+		lines.append(f"- {f['rule']} (line {f['line']}: `{f['code']}`)" if f["line"] else f"- {f['rule']}")
+	return _reply(conversation, "\n".join(lines))
+
+
+def _code_lines(code: str) -> list[str]:
+	"""The script's non-blank lines without trailing spaces; a fix that only changes spacing changes nothing."""
+	return [line.rstrip() for line in code.splitlines() if line.strip()]
+
+
+def revert_output(conversation: str) -> dict:
+	"""Offer the linked script's previous version from its history as a diff against the current one."""
+	import difflib
+
+	from processa.api.versions import script_versions
+	from processa.processa_engine.agent_runtime.turn_state import get_turn
+
+	script = get_turn(conversation).get("current_script") or ""
+	if not script:
+		say = frappe._("No script is linked to this step, so there is nothing to revert.")
+		return _reply(conversation, say, intent="REVERT")
+	# Reads history without the read check: the agent user holds no roles.
+	history = script_versions(script) if frappe.db.exists("Server Script", script) else []
+	if len(history) < 2:
+		say = frappe._("The script {0} has no earlier version to go back to.").format(script)
+		return _reply(conversation, say, intent="REVERT")
+	current, previous = history[0]["script"], history[1]["script"]
+	diff = "".join(
+		difflib.unified_diff(
+			current.splitlines(keepends=True),
+			previous.splitlines(keepends=True),
+			fromfile="current",
+			tofile="previous version",
+		)
+	)
+	say = frappe._(
+		"Here is the previous version of {0}, saved by {1} on {2}. Apply it to put it back."
+	).format(script, history[1]["author"], history[1]["creation"][:16])
+	return _reply(conversation, say, original=current, fixed=previous, diff=diff)
+
+
+def _ask(adapter, system: str, user: str, schema: dict) -> dict:
+	import json
+
+	from processa.processa_engine.agent_runtime.structured_output import provider_schema
+	from processa.processa_engine.agent_runtime.turn_state import run_sync
+
+	step = run_sync(
+		adapter.step(
+			system=system,
+			transcript=[{"role": "user", "content": user}],
+			response_schema=provider_schema(schema),
+		)
+	)
+	return json.loads(step.content)
+
+
+def _debug_prompt(turn: dict, shape_kind: str) -> str:
+	parts = [f"Shape kind: {shape_kind}", f"The script:\n```python\n{turn.get('script_text')}\n```"]
+	if turn.get("last_error"):
+		parts.append(f"The last error it raised:\n```\n{turn['last_error']}\n```")
+	parts.append(f"What the person says: {turn.get('user_text') or ''}")
+	return "\n\n".join(parts)
+
+
+def _reviewer_system(subs: dict, shape_kind: str, is_library: bool = False) -> str:
+	if is_library:
+		contract = "bpmn-library-script-contract"
+	elif shape_kind == "agent_tool":
+		contract = "bpmn-agent-tool-contract"
+	else:
+		contract = "bpmn-script-task-contract"
+	return (
+		((subs.get("script_reviewer") or {}).get("prompt") or "")
+		+ "\n\n# The contract this draft must follow\n"
+		+ (frappe.db.get_value("AI Skill", contract, "body") or "")
+		+ "\n\n# The safety rules the gate enforces\n"
+		+ (frappe.db.get_value("AI Skill", "frappe-server-script-safety", "body") or "")
+	)
+
+
+def _review_prompt(shape_kind: str, diff: str) -> str:
+	return (
+		f"Shape kind: {shape_kind}\n\n"
+		"This is a fix to an existing script, given as a unified diff. Review only the lines it adds or "
+		"removes; the rest of the script is not part of this change. Leave revised_script out.\n\n"
+		f"```diff\n{diff}```"
+	)
+
+
+def _reply(
+	conversation: str,
+	response: str,
+	original: str = "",
+	fixed: str = "",
+	diff: str = "",
+	intent: str = "DEBUG_EXISTING",
+) -> dict:
+	from processa.processa_engine.agent_runtime.turn_state import update_turn
+
+	output = {
+		"intent": "MODIFY" if diff else intent,
+		"response": response,
+		"diff": diff or None,
+		"original_script": original or None,
+		"modified_script": fixed or None,
+		"options": None,
+		"suggested_name": None,
+	}
+	update_turn(conversation, output=output, done=True, script_safe=bool(diff))
+	return {"has_fix": bool(diff)}
