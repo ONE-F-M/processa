@@ -10,6 +10,7 @@ from frappe.tests.utils import FrappeTestCase
 from processa.ai_agent_registry.definitions.docu import tools as docu_tools
 from processa.ai_agent_registry.definitions.logix import tools as logix_tools
 from processa.ai_agent_registry.definitions.shared import tools as shared_tools
+from processa.ai_agent_registry.definitions.shared import tools_reports as reports_tools
 from processa.ai_agent_registry.definitions.shared.helpers import tool_envelope
 
 BROKEN = RuntimeError("database went away")
