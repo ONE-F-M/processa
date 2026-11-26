@@ -83,6 +83,8 @@ def delete_fixtures() -> None:
 	for name in CUSTOM_DOCTYPES:
 		if frappe.db.exists("DocType", name):
 			frappe.delete_doc("DocType", name, force=True, ignore_permissions=True)
+		# Deleting the DocType may leave its table behind, and a left-over table keeps old rows.
+		frappe.db.sql_ddl(f"drop table if exists `tab{name}`")
 	for email in (LIMITED_USER, MANAGER_USER):
 		if frappe.db.exists("User", email):
 			frappe.delete_doc("User", email, force=True, ignore_permissions=True)
