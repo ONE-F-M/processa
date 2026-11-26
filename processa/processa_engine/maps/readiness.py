@@ -406,6 +406,10 @@ def check_readiness(xml_content: str, model_name: str = None) -> dict:
 	if condition_category:
 		categories.append(condition_category)
 
+	field_value_category = _update_field_value_category(xml_content, refs["root"])
+	if field_value_category:
+		categories.append(field_value_category)
+
 	user_task_category = _user_task_config_category(xml_content)
 	if user_task_category:
 		categories.append(user_task_category)
@@ -458,6 +462,28 @@ def _gateway_condition_category(root, model_name: str | None) -> dict | None:
 	names = dict(zip(ids, _step_names(root, ids), strict=True))
 	items = [{"name": names[elem_id], "exists": True, "type": "warning", "detail": message} for elem_id, message in gaps]
 	return {"label": _("Gateway Conditions"), "icon": "git-branch", "items": items}
+
+def _update_field_value_category(xml_content: str, root) -> dict | None:
+	"""The Field Values readiness category, one warning per Update Field value its field cannot hold, or None."""
+	from processa.ai_agent_registry.provisioning.bpmn_task_config import update_field_row_problems
+	from processa.processa_engine.compiler.extensions import extract_service_task_config
+
+	found = []
+	for bpmn_id, cfg in extract_service_task_config(xml_content).items():
+		if cfg.get("serviceType") != "update_field":
+			continue
+		doctype = cfg.get("updateFieldDoctype")
+		if not doctype:
+			continue
+		if not frappe.db.exists("DocType", doctype):
+			continue
+		found += [(bpmn_id, message) for _index, message in update_field_row_problems(doctype, cfg.get("updateFieldRows"))]
+	if not found:
+		return None
+	ids = list(dict.fromkeys(bpmn_id for bpmn_id, _message in found))
+	names = dict(zip(ids, _step_names(root, ids), strict=True))
+	items = [{"name": names[bpmn_id], "exists": True, "type": "warning", "detail": message} for bpmn_id, message in found]
+	return {"label": _("Field Values"), "icon": "columns-3", "items": items}
 
 
 def _email_settings_category(xml_content: str, root) -> dict | None:
