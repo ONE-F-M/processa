@@ -106,11 +106,8 @@ def get_linked_documents(doctype: str, name: str) -> dict:
 		return missing
 
 	linked = []
-	readable = {}
 	for linking_doctype, fieldname in _link_field_parents(doctype):
-		if linking_doctype not in readable:
-			readable[linking_doctype] = bool(frappe.has_permission(linking_doctype, "read"))
-		if not readable[linking_doctype]:
+		if not frappe.has_permission(linking_doctype, "read"):
 			continue
 		for row in frappe.get_list(linking_doctype, filters={fieldname: name}, fields=["name"]):
 			linked.append({"doctype": linking_doctype, "name": row.name, "fieldname": fieldname})
