@@ -10,6 +10,7 @@ from processa.processa_engine.compiler.lifecycle import (
 	deactivate_non_executable,
 	disable_model,
 )
+from processa.processa_engine.instances.control import RECOVERY_ROLES
 
 
 @frappe.whitelist()
@@ -24,14 +25,22 @@ def compile_process_model(model_name: str) -> dict:
 
 
 @frappe.whitelist()
-def disable_process_model(model_name: str) -> dict:
-	"""Disable a deployed process model; running instances continue. Returns the running instance count."""
+def disable_process_model(model_name: str, cancel_running: int = 0) -> dict:
+	"""Disable a deployed process model and return the running instance count.
+
+	Running instances continue unless cancel_running is 1, which cancels them in a background job and
+	needs the System Manager or Process Owner role.
+	"""
 	if not model_name:
 		frappe.throw(_("Model name is required"))
 
+	cancel_running = frappe.utils.cint(cancel_running)
+	if cancel_running and not RECOVERY_ROLES & set(frappe.get_roles()):
+		frappe.throw(_("Only a Process Owner or System Manager can do this."), frappe.PermissionError)
+
 	model = frappe.get_doc("BPMN Process Model", model_name)
 	model.check_permission("write")
-	return disable_model(model)
+	return disable_model(model, cancel_running=bool(cancel_running))
 
 
 @frappe.whitelist(methods=["POST"])

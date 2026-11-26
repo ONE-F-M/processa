@@ -1,11 +1,15 @@
 <script setup>
 import { inject } from "vue";
+import { Checkbox } from "frappe-ui";
 import { Icon } from "@iconify/vue";
 import ReadinessChecklistDialog from "@/components/Modals/ReadinessChecklistModal/ReadinessChecklistModal.vue";
 import { PROCESS_KEY } from "@/composables/Process/useProcessState";
 
+const __ = window.__ && typeof window.__ === "function" ? window.__ : (s) => s;
+
 const pc = inject(PROCESS_KEY);
 const {
+	cancelRunning,
 	closeReview,
 	confirmReview,
 	disableRunningCount,
@@ -83,6 +87,11 @@ const {
 						continue to completion.</span
 					>
 				</div>
+				<Checkbox
+					v-if="disableRunningCount > 0"
+					v-model="cancelRunning"
+					:label="__('Cancel the running instances')"
+				/>
 			</div>
 		</template>
 		<template #actions>

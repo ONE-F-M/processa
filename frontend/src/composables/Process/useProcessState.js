@@ -50,6 +50,8 @@ export function createProcessContext(props) {
 
 	const disableRunningCount = ref(0);
 
+	const cancelRunning = ref(false);
+
 	const showNonExecutableDialog = ref(false);
 
 	const nonExecutableActivating = ref(true);
@@ -316,6 +318,7 @@ export function createProcessContext(props) {
 		disabling,
 		showDisableDialog,
 		disableRunningCount,
+		cancelRunning,
 		showNonExecutableDialog,
 		nonExecutableActivating,
 		nonExecutableBusy,

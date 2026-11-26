@@ -60,9 +60,24 @@ def activate_deployed_model(model, script_extensions: dict) -> None:
 			frappe.db.set_value("Server Script", script_name, "disabled", 0)
 
 
-def disable_model(model) -> dict:
-	"""Deactivate a deployed model the caller may write, clear its specs and disable the Server Scripts only it runs."""
+def disable_model(model, cancel_running: bool = False) -> dict:
+	"""Deactivate a deployed model the caller may write, clear its specs and disable the Server Scripts only it runs.
+
+	With cancel_running, its Active instances are cancelled in a background job; a model that is already
+	inactive then only has its Active instances cancelled.
+	"""
 	model_name = model.name
+	if not model.is_active and cancel_running:
+		running_count = _count_active_instances(model_name)
+		if running_count > 0:
+			_enqueue_cancel_running(model_name)
+		return {
+			"success": True,
+			"model": model_name,
+			"running_instances": running_count,
+			"cancelling": running_count > 0,
+		}
+
 	if not model.is_active:
 		frappe.throw(
 			_("Process map '{0}' is already inactive.").format(model_name),
@@ -79,7 +94,25 @@ def disable_model(model) -> dict:
 		if frappe.db.exists("Server Script", script_name):
 			frappe.db.set_value("Server Script", script_name, "disabled", 1)
 
-	running_count = frappe.db.count(
+	running_count = _count_active_instances(model_name)
+
+	model.flags.skip_editability_check = True
+	model.save(ignore_permissions=True)  # the caller checked write permission
+
+	result = {
+		"success": True,
+		"model": model_name,
+		"running_instances": running_count,
+	}
+	if cancel_running and running_count > 0:
+		_enqueue_cancel_running(model_name)
+		result["cancelling"] = True
+	return result
+
+
+def _count_active_instances(model_name: str) -> int:
+	"""How many Active instances the model has."""
+	return frappe.db.count(
 		"BPMN Process Instance",
 		filters={
 			"process_model": model_name,
@@ -87,14 +120,31 @@ def disable_model(model) -> dict:
 		},
 	)
 
-	model.flags.skip_editability_check = True
-	model.save(ignore_permissions=True)  # the caller checked write permission
 
-	return {
-		"success": True,
-		"model": model_name,
-		"running_instances": running_count,
-	}
+def _enqueue_cancel_running(model_name: str) -> None:
+	"""Queue the job that cancels the Active instances of a switched-off model."""
+	frappe.enqueue(
+		"processa.processa_engine.compiler.lifecycle.cancel_running_instances",
+		queue="long",
+		model_name=model_name,
+		reason=_("Process map {0} was switched off.").format(model_name),
+	)
+
+
+def cancel_running_instances(model_name: str, reason: str) -> None:
+	"""Cancel every Active instance of the model with the reason, committing after each batch of 100."""
+	# Imported here because the control module pulls in the task actions, which import the compiler.
+	from processa.processa_engine.instances.control import cancel_instance
+
+	names = frappe.get_all(
+		"BPMN Process Instance",
+		filters={"process_model": model_name, "status": "Active"},
+		pluck="name",
+	)
+	for batch in frappe.utils.create_batch(names, 100):
+		for name in batch:
+			cancel_instance(name, reason)
+		frappe.db.commit() # nosemgrep: frappe-semgrep-rules.rules.frappe-manual-commit
 
 
 def activate_non_executable(model) -> dict:
