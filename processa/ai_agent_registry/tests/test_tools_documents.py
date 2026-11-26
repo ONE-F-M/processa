@@ -38,8 +38,6 @@ def not_found(doctype: str) -> dict:
 
 
 def make_user(email: str, roles: tuple = ()) -> None:
-	if frappe.db.exists("User", email):
-		frappe.delete_doc("User", email, force=True)
 	user = frappe.get_doc(
 		{
 			"doctype": "User",
