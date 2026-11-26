@@ -150,10 +150,10 @@ def _edit_script(name: str, edits: tuple) -> None:
 	frappe.db.set_value("Server Script", name, "script", edited)
 
 
-def _approve(process: str, task_id: str, server_script: str) -> None:
+def _approve(process: str, task_id: str, server_script: str, reason: str = REASON) -> None:
 	if frappe.db.exists(
 		"Script Approval Request",
-		{"process_name": process, "script_task": task_id, "source": "Shipped by patch", "reason": REASON},
+		{"process_name": process, "script_task": task_id, "source": "Shipped by patch", "reason": reason},
 	):
 		return
 	code = frappe.db.get_value("Server Script", server_script, "script") or ""
@@ -167,7 +167,7 @@ def _approve(process: str, task_id: str, server_script: str) -> None:
 			"script_task": task_id,
 			"script_task_label": task_id,
 			"server_script": server_script,
-			"reason": REASON,
+			"reason": reason,
 		}
 	).insert(ignore_permissions=True)  # patch: approval shipped with the moved helpers
 	request.db_set(
