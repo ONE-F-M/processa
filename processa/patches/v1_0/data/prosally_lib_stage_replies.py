@@ -111,6 +111,20 @@ def _dms_sources_limit():
 	return 4
 
 
+def _lint_not_fixable():
+	return frozenset(
+		(
+			"no-overlapping-elements",
+			"no-crossing-edges",
+			"script-task-missing-script",
+			"call-activity-missing-process",
+			"no-prohibited-shapes",
+			"no-bpmndi",
+			"ad-hoc-sub-process",
+		)
+	)
+
+
 def _id_skip_types():
 	return frozenset(
 		{
@@ -266,12 +280,18 @@ def complete_sub_prompt(
 	from processa.processa_engine.agent_runtime.turn_state import run_sync
 	from processa.processa_engine.dispatch.attachments import with_attachments
 
+	stage = (cfg.get("sub_prompts") or {}).get(sub_id) or {}
 	if system is None:
-		system = ((cfg.get("sub_prompts") or {}).get(sub_id) or {}).get("prompt") or ""
+		system = stage.get("prompt") or ""
 	kwargs = {"system": system, **with_attachments(user, files)}
 	if max_tokens:
 		kwargs["max_tokens"] = max_tokens
-	return run_sync(get_llm_adapter_from_settings(cfg).complete(**kwargs)).text
+	stage_cfg = {
+		**cfg,
+		"effort": stage.get("effort") or cfg.get("effort"),
+		"stage": f"{cfg.get('name') or _agent_id()} / {sub_id}",
+	}
+	return run_sync(get_llm_adapter_from_settings(stage_cfg).complete(**kwargs)).text
 
 
 def document_sources_line(documents: list, lead: str) -> str:
@@ -518,6 +538,14 @@ def no_stage_reply(conversation: str) -> dict:
 	}
 
 
+def layout_is_automatic() -> str:
+	"""What a person can do about the layout, since no single arrow, label or colour is placed by hand."""
+	return frappe._(
+		"Layout is computed automatically, so I cannot place one arrow, label or colour by hand. "
+		"You can drag shapes on the canvas, or change the flow structure and I will lay it out again."
+	)
+
+
 def diagnose_inputs(xml: str, error_text: str, lint_issues: list) -> dict:
 	"""The pasted error, the lint findings and the diagram elements it names, each capped."""
 	from xml.etree import ElementTree as ET
@@ -609,6 +637,15 @@ def diagnose_output(xml: str, texts: list, lint_issues: list) -> dict:
 		}
 	if diagnosis["origin"] == "unknown":
 		return {"intent": "CLARIFY", "response": body + "\n\n" + diagnose_fallback_reply()}
+	rules = {str(finding.get("rule") or "").rsplit("/", 1)[-1] for finding in inputs["lint_findings"]}
+	unfixable = next(
+		(rule for rule in sorted(_lint_not_fixable()) if rule in rules or rule in error_text), None
+	)
+	if unfixable:
+		response = body + "\n\n" + frappe._("I cannot make this fix from the chat, so make it in the editor.")
+		if unfixable in ("no-crossing-edges", "no-overlapping-elements"):
+			response += " " + layout_is_automatic()
+		return {"intent": "CLARIFY", "response": response}
 	return {
 		"intent": "CONFIRM",
 		"action_intent": "MODIFY_EXISTING",

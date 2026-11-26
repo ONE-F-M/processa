@@ -225,3 +225,26 @@ class TestProsAllyStageRepliesLibraryOnTheMap(FrappeTestCase):
 			self.assertSame(
 				"diagnose_output", tools_review.diagnose_output, diagram, ["Error: a flow has no target"], []
 			)
+
+	def test_a_lint_finding_the_chat_cannot_fix_is_explained_not_offered(self):
+		xml = (
+			'<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">'
+			'<bpmn:process id="p1"><bpmn:sequenceFlow id="flow_a" name="Resubmit"/></bpmn:process></bpmn:definitions>'
+		)
+		message = 'Diagnose this lint finding on flow_a: Line crosses "Resubmit". (custom/no-crossing-edges)'
+		lint = [
+			{
+				"id": "flow_a",
+				"rule": "custom/no-crossing-edges",
+				"message": "Line crosses",
+				"category": "warn",
+			}
+		]
+		reply = json.dumps({"origin": "map", "root_cause": "Two paths cross.", "fix_steps": ["Move a step"]})
+		fakes = {"complete_sub_prompt": lambda *args, **kwargs: reply, "prosally_config": dict}
+		with patch.dict(self.lib.diagnose_output.__globals__, fakes):
+			from_library = self.lib.diagnose_output(xml, [message], lint)
+		with patch.multiple(tools_review, **fakes):
+			from_backend = tools_review.diagnose_output(xml, [message], lint)
+		self.assertEqual(from_library, from_backend)
+		self.assertEqual(from_library["intent"], "CLARIFY")
