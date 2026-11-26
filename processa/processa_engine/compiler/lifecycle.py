@@ -144,7 +144,7 @@ def cancel_running_instances(model_name: str, reason: str) -> None:
 	for batch in frappe.utils.create_batch(names, 100):
 		for name in batch:
 			cancel_instance(name, reason)
-		frappe.db.commit()
+		frappe.db.commit() # nosemgrep: frappe-semgrep-rules.rules.frappe-manual-commit
 
 
 def activate_non_executable(model) -> dict:
