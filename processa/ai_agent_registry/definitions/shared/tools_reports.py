@@ -55,6 +55,18 @@ def serialize_value(value):
 	return value
 
 
+def report_cache_key(report_name: str, filters: dict) -> str:
+	"""The cache key of one user's run of a report with these filters."""
+	return ":".join(
+		[
+			CACHE_KEY_PREFIX,
+			frappe.session.user,
+			report_name,
+			json.dumps(filters, sort_keys=True, default=str),
+		]
+	)
+
+
 @tool_envelope(
 	"General Chat Tool - get_report_data",
 	lambda report_name, filters, cache: {"error": f"Failed to run report '{report_name}'."},
@@ -73,17 +85,10 @@ def get_report_data(report_name: str, filters: dict | None = None, cache: bool =
 		key: value[0] if isinstance(value, list) and len(value) == 1 else value
 		for key, value in (filters or {}).items()
 	}
-	cache_key = ":".join(
-		[
-			CACHE_KEY_PREFIX,
-			frappe.session.user,
-			report_name,
-			json.dumps(filters, sort_keys=True, default=str),
-		]
-	)
+	cache_key = report_cache_key(report_name, filters)
 
 	if cache:
-		cached = frappe.cache.get_value(cache_key)
+		cached = frappe.cache.get_value(cache_key, expires=True)
 		if cached:
 			return {**cached, "from_cache": True}
 

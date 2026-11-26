@@ -3,14 +3,15 @@
 import json
 from datetime import date, datetime
 from decimal import Decimal
+from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_registry.definitions.shared.tools_reports import (
-	CACHE_KEY_PREFIX,
 	get_report_data,
 	list_reports,
+	report_cache_key,
 	serialize_value,
 )
 
@@ -42,8 +43,9 @@ class TestToolsReports(FrappeTestCase):
 		self._clear_cache()
 
 	def _clear_cache(self):
-		for key in frappe.cache.get_keys(CACHE_KEY_PREFIX):
-			frappe.cache.delete_value(key.decode() if isinstance(key, bytes) else key)
+		for user in ("Administrator", OUTSIDER):
+			with patch.object(frappe.session, "user", user):
+				frappe.cache.delete_value(report_cache_key(REPORT, {}))
 
 	def test_the_report_data_has_the_documented_keys(self):
 		result = get_report_data(REPORT, cache=False)
@@ -111,8 +113,16 @@ class TestToolsReports(FrappeTestCase):
 		self.assertTrue(all(row["ref_doctype"] == "ToDo" for row in result["reports"]))
 
 	def test_the_list_leaves_out_reports_on_a_doctype_the_user_cannot_report_on(self):
-		frappe.set_user(OUTSIDER)
-		result = list_reports()
+		real_has_permission = frappe.has_permission
+
+		def has_permission(doctype, ptype="read", *args, **kwargs):
+			if doctype == "ToDo" and ptype == "report":
+				return False
+			return real_has_permission(doctype, ptype, *args, **kwargs)
+
+		self.assertIn(REPORT, [row["name"] for row in list_reports()["reports"]])
+		with patch.object(frappe, "has_permission", side_effect=has_permission):
+			result = list_reports()
 		self.assertNotIn("ToDo", [row["ref_doctype"] for row in result["reports"]])
 		self.assertEqual(result["count"], len(result["reports"]))
 
