@@ -48,6 +48,18 @@ CASES = (
 		{"doctype": "ToDo"},
 		json.dumps({"error": "Failed to read DocType 'ToDo'."}),
 	),
+	(
+		reports_tools.list_reports,
+		(frappe, "get_list"),
+		{},
+		{"error": "Failed to list reports."},
+	),
+	(
+		reports_tools.get_report_data,
+		(frappe.db, "exists"),
+		{"report_name": "ToDo"},
+		{"error": "Failed to run report 'ToDo'."},
+	),
 )
 
 
