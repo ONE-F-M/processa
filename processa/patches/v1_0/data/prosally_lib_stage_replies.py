@@ -243,7 +243,7 @@ def _fields():
 	]
 
 
-def _chunk_words():
+def _chunk_word_count():
 	return 600
 
 
@@ -864,8 +864,8 @@ def _chunk_words(text: str) -> list[str]:
 	words = text.split()
 	if not words:
 		return []
-	step = _chunk_words() - _chunk_overlap()
+	step = _chunk_word_count() - _chunk_overlap()
 	return [
-		" ".join(words[start : start + _chunk_words()])
+		" ".join(words[start : start + _chunk_word_count()])
 		for start in range(0, max(len(words) - _chunk_overlap(), 1), step)
 	]
