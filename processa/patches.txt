@@ -433,3 +433,4 @@ processa.patches.v1_0.prosally_keeps_the_libraries_box #26-11-2026 ProsAlly sets
 processa.patches.v1_0.add_prosally_library_question_case #26-11-2026 ProsAlly - Baseline gains a case where ProsAlly names the map's library scripts
 processa.patches.v1_0.logix_library_contract_def_only #26-11-2026 Logix's library contract and writer prompt say a library holds only def statements, as the deploy check enforces
 processa.patches.v1_0.logix_helpers_move_to_libraries #26-11-2026 the Logix map gets Lib Replies and Lib DocType Sources in a Libraries box and its scripts load the helpers from them
+processa.patches.v1_0.docu_helpers_move_to_library #26-11-2026 the Docu map gets Lib Schema in a Libraries box and its scripts load the schema helpers from it

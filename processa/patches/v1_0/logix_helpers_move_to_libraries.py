@@ -83,30 +83,31 @@ def execute():
 	compile_process_model(MODEL_NAME)
 
 
-def with_libraries_box(xml: str) -> str:
-	"""xml with a Libraries box holding the two library script tasks, drawn below the flow; unchanged when present."""
-	if f'id="{BOX_ID}"' in xml or "<bpmn:process " not in xml:
+def with_libraries_box(xml: str, box_id: str = BOX_ID, task_ids: dict | None = None) -> str:
+	"""xml with a Libraries box holding a script task per library, drawn below the flow; unchanged when present."""
+	task_ids = task_ids or TASK_IDS
+	if f'id="{box_id}"' in xml or "<bpmn:process " not in xml:
 		return xml
 	process_id = xml.split("<bpmn:process ", 1)[1].split('id="', 1)[1].split('"', 1)[0]
 	spiff = 'xmlns:spiffworkflow="http://spiffworkflow.org/bpmn/schema/1.0/core"'
 	bpmn = 'xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"'
 	tasks = "".join(
-		f'<bpmn:scriptTask id="{TASK_IDS[name]}" name="{name.split(": ", 1)[1]}" spiffworkflow:serverScript="{name}" '
+		f'<bpmn:scriptTask id="{task_ids[name]}" name="{name.split(": ", 1)[1]}" spiffworkflow:serverScript="{name}" '
 		f'spiffworkflow:scriptType="Server Script" spiffworkflow:scriptName="{name}" />'
-		for name in LIBRARIES
+		for name in task_ids
 	)
 	element = (
-		f'<bpmn:adHocSubProcess {bpmn} {spiff} id="{BOX_ID}" name="Libraries" spiffworkflow:scriptLibrary="true">'
+		f'<bpmn:adHocSubProcess {bpmn} {spiff} id="{box_id}" name="Libraries" spiffworkflow:scriptLibrary="true">'
 		f"{tasks}</bpmn:adHocSubProcess>"
 	)
 	di = 'xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"'
 	shapes = [
-		f'<bpmndi:BPMNShape {di} id="{BOX_ID}_di" bpmnElement="{BOX_ID}" isExpanded="true">'
+		f'<bpmndi:BPMNShape {di} id="{box_id}_di" bpmnElement="{box_id}" isExpanded="true">'
 		'<dc:Bounds x="0" y="0" width="300" height="140" /></bpmndi:BPMNShape>'
 	] + [
-		f'<bpmndi:BPMNShape {di} id="{TASK_IDS[name]}_di" bpmnElement="{TASK_IDS[name]}">'
+		f'<bpmndi:BPMNShape {di} id="{task_ids[name]}_di" bpmnElement="{task_ids[name]}">'
 		f'<dc:Bounds x="{30 + 140 * index}" y="30" width="100" height="80" /></bpmndi:BPMNShape>'
-		for index, name in enumerate(LIBRARIES)
+		for index, name in enumerate(task_ids)
 	]
 	return put_back_libraries(xml, [{"process": process_id, "element": element, "shapes": shapes}])
 
