@@ -6,9 +6,11 @@ Pins that phases concatenate in order into one IR sharing the outline's lane
 set, and that the hand-off id between phases is each chunk's last node.
 """
 
+from processa.tests.library import library
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import chunk_exit_node_id, merge_chunked_ir
+chunk_exit_node_id = library("prosally_lib_ir.py").chunk_exit_node_id
+merge_chunked_ir = library("prosally_lib_ir.py").merge_chunked_ir
 
 
 class TestMergeChunkedIR(FrappeTestCase):

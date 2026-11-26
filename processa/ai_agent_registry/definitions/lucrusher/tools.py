@@ -11,7 +11,6 @@ The DocType and hooks index is cached in Redis for an hour; find_whitelisted_met
 from __future__ import annotations
 
 import ast
-import glob
 import os
 import re
 
@@ -245,74 +244,6 @@ def get_codebase_index() -> dict:
 	except Exception:
 		pass  # a cache write failure is not fatal
 	return index
-
-
-def _python_files(apps_root: str, apps) -> list:
-	"""``(abs_path, app)`` for each app's api.py files and DocType controllers."""
-	pairs = []
-	for app in apps or []:
-		app_pkg = os.path.join(apps_root, app, app)
-		if not os.path.isdir(app_pkg):
-			continue
-		top_api = os.path.join(app_pkg, "api.py")
-		if os.path.isfile(top_api):
-			pairs.append((top_api, app))
-		for py_path in glob.glob(os.path.join(app_pkg, "*", "api.py")):
-			pairs.append((py_path, app))
-		for py_path in glob.glob(os.path.join(app_pkg, "**", "doctype", "**", "*.py"), recursive=True):
-			pairs.append((py_path, app))
-	return pairs
-
-
-def find_whitelisted_methods(apps, path_keywords=None) -> list:
-	"""``@frappe.whitelist()`` functions in ``apps``, as
-	``{method, function, file, app, line}`` rows.
-
-	``path_keywords`` keeps the walk cheap on a large bench: a file whose
-	relative path contains none of them is skipped without being read. Pass
-	None/empty to read every candidate file.
-	"""
-	apps_root = get_apps_root()
-	keywords = {str(k).lower() for k in (path_keywords or []) if str(k).strip()}
-	results, seen = [], set()
-
-	for py_path, app in _python_files(apps_root, apps):
-		rel_path = os.path.relpath(py_path, apps_root)
-		if keywords and not any(kw in rel_path.lower() for kw in keywords):
-			continue
-		try:
-			with open(py_path, encoding="utf-8", errors="ignore") as fh:
-				lines = fh.readlines()
-		except Exception:
-			continue
-		if not any(_WHITELIST_DECORATOR in line for line in lines):
-			continue
-
-		mod_dotted = rel_path.replace(os.sep, ".").removesuffix(".py")
-		for i, line in enumerate(lines):
-			if _WHITELIST_DECORATOR not in line.strip():
-				continue
-			# The decorated def is within a few lines; stacked decorators are
-			# skipped over, anything else ends the search for this decorator.
-			for j in range(i + 1, min(i + 6, len(lines))):
-				candidate = lines[j].strip()
-				match = _DEF_RE.match(candidate)
-				if match:
-					fn_name = match.group(1)
-					method = f"{mod_dotted}.{fn_name}"
-					if method not in seen:
-						seen.add(method)
-						results.append({
-							"method": method,
-							"function": fn_name,
-							"file": rel_path,
-							"app": app,
-							"line": j + 1,
-						})
-					break
-				if candidate and not candidate.startswith("@"):
-					break
-	return results
 
 
 _STRUCTURAL_RE = re.compile(

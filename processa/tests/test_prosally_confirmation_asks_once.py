@@ -1,13 +1,14 @@
 # Copyright (c) 2026, one-fm and contributors
 """ProsAlly's confirmation asks its yes/no question once, even when the model repeats it in the summary."""
 
+from processa.tests.library import library
 import json
 from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import helpers, tools_prompts
+from processa.ai_agent_registry.definitions.prosally import helpers
 from processa.processa_engine.agent_runtime.turn_state import clear_turn, get_turn, set_turn
 from processa.patches.v1_0.prosally_confirmation_asks_once import (
 	IMPORT_NEW,
@@ -25,25 +26,25 @@ SUMMARY = (
 
 class TestJoinConfirmation(FrappeTestCase):
 	def test_a_summary_ending_in_the_question_asks_it_once(self):
-		reply = tools_prompts.join_confirmation(SUMMARY, QUESTION)
+		reply = library("prosally_lib_replies.py").join_confirmation(SUMMARY, QUESTION)
 		self.assertEqual(reply.count(QUESTION), 1)
 		self.assertTrue(reply.endswith("\n\n" + QUESTION))
 
 	def test_case_and_punctuation_do_not_matter(self):
-		reply = tools_prompts.join_confirmation("I'll draw it. shall i go ahead", QUESTION)
+		reply = library("prosally_lib_replies.py").join_confirmation("I'll draw it. shall i go ahead", QUESTION)
 		self.assertEqual(reply, "I'll draw it.\n\n" + QUESTION)
 
 	def test_a_different_closing_sentence_is_kept(self):
 		self.assertEqual(
-			tools_prompts.join_confirmation("I'll draw it. Is that right?", QUESTION),
+			library("prosally_lib_replies.py").join_confirmation("I'll draw it. Is that right?", QUESTION),
 			"I'll draw it. Is that right?\n\n" + QUESTION,
 		)
-		self.assertEqual(tools_prompts.join_confirmation("", QUESTION), QUESTION)
+		self.assertEqual(library("prosally_lib_replies.py").join_confirmation("", QUESTION), QUESTION)
 
 
 class TestStructuredSummary(FrappeTestCase):
 	def test_steps_and_settings_are_one_per_line_and_the_question_stands_alone(self):
-		reply = tools_prompts.join_confirmation(
+		reply = library("prosally_lib_replies.py").join_confirmation(
 			{
 				"intro": "I'll redraw the Visa Request process completely.",
 				"steps": ["The recruiter raises the Visa Request", "The GRD manager approves or rejects it"],
@@ -60,7 +61,7 @@ class TestStructuredSummary(FrappeTestCase):
 		)
 
 	def test_no_settings_means_no_draw_only_offer(self):
-		reply = tools_prompts.join_confirmation({"intro": "I'll draw it.", "steps": ["Submit"], "settings": []}, QUESTION)
+		reply = library("prosally_lib_replies.py").join_confirmation({"intro": "I'll draw it.", "steps": ["Submit"], "settings": []}, QUESTION)
 		self.assertNotIn("draw only", reply)
 		self.assertEqual(reply, "I'll draw it.\n\nHere's what I understood:\n- Submit\n\n" + QUESTION)
 

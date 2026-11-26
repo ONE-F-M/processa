@@ -5,6 +5,7 @@ Run with:
     bench run-tests --app processa --module processa.tests.test_prosally_dms_documents
 """
 
+from processa.tests.library import library
 from unittest.mock import patch
 
 import frappe
@@ -66,7 +67,7 @@ class TestProsallyDmsTool(FrappeTestCase):
 		return tools_prompts.search_dms_for_turn(CONVERSATION, query, document_type)
 
 	def prompt(self, sub_id):
-		return tools_prompts.stage_system_prompt(CFG, sub_id, "", get_turn(CONVERSATION))
+		return library("prosally_lib_map_xml.py").stage_system_prompt(CFG, sub_id, "", get_turn(CONVERSATION))
 
 	def test_search_returns_the_matching_document_and_keeps_it_for_the_turn(self):
 		found = self.search("annual leave approval")

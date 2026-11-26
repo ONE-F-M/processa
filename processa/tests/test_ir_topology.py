@@ -4,9 +4,12 @@ A planar flow graph must come back with a crossing-free drawing; a non-planar
 one must be reported as such rather than retried, and its drawing may carry
 exactly the one crossing the graph forces.
 """
+from processa.tests.library import library
 import unittest
 
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import _IR_IGNORABLE_RULES, _RULE_HINTS, check_topology, compile_ir, flow_pairs_from_xml, translate_problems
+from processa.ai_agent_registry.definitions.prosally.tools_pipeline import _IR_IGNORABLE_RULES, _RULE_HINTS, check_topology, flow_pairs_from_xml
+compile_ir = library("prosally_lib_layout.py").compile_ir
+translate_problems = library("prosally_lib_ir.py").translate_problems
 
 LANES = [{"id": "a", "name": "A"}, {"id": "b", "name": "B"}]
 

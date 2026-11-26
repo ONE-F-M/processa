@@ -2,11 +2,14 @@
 # For license information, please see license.txt
 """A non-executable process is drawn with plain None tasks, and an executable one never is."""
 
+from processa.tests.library import library
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import compile_ir
+compile_ir = library("prosally_lib_layout.py").compile_ir
 from processa.ai_agent_registry.provisioning.bpmn_task_config import use_none_tasks
-from processa.ai_agent_registry.definitions.prosally.tools_review import keep_process_kind, none_tasks_output, xml_to_ir
+xml_to_ir = library("prosally_lib_map_xml.py").xml_to_ir
+keep_process_kind = library("prosally_lib_map_xml.py").keep_process_kind
+none_tasks_output = library("prosally_lib_map_xml.py").none_tasks_output
 from processa.ai_agent_registry.definitions.prosally.validators import validate_bpmn_xml
 
 

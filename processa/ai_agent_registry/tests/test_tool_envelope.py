@@ -1,5 +1,6 @@
 """The tool functions Server Scripts call answer a raised error with their error value, through tool_envelope."""
 
+from processa.tests.library import library
 import inspect
 import json
 from unittest.mock import patch
@@ -37,7 +38,7 @@ CASES = (
 	),
 	(docu_tools.list_doctypes, (frappe, "get_all"), {"search": "To"}, json.dumps([])),
 	(
-		docu_tools.list_roles,
+		library("docu_lib_schema.py").list_roles,
 		(frappe, "get_all"),
 		{"search": "Sys"},
 		json.dumps({"roles": [], "error": "Could not read the role list."}),

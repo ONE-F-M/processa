@@ -14,7 +14,6 @@ from processa.ai_agent_security.code_checks.script_validator import (
 	request_findings,
 	validate_script,
 )
-from processa.api.versions import script_versions
 from processa.processa_engine.agent_runtime.llm_factory import get_llm_adapter_from_settings
 from processa.processa_engine.agent_runtime.structured_output import provider_schema
 from processa.processa_engine.agent_runtime.turn_state import get_turn, run_sync, update_turn
@@ -97,43 +96,7 @@ def _code_lines(code: str) -> list[str]:
 	return [line.rstrip() for line in code.splitlines() if line.strip()]
 
 
-def revert_output(conversation: str) -> dict:
-	"""Offer the linked script's previous version from its history as a diff against the current one."""
-	script = get_turn(conversation).get("current_script") or ""
-	if not script:
-		say = _("No script is linked to this step, so there is nothing to revert.")
-		return _reply(conversation, say, intent="REVERT")
-	# Reads history without the read check: the agent user holds no roles.
-	history = script_versions(script) if frappe.db.exists("Server Script", script) else []
-	if len(history) < 2:
-		say = _("The script {0} has no earlier version to go back to.").format(script)
-		return _reply(conversation, say, intent="REVERT")
-	current, previous = history[0]["script"], history[1]["script"]
-	diff = "".join(
-		difflib.unified_diff(
-			current.splitlines(keepends=True),
-			previous.splitlines(keepends=True),
-			fromfile="current",
-			tofile="previous version",
-		)
-	)
-	say = _("Here is the previous version of {0}, saved by {1} on {2}. Apply it to put it back.").format(
-		script, history[1]["author"], history[1]["creation"][:16]
-	)
-	return _reply(conversation, say, original=current, fixed=previous, diff=diff)
-
-
 CODE_FENCE = re.compile(r"(```python\s*\n)(.*?)(```)", re.DOTALL)
-
-
-def reply_with_code(text: str, code: str) -> str:
-	"""The reply text with its first python block replaced by code, so what is shown is what gets applied."""
-	if not code:
-		return text
-	block = code.rstrip("\n") + "\n"
-	if CODE_FENCE.search(text):
-		return CODE_FENCE.sub(lambda m: m.group(1) + block + m.group(3), text, count=1)
-	return text.rstrip() + "\n\n```python\n" + block + "```"
 
 
 def _ask(adapter, system: str, user: str, schema: dict) -> dict:

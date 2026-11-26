@@ -5,34 +5,11 @@ docu's form builder reads and diffs through the same functions.
 
 import json
 import re
-import time
-from contextlib import contextmanager
 
 import frappe
-from frappe import _
-from frappe.model import display_fieldtypes, table_fields
-from frappe.utils import now_datetime
 
 from processa.ai_agent_registry.definitions.docu.validators import RESERVED_FIELDNAMES, validate_doctype_ir
 from processa.ai_agent_registry.definitions.shared.helpers import tool_envelope
-
-
-@contextmanager
-def timed(timings: list, call: str):
-	"""Append when the block started and ended, and its length in ms, to timings."""
-	started_at = now_datetime()
-	t0 = time.perf_counter()
-	try:
-		yield
-	finally:
-		timings.append(
-			{
-				"call": call,
-				"started_at": str(started_at),
-				"ended_at": str(now_datetime()),
-				"ms": round((time.perf_counter() - t0) * 1000),
-			}
-		)
 
 
 @tool_envelope("Docu Tool - list_doctypes", lambda search: json.dumps([]))
@@ -186,18 +163,6 @@ def read_doctype_permissions(doctype: str) -> list:
 
 
 @tool_envelope(
-	"Docu Tool - list_roles", lambda search: json.dumps({"roles": [], "error": "Could not read the role list."})
-)
-def list_roles(search: str = "") -> str:
-	"""Role names a permission rule may name, as JSON, filtered by the search substring."""
-	filters = {"disabled": 0, "name": ["not in", ("All", "Guest")]}
-	if (search or "").strip():
-		filters["name"] = ["like", f"%{search.strip()}%"]
-	names = frappe.get_all("Role", filters=filters, pluck="name", order_by="name asc", limit=400)
-	return json.dumps({"roles": names})
-
-
-@tool_envelope(
 	"Docu Tool - get_doctype_definition",
 	lambda doctype: json.dumps({"error": f"Failed to read DocType '{doctype}'."}),
 )
@@ -265,68 +230,6 @@ def diff_ir(original: dict, modified: dict) -> dict:
 
 
 REMOVAL_WORDS = re.compile(r"\b(?:remove|delete|drop|get\s+rid\s+of|take\s+out|replace|without)\b", re.I)
-
-
-def merge_into_live_fields(current_ir: dict, proposed_ir: dict) -> None:
-	"""Make a proposed field that repeats a live one, by fieldname or by label under a new fieldname, an update of it."""
-	live = {}
-	for field in current_ir.get("fields") or []:
-		label = (field.get("label") or "").strip().lower()
-		if label and field.get("fieldname") and field.get("fieldtype") not in display_fieldtypes:
-			live.setdefault(label, field["fieldname"])
-	live_names = set(live.values())
-	by_name = {}
-	merged = []
-	for field in proposed_ir.get("fields") or []:
-		fieldname = field.get("fieldname")
-		label = (field.get("label") or "").strip().lower()
-		if field.get("fieldtype") not in display_fieldtypes and fieldname not in live_names and label in live:
-			field = {**field, "fieldname": live[label]}
-			fieldname = field["fieldname"]
-		if fieldname in by_name and field.get("fieldtype") not in display_fieldtypes:
-			by_name[fieldname].update(field)
-			continue
-		if fieldname:
-			by_name[fieldname] = field
-		merged.append(field)
-	proposed_ir["fields"] = merged
-
-
-def keep_unrequested_fields(current_ir: dict, proposed_ir: dict, request: str) -> str:
-	"""Put back into proposed_ir each field and child table column the request did not ask to remove.
-
-	Reserved fields such as amended_from always come back. Returns the line the reply adds, or "".
-	"""
-	kept = _restore_fields(current_ir.get("fields") or [], proposed_ir.setdefault("fields", []), request)
-	for field in proposed_ir["fields"]:
-		if field.get("fieldtype") not in table_fields or not field.get("child_fields"):
-			continue
-		live = read_doctype_definition((field.get("options") or "").strip())
-		if live:
-			kept += _restore_fields(live["fields"], field["child_fields"], request)
-	if not kept:
-		return ""
-	return _("I kept {0}, which your request did not ask to remove.").format(", ".join(kept))
-
-
-def _restore_fields(current: list, proposed: list, request: str) -> list[str]:
-	"""Insert into proposed, after the field they followed, the current fields it lost without being asked; their labels."""
-	present = {f.get("fieldname") for f in proposed}
-	kept = []
-	for position, field in enumerate(current):
-		fieldname = field.get("fieldname")
-		if not fieldname or fieldname in present:
-			continue
-		if _asked_to_remove(field, request):
-			continue
-		before = next(
-			(f.get("fieldname") for f in reversed(current[:position]) if f.get("fieldname") in present), None
-		)
-		at = next((i + 1 for i, f in enumerate(proposed) if f.get("fieldname") == before), 0)
-		proposed.insert(at, field)
-		present.add(fieldname)
-		kept.append(field.get("label") or fieldname)
-	return kept
 
 
 def _asked_to_remove(field: dict, request: str) -> bool:

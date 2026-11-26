@@ -99,4 +99,5 @@ def _new_module(old: str, name: str) -> str:
 	for module in SPLIT_MODULES[old]:
 		if hasattr(importlib.import_module(module), name):
 			return module
-	raise ImportError(f"{name} is in none of the modules {old} was split into")
+	# A name that now lives only in a library keeps a definitions path, which as_on_site points at the library.
+	return SPLIT_MODULES[old][0]

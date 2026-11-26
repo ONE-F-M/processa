@@ -5,6 +5,7 @@ Run with:
     bench run-tests --app processa --module processa.tests.test_prosally_read_process_map
 """
 
+from processa.tests.library import library
 from unittest.mock import patch
 
 import frappe
@@ -75,11 +76,11 @@ class TestReadProcessMapTool(FrappeTestCase):
 
 class TestProcessMapsBlock(FrappeTestCase):
 	def prompt(self, sub_id, turn):
-		return tools_prompts.stage_system_prompt(CFG, sub_id, "", turn)
+		return library("prosally_lib_map_xml.py").stage_system_prompt(CFG, sub_id, "", turn)
 
 	def test_the_block_is_empty_when_no_map_was_read(self):
-		self.assertEqual(tools_prompts.process_maps_block({}), "")
-		self.assertEqual(tools_prompts.process_maps_block(None), "")
+		self.assertEqual(library("prosally_lib_map_xml.py").process_maps_block({}), "")
+		self.assertEqual(library("prosally_lib_map_xml.py").process_maps_block(None), "")
 
 	def test_generate_and_modify_prompts_carry_the_digests_and_the_edit_rule(self):
 		turn = {"process_maps": [{"process_model": "Onboarding", "digest": "Steps in diagram order:\n- startEvent: Begin"}]}

@@ -5,10 +5,12 @@ Run with:
     bench run-tests --app processa --module processa.tests.test_prosally_links_review
 """
 
+from processa.tests.library import library
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_links import asks_for_links_review, links_review_output
+asks_for_links_review = library("prosally_lib_replies.py").asks_for_links_review
+links_review_output = library("prosally_lib_context.py").links_review_output
 from processa.processa_engine.agent_runtime.turn_state import clear_turn, get_turn, set_turn
 from processa.patches.v1_0 import prosally_reviews_process_links as review_patch
 from processa.patches.v1_0.prosally_relayouts_and_compares import apply_edits

@@ -1,16 +1,18 @@
 # Copyright (c) 2026, one-fm and contributors
 """ProsAlly keeps a map's Libraries box through a change, a re-layout and a regenerate, and tells its stages about it."""
 
+from processa.tests.library import library
 import re
 from xml.etree import ElementTree as ET
 
 from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_registry.definitions.prosally.helpers import NS
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import compile_ir
-from processa.ai_agent_registry.definitions.prosally.tools_prompts import library_scripts_block
-from processa.ai_agent_registry.definitions.prosally.tools_properties import transfer_properties
-from processa.ai_agent_registry.definitions.prosally.tools_review import relayout, xml_to_ir
+compile_ir = library("prosally_lib_layout.py").compile_ir
+library_scripts_block = library("prosally_lib_map_xml.py").library_scripts_block
+transfer_properties = library("prosally_lib_map_xml.py").transfer_properties
+relayout = library("prosally_lib_layout.py").relayout
+xml_to_ir = library("prosally_lib_map_xml.py").xml_to_ir
 from processa.ai_agent_registry.definitions.prosally.tools_subprocess import (
 	put_back_libraries,
 	take_out_libraries,

@@ -1,13 +1,14 @@
 # Copyright (c) 2026, one-fm and contributors
 """The chat knows when the diagram it proposed is not on the canvas, whether it was discarded or never applied."""
 
+from processa.tests.library import library
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_subprocess import unapplied_proposal
+unapplied_proposal = library("prosally_lib_stage_replies.py").unapplied_proposal
 
 HEAD = '<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="D">'
 BEFORE = (

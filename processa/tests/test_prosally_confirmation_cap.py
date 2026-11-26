@@ -1,10 +1,12 @@
 # Copyright (c) 2026, one-fm and contributors
 """The confirmation summary lists at most 8 steps and 6 settings, and the classifier prompt asks for that."""
 
+from processa.tests.library import library
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_prompts import MAX_CONFIRMATION_SETTINGS, MAX_CONFIRMATION_STEPS, join_confirmation
+from processa.ai_agent_registry.definitions.prosally.tools_prompts import MAX_CONFIRMATION_SETTINGS, MAX_CONFIRMATION_STEPS
+join_confirmation = library("prosally_lib_replies.py").join_confirmation
 from processa.patches.v1_0 import prosally_caps_the_confirmation_summary as cap_patch
 from processa.patches.v1_0.prosally_turns_a_step_into_a_subprocess import AGENT_ID, SUITE_TITLE
 

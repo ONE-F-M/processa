@@ -2,11 +2,12 @@
 # For license information, please see license.txt
 """Gateway conditions test a value a step of the same map sets, written in Python."""
 
+from processa.tests.library import library
 import xml.etree.ElementTree as ET
 
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_properties import describe_task_config
+describe_task_config = library("prosally_lib_map_xml.py").describe_task_config
 from processa.api.process_maps import validate_bpmn_readiness
 from processa.processa_engine.compiler.deploy_warnings import gateway_condition_gaps
 

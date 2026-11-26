@@ -5,6 +5,7 @@ The tests run the live Generate Process script as it is on BA and on Staging (th
 fixtures/), with the split patch applied and only the model and the database faked.
 """
 
+from processa.tests.library import as_on_site, import_script, library, patch_libraries
 import difflib
 import json
 import re
@@ -17,7 +18,7 @@ from unittest import mock
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import compile_ir
+compile_ir = library("prosally_lib_layout.py").compile_ir
 from processa.processa_engine.agent_runtime.llm_types import LLMTruncatedError
 from processa.ai_agent_observability.observability import record_truncated_calls
 from processa.patches.v1_0 import (
@@ -152,11 +153,12 @@ def run_generate(shape, should_cut=lambda user: False, text="Model a leave reque
 	patches = [
 		mock.patch("processa.processa_engine.agent_runtime.turn_state.get_turn", return_value=turn),
 		mock.patch("processa.processa_engine.agent_runtime.turn_state.update_turn", ran.update_turn),
-		mock.patch(f"{PIPELINE}.compile_ir", ran.compile_ir),
-		mock.patch(f"{PIPELINE}.auto_fix_ir", ran.auto_fix_ir),
-		mock.patch(f"{PIPELINE}.ensure_default_lanes", return_value=True),
-		mock.patch(f"{PIPELINE}.extract_process_name", return_value="Leave"),
+		*patch_libraries("compile_ir", ran.compile_ir),
+		*patch_libraries("auto_fix_ir", ran.auto_fix_ir),
+		*patch_libraries("ensure_default_lanes", mock.Mock(return_value=True)),
+		*patch_libraries("extract_process_name", mock.Mock(return_value="Leave")),
 		mock.patch(f"{PROSALLY}.validators.validate_bpmn_xml", return_value={"valid": True}),
+		*patch_libraries("validate_bpmn_xml", mock.Mock(return_value={"valid": True})),
 		mock.patch(f"{OBSERVABILITY}.current_sub_call", return_value={"run": "RUN-1", "tool": TOOL}),
 		mock.patch(f"{OBSERVABILITY}.record_ai_step", ran.record_step),
 		mock.patch(f"{OBSERVABILITY}.record_tool_artifact", ran.record_artifact),
@@ -165,12 +167,12 @@ def run_generate(shape, should_cut=lambda user: False, text="Model a leave reque
 	]
 	if shape == "ba":
 		patches += [
-			mock.patch(f"{HELPERS}.complete_sub_prompt", fake_complete),
-			mock.patch(f"{HELPERS}.prosally_config", return_value=cfg),
-			mock.patch(f"{PROMPTS}.stage_max_tokens", return_value=16384),
-			mock.patch(f"{PROMPTS}.stage_system_prompt", return_value="SYSTEM"),
-			mock.patch(f"{PROMPTS}.describe_lanes", return_value=" LANES"),
-			mock.patch(f"{PROPERTIES}.describe_task_config", return_value=" TASKS"),
+			*patch_libraries("complete_sub_prompt", fake_complete),
+			*patch_libraries("prosally_config", mock.Mock(return_value=cfg)),
+			*patch_libraries("stage_max_tokens", mock.Mock(return_value=16384)),
+			*patch_libraries("stage_system_prompt", mock.Mock(return_value="SYSTEM")),
+			*patch_libraries("describe_lanes", mock.Mock(return_value=" LANES")),
+			*patch_libraries("describe_task_config", mock.Mock(return_value=" TASKS")),
 		]
 	else:
 		patches += [
@@ -188,8 +190,14 @@ def run_generate(shape, should_cut=lambda user: False, text="Model a leave reque
 			stack.enter_context(patcher)
 		# Split globals and locals, as the tool-script runner executes it: names in a def or comprehension body are not visible.
 		exec(
-			as_deployed(script),
-			{"frappe": frappe, "context_docname": "TEST-TURN", "result": ran.result, "bpmn_id": "BPMN-1"},
+			as_on_site(as_deployed(script)),
+			{
+				"frappe": frappe,
+				"context_docname": "TEST-TURN",
+				"result": ran.result,
+				"bpmn_id": "BPMN-1",
+				"import_script": import_script,
+			},
 			{},
 		)
 	return ran

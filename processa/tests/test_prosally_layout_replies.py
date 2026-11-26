@@ -1,12 +1,13 @@
 # Copyright (c) 2026, one-fm and contributors
 """A layout instruction is laid out again or refused in words, and the crossing note is said once per conversation."""
 
+from processa.tests.library import library
 from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import tools_replies, tools_review
+from processa.ai_agent_registry.definitions.prosally import tools_review
 from processa.patches.v1_0 import seed_prosally_layout_regression_cases as seed
 
 NODES = [{"id": "g1", "name": "Recruiter Action?"}, {"id": "g2", "name": "Requester Action?"}]
@@ -34,10 +35,10 @@ class TestCrossingNote(FrappeTestCase):
 		).insert()
 
 	def test_a_planar_layout_gets_no_note(self):
-		self.assertEqual(tools_replies.crossing_line_note(NODES, {"planar": True}, self.conversation), "")
+		self.assertEqual(library("prosally_lib_replies.py").crossing_line_note(NODES, {"planar": True}, self.conversation), "")
 
 	def test_the_first_crossing_is_explained_with_the_steps_on_it(self):
-		note = tools_replies.crossing_line_note(NODES, NOT_PLANAR, self.conversation)
+		note = library("prosally_lib_replies.py").crossing_line_note(NODES, NOT_PLANAR, self.conversation)
 
 		self.assertIn("One crossing line is unavoidable", note)
 		self.assertIn("Recruiter Action?, Requester Action?", note)
@@ -47,14 +48,14 @@ class TestCrossingNote(FrappeTestCase):
 			"I've updated the process. One crossing line is unavoidable: the paths through X cannot all be laid flat."
 		)
 
-		self.assertEqual(tools_replies.crossing_line_note(NODES, NOT_PLANAR, self.conversation), "")
+		self.assertEqual(library("prosally_lib_replies.py").crossing_line_note(NODES, NOT_PLANAR, self.conversation), "")
 
 	def test_another_conversation_hears_it_again(self):
 		self._bot_said("One crossing line is unavoidable: the paths through X cannot all be laid flat.")
 		other = frappe.get_doc({"doctype": "Chat Conversation", "title": "other"}).insert().name
 
 		self.assertIn(
-			"One crossing line is unavoidable", tools_replies.crossing_line_note(NODES, NOT_PLANAR, other)
+			"One crossing line is unavoidable", library("prosally_lib_replies.py").crossing_line_note(NODES, NOT_PLANAR, other)
 		)
 
 
@@ -64,10 +65,10 @@ CLEAN = {"crossings": 0, "throughShape": 0, "overlaps": 0}
 class TestRelayoutReply(FrappeTestCase):
 	def _reply(self, relaid, audits, text=""):
 		with (
-			patch.object(tools_review, "relayout", return_value=relaid),
-			patch.object(tools_review, "audit_layout", side_effect=audits),
+			patch.object(library("prosally_lib_layout.py"), "relayout", return_value=relaid),
+			patch.object(library("prosally_lib_layout.py"), "audit_layout", side_effect=audits),
 		):
-			return tools_review.relayout_output("<old />", text)
+			return library("prosally_lib_layout.py").relayout_output("<old />", text)
 
 	def test_a_redrawn_diagram_says_what_the_person_can_do_about_layout(self):
 		out = self._reply(("<xml />", ""), [CLEAN, CLEAN])
@@ -113,16 +114,16 @@ class TestRelayoutReply(FrappeTestCase):
 		self.assertIn("cannot set a gap of my own", out["response"])
 
 	def test_only_layout_words_count_as_layout_asks(self):
-		self.assertEqual(tools_replies.layout_asks("Add a review step after approval"), [])
-		self.assertEqual(tools_replies.layout_asks("Line them up"), ["alignment"])
-		self.assertEqual(tools_replies.layout_asks("the lines criss-cross"), ["crossings"])
+		self.assertEqual(library("prosally_lib_replies.py").layout_asks("Add a review step after approval"), [])
+		self.assertEqual(library("prosally_lib_replies.py").layout_asks("Line them up"), ["alignment"])
+		self.assertEqual(library("prosally_lib_replies.py").layout_asks("the lines criss-cross"), ["crossings"])
 
 	def test_a_change_with_a_layout_ask_reports_it_and_one_without_says_nothing(self):
-		with patch.object(tools_replies, "audit_layout", side_effect=[{**CLEAN, "crossings": 2}, CLEAN]):
-			note = tools_replies.layout_note("<old />", "<new />", "add a step and remove the crossing lines")
+		with patch.object(library("prosally_lib_layout.py"), "audit_layout", side_effect=[{**CLEAN, "crossings": 2}, CLEAN]):
+			note = library("prosally_lib_layout.py").layout_note("<old />", "<new />", "add a step and remove the crossing lines")
 
 		self.assertEqual(note, " Crossing lines: 2 before, 0 now.")
-		self.assertEqual(tools_replies.layout_note("<old />", "<new />", "add a step"), "")
+		self.assertEqual(library("prosally_lib_layout.py").layout_note("<old />", "<new />", "add a step"), "")
 
 
 class TestConvergingLines(FrappeTestCase):

@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """Logix's debug stage helpers and LuCrusher's document search moved into libraries on their maps."""
 
+from processa.tests.library import library
 import copy
 import json
 from types import SimpleNamespace
@@ -176,9 +177,9 @@ class TestPlatformHelperLibrariesOnTheMaps(FrappeTestCase):
 
 	def test_revert_through_import_script(self):
 		lib = LOGIX["library"]
-		self._same(lib, "revert_output", logix_tools.revert_output, "rev-1", {}, "rev-1")
+		self._same(lib, "revert_output", library("logix_lib_debug.py").revert_output, "rev-1", {}, "rev-1")
 		turn = {"current_script": SCRIPTS["debug_script"]}
-		self._same(lib, "revert_output", logix_tools.revert_output, "rev-2", turn, "rev-2")
+		self._same(lib, "revert_output", library("logix_lib_debug.py").revert_output, "rev-2", turn, "rev-2")
 
 	def test_document_search_through_import_script(self):
 		search = self.libs[LUCRUSHER["library"]].search_dms_documents

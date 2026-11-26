@@ -1,13 +1,15 @@
 # Copyright (c) 2026, one-fm and contributors
 """Each Docu writer tool reports when its call started and ended, and how long it took, in its result."""
 
+from processa.tests.library import as_on_site, import_script, library
 import json
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from processa.patches.v1_0 import docu_writer_tools_record_their_timing as p
-from processa.ai_agent_registry.definitions.docu.tools import timed
+
+timed = library("docu_lib_schema.py").timed
 from processa.tests.site_scripts import as_deployed
 
 # The six scripts as the live site holds them.
@@ -96,7 +98,8 @@ class TestDocuWriterToolsRecordTheirTiming(FrappeTestCase):
 	def _run(self, api_method: str) -> dict:
 		result = {}
 		scope = {"frappe": frappe, "result": result, "doctype": "Note", "ir": IR, "search": "Note"}
-		exec(as_deployed(_script(api_method)), scope)
+		scope.setdefault("import_script", import_script)
+		exec(as_on_site(as_deployed(_script(api_method))), scope)
 		return result
 
 	def test_each_tool_result_carries_the_timing_of_its_call(self):

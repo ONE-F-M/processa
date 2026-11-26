@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """The Docu schema helpers moved into 'Docu: Lib Schema' on the Docu map."""
 
+from processa.tests.library import library
 import json
 from unittest.mock import MagicMock, patch
 
@@ -98,6 +99,17 @@ class TestDocuLibraryCode(FrappeTestCase):
 		self.assertEqual(move.uses_library(once), once)
 		other = "from processa.ai_agent_registry.definitions.docu.tools import timed\nresult['x'] = 1\n"
 		self.assertEqual(move.uses_library(other), other)
+
+	def test_a_function_the_script_defines_with_a_moved_name_keeps_its_name(self):
+		script = (
+			"from processa.ai_agent_registry.definitions.docu.tools import diff_ir\n"
+			"def diff_ir(a, b):\n"
+			"    return {}\n"
+			"changes = diff_ir(old, new)\n"
+		)
+		edited = move.uses_library(script)
+		self.assertIn("def diff_ir(a, b):", edited)
+		self.assertIn("changes = _schema.diff_ir(old, new)", edited)
 
 	def test_the_load_moves_above_a_use_that_comes_first(self):
 		script = (
@@ -228,7 +240,7 @@ class TestDocuLibraryOnTheMap(FrappeTestCase):
 		self.assertEqual(self.lib.diff_ir(self.todo, changed), tools.diff_ir(self.todo, changed))
 		live_a, live_b = json.loads(json.dumps(self.todo)), json.loads(json.dumps(self.todo))
 		self.lib.merge_into_live_fields(live_a, json.loads(json.dumps(changed)))
-		tools.merge_into_live_fields(live_b, json.loads(json.dumps(changed)))
+		library("docu_lib_schema.py").merge_into_live_fields(live_b, json.loads(json.dumps(changed)))
 		self.assertEqual(live_a, live_b)
 
 	def test_read_doctype_definition_through_import_script(self):
@@ -243,7 +255,7 @@ class TestDocuLibraryOnTheMap(FrappeTestCase):
 		pairs = (
 			(self.lib.list_doctypes, tools.list_doctypes, ("To",)),
 			(self.lib.doctype_exists, tools.doctype_exists, ("ToDo",)),
-			(self.lib.list_roles, tools.list_roles, ("Sys",)),
+			(self.lib.list_roles, library("docu_lib_schema.py").list_roles, ("Sys",)),
 			(self.lib.get_doctype_definition, tools.get_doctype_definition, ("ToDo",)),
 			(self.lib.get_doctype_fields, shared_tools.get_doctype_fields, ("ToDo",)),
 		)
@@ -253,7 +265,12 @@ class TestDocuLibraryOnTheMap(FrappeTestCase):
 	def test_a_tool_error_is_logged_and_answered_as_before(self):
 		pairs = (
 			(self.lib.list_doctypes, tools.list_doctypes, "get_all", "Docu Tool - list_doctypes"),
-			(self.lib.list_roles, tools.list_roles, "get_all", "Docu Tool - list_roles"),
+			(
+				self.lib.list_roles,
+				library("docu_lib_schema.py").list_roles,
+				"get_all",
+				"Docu Tool - list_roles",
+			),
 			(self.lib.doctype_exists, tools.doctype_exists, "db", "Docu Tool - doctype_exists"),
 			(
 				self.lib.get_doctype_definition,
@@ -298,6 +315,9 @@ class TestDocuLibraryOnTheMap(FrappeTestCase):
 		reply = self.lib.keep_unrequested_fields(self.todo, lib_ir, "Remove the priority field")
 		self.assertTrue(reply)
 		self.assertEqual(
-			reply, tools.keep_unrequested_fields(self.todo, backend_ir, "Remove the priority field")
+			reply,
+			library("docu_lib_schema.py").keep_unrequested_fields(
+				self.todo, backend_ir, "Remove the priority field"
+			),
 		)
 		self.assertEqual(lib_ir, backend_ir)

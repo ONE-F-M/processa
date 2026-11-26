@@ -14,7 +14,8 @@ imports (get_turn, get_agent_config, get_llm_adapter_from_settings, ...)
 patched so no real LLM call or BPMN compile happens.
 """
 
-from unittest.mock import AsyncMock, patch
+from contextlib import ExitStack
+from unittest.mock import MagicMock, AsyncMock, patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
@@ -26,6 +27,7 @@ from processa.patches.v1_0.inline_prosally_tool_scripts import (
 	GENERATE,
 	MODIFY,
 )
+from processa.tests.library import as_on_site, import_script, patch_libraries
 from processa.tests.site_scripts import as_deployed
 
 
@@ -34,7 +36,8 @@ class TestProsAllyTruncationHandling(FrappeTestCase):
 		ns = {"frappe": frappe, "context_docname": context_docname, "result": {}}
 		if extra_globals:
 			ns.update(extra_globals)
-		exec(compile(as_deployed(body), "<prosally-tool>", "exec"), ns)
+		ns.setdefault("import_script", import_script)
+		exec(compile(as_on_site(as_deployed(body)), "<prosally-tool>", "exec"), ns)
 		return ns
 
 	def _fake_adapter(self, *, raises=None, text="{}"):
@@ -44,7 +47,6 @@ class TestProsAllyTruncationHandling(FrappeTestCase):
 		else:
 			adapter.complete = AsyncMock(return_value=frappe._dict(text=text))
 		return adapter
-
 
 	def test_modify_process_truncated_writes_size_explanation_not_fallback(self):
 		turn = {
@@ -61,12 +63,17 @@ class TestProsAllyTruncationHandling(FrappeTestCase):
 
 		with (
 			patch("processa.processa_engine.agent_runtime.turn_state.get_turn", return_value=turn),
-			patch("processa.processa_engine.agent_runtime.turn_state.update_turn", side_effect=fake_update_turn),
+			patch(
+				"processa.processa_engine.agent_runtime.turn_state.update_turn", side_effect=fake_update_turn
+			),
 			patch(
 				"processa.ai_agent_registry.doctype.ai_agent_configuration.ai_agent_configuration.get_agent_config",
 				return_value={"sub_prompts": {}, "max_tokens": 1024, "agent_id": "prosally_agent"},
 			),
-			patch("processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter_from_settings", return_value=adapter),
+			patch(
+				"processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter_from_settings",
+				return_value=adapter,
+			),
 		):
 			ns = self._run_script(MODIFY)
 
@@ -93,7 +100,6 @@ class TestProsAllyTruncationHandling(FrappeTestCase):
 		self.assertNotIn("fallback", ns["result"])
 		mock_update.assert_not_called()
 
-
 	def test_modify_process_uses_configured_max_tokens_above_floor(self):
 		turn = {"process_name": "P", "chat_history": [], "current_xml": ""}
 		adapter = self._fake_adapter(raises=LLMTruncatedError("still truncated"))
@@ -105,7 +111,10 @@ class TestProsAllyTruncationHandling(FrappeTestCase):
 				"processa.ai_agent_registry.doctype.ai_agent_configuration.ai_agent_configuration.get_agent_config",
 				return_value={"sub_prompts": {}, "max_tokens": 32000, "agent_id": "prosally_agent"},
 			),
-			patch("processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter_from_settings", return_value=adapter),
+			patch(
+				"processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter_from_settings",
+				return_value=adapter,
+			),
 		):
 			self._run_script(MODIFY)
 
@@ -126,7 +135,10 @@ class TestProsAllyTruncationHandling(FrappeTestCase):
 				"processa.ai_agent_registry.doctype.ai_agent_configuration.ai_agent_configuration.get_agent_config",
 				return_value={"sub_prompts": {}, "max_tokens": 1024, "agent_id": "prosally_agent"},
 			),
-			patch("processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter_from_settings", return_value=adapter),
+			patch(
+				"processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter_from_settings",
+				return_value=adapter,
+			),
 		):
 			self._run_script(MODIFY)
 
@@ -144,7 +156,10 @@ class TestProsAllyTruncationHandling(FrappeTestCase):
 				"processa.ai_agent_registry.doctype.ai_agent_configuration.ai_agent_configuration.get_agent_config",
 				return_value={"sub_prompts": {}, "max_tokens": 20000, "agent_id": "prosally_agent"},
 			),
-			patch("processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter_from_settings", return_value=adapter),
+			patch(
+				"processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter_from_settings",
+				return_value=adapter,
+			),
 		):
 			ns = self._run_script(GENERATE)
 
@@ -152,7 +167,6 @@ class TestProsAllyTruncationHandling(FrappeTestCase):
 		self.assertEqual(kwargs.get("max_tokens"), 20000)
 		self.assertTrue(ns["result"].get("truncated"))
 		self.assertIn("too large", ns["result"].get("response", "").lower())
-
 
 	def test_modify_process_normal_completion_still_succeeds(self):
 		"""A completion that returns cleanly (no LLMTruncatedError) must still
@@ -177,17 +191,30 @@ class TestProsAllyTruncationHandling(FrappeTestCase):
 
 		with (
 			patch("processa.processa_engine.agent_runtime.turn_state.get_turn", return_value=turn),
-			patch("processa.processa_engine.agent_runtime.turn_state.update_turn", side_effect=fake_update_turn),
+			patch(
+				"processa.processa_engine.agent_runtime.turn_state.update_turn", side_effect=fake_update_turn
+			),
 			patch(
 				"processa.ai_agent_registry.doctype.ai_agent_configuration.ai_agent_configuration.get_agent_config",
 				return_value={"sub_prompts": {}, "max_tokens": 16384, "agent_id": "prosally_agent"},
 			),
-			patch("processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter_from_settings", return_value=adapter),
-			patch("processa.ai_agent_registry.definitions.prosally.tools_pipeline.compile_ir", return_value=fake_compile_result),
-			patch("processa.ai_agent_registry.definitions.prosally.tools_pipeline.extract_process_name", return_value="Onboarding"),
-			patch("processa.ai_agent_registry.definitions.prosally.tools_pipeline.extract_element_ids", return_value=""),
-			patch("processa.ai_agent_registry.definitions.prosally.validators.validate_bpmn_xml", return_value={"valid": True}),
+			patch(
+				"processa.processa_engine.agent_runtime.llm_factory.get_llm_adapter_from_settings",
+				return_value=adapter,
+			),
+			patch(
+				"processa.ai_agent_registry.definitions.prosally.validators.validate_bpmn_xml",
+				return_value={"valid": True},
+			),
+			ExitStack() as stack,
 		):
+			for patcher in (
+				*patch_libraries("compile_ir", MagicMock(return_value=fake_compile_result)),
+				*patch_libraries("extract_process_name", MagicMock(return_value="Onboarding")),
+				*patch_libraries("extract_element_ids", MagicMock(return_value="")),
+				*patch_libraries("validate_bpmn_xml", MagicMock(return_value={"valid": True})),
+			):
+				stack.enter_context(patcher)
 			ns = self._run_script(MODIFY)
 
 		result = ns["result"]

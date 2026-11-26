@@ -11,6 +11,7 @@ Run with:
 """
 
 from __future__ import annotations
+from processa.tests.library import library
 
 import importlib.util
 from pathlib import Path
@@ -30,7 +31,7 @@ DOCU_SCRIPTS = (
 	"Docu – Tool Finalize",
 )
 
-# Every name the map's scripts import from the shared module.
+# Every name the map's scripts use, from the backend or from Docu: Lib Schema.
 REQUIRED_CALLABLES = (
 	"list_doctypes",
 	"doctype_exists",
@@ -92,7 +93,11 @@ class TestSharedSchemaTools(FrappeTestCase):
 	def test_exports_every_name_the_map_imports(self):
 		for name in REQUIRED_CALLABLES:
 			self.assertTrue(
-				callable(getattr(tools, name, None) or getattr(shared_tools, name, None)),
+				callable(
+					getattr(tools, name, None)
+					or getattr(shared_tools, name, None)
+					or getattr(library("docu_lib_schema.py"), name, None)
+				),
 				msg=f"{name} missing/not callable",
 			)
 		for name in REQUIRED_TUPLES:
@@ -128,14 +133,18 @@ class TestSharedSchemaTools(FrappeTestCase):
 			self.assertEqual(unlabelled, [], msg="layout break label fell back to the fieldname")
 
 	def test_diff_ir_reports_added_removed_and_changed(self):
-		before = {"fields": [
-			{"fieldname": "a", "label": "A", "fieldtype": "Data", "reqd": 0},
-			{"fieldname": "gone", "label": "Gone", "fieldtype": "Int"},
-		]}
-		after = {"fields": [
-			{"fieldname": "a", "label": "A", "fieldtype": "Data", "reqd": 1},
-			{"fieldname": "new", "label": "New", "fieldtype": "Small Text"},
-		]}
+		before = {
+			"fields": [
+				{"fieldname": "a", "label": "A", "fieldtype": "Data", "reqd": 0},
+				{"fieldname": "gone", "label": "Gone", "fieldtype": "Int"},
+			]
+		}
+		after = {
+			"fields": [
+				{"fieldname": "a", "label": "A", "fieldtype": "Data", "reqd": 1},
+				{"fieldname": "new", "label": "New", "fieldtype": "Small Text"},
+			]
+		}
 		d = tools.diff_ir(before, after)
 		self.assertEqual([f["fieldname"] for f in d["added"]], ["new"])
 		self.assertEqual([f["fieldname"] for f in d["removed"]], ["gone"])
@@ -154,8 +163,13 @@ class TestSharedSchemaTools(FrappeTestCase):
 	def test_validate_doctype_json_wraps_the_schema_gate(self):
 		import json
 
-		good = json.dumps({"doctype_name": "Rip Probe", "module": "Processa Engine",
-		                   "fields": [{"fieldname": "x", "label": "X", "fieldtype": "Data"}]})
+		good = json.dumps(
+			{
+				"doctype_name": "Rip Probe",
+				"module": "Processa Engine",
+				"fields": [{"fieldname": "x", "label": "X", "fieldtype": "Data"}],
+			}
+		)
 		self.assertTrue(json.loads(tools.validate_doctype_json(good))["valid"])
 		bad = json.loads(tools.validate_doctype_json("{not json"))
 		self.assertFalse(bad["valid"])
@@ -243,7 +257,9 @@ class TestKeepUnrequestedFields(FrappeTestCase):
 	def test_a_proposal_that_omits_amended_from_keeps_all_89_fields(self):
 		current = _submittable_ir()
 		proposed = _without(current, "amended_from")
-		reply = tools.keep_unrequested_fields(current, proposed, "Make Field 1 mandatory.")
+		reply = library("docu_lib_schema.py").keep_unrequested_fields(
+			current, proposed, "Make Field 1 mandatory."
+		)
 		self.assertEqual(len(proposed["fields"]), 89)
 		self.assertEqual(proposed["fields"][-1]["fieldname"], "amended_from")
 		self.assertIn("Amended From", reply)
@@ -251,13 +267,15 @@ class TestKeepUnrequestedFields(FrappeTestCase):
 	def test_amended_from_is_kept_even_when_the_request_names_it(self):
 		current = _submittable_ir()
 		proposed = _without(current, "amended_from")
-		tools.keep_unrequested_fields(current, proposed, "Remove the Amended From field.")
+		library("docu_lib_schema.py").keep_unrequested_fields(
+			current, proposed, "Remove the Amended From field."
+		)
 		self.assertIn("amended_from", [f["fieldname"] for f in proposed["fields"]])
 
 	def test_a_field_added_earlier_comes_back_in_its_place(self):
 		current = _submittable_ir()
 		proposed = _without(current, "phone")
-		reply = tools.keep_unrequested_fields(current, proposed, "Add a Notes field.")
+		reply = library("docu_lib_schema.py").keep_unrequested_fields(current, proposed, "Add a Notes field.")
 		names = [f["fieldname"] for f in proposed["fields"]]
 		self.assertEqual(names.index("phone") + 1, names.index("fax"))
 		self.assertEqual(tools.diff_ir(current, proposed)["removed"], [])
@@ -266,13 +284,15 @@ class TestKeepUnrequestedFields(FrappeTestCase):
 	def test_only_the_field_the_request_removes_is_left_out_for_the_confirm_step(self):
 		current = _submittable_ir()
 		proposed = _without(current, "fax", "phone")
-		tools.keep_unrequested_fields(current, proposed, "Remove the Fax field.")
+		library("docu_lib_schema.py").keep_unrequested_fields(current, proposed, "Remove the Fax field.")
 		self.assertEqual([f["fieldname"] for f in tools.diff_ir(current, proposed)["removed"]], ["fax"])
 
 	def test_a_proposal_that_drops_nothing_is_left_as_it_is_and_says_nothing(self):
 		current = _submittable_ir()
 		proposed = _without(current)
-		self.assertEqual(tools.keep_unrequested_fields(current, proposed, "Rename Field 1."), "")
+		self.assertEqual(
+			library("docu_lib_schema.py").keep_unrequested_fields(current, proposed, "Rename Field 1."), ""
+		)
 		self.assertEqual(proposed, current)
 
 	def test_a_child_table_column_the_request_did_not_remove_comes_back(self):
@@ -289,7 +309,7 @@ class TestKeepUnrequestedFields(FrappeTestCase):
 				}
 			]
 		}
-		reply = tools.keep_unrequested_fields(
+		reply = library("docu_lib_schema.py").keep_unrequested_fields(
 			{"fields": []}, proposed, "Add a Note column to the roles table."
 		)
 		self.assertIn(dropped["fieldname"], [c["fieldname"] for c in proposed["fields"][0]["child_fields"]])
@@ -307,7 +327,7 @@ class TestMergeIntoLiveFields(FrappeTestCase):
 
 	def test_a_field_sent_again_updates_the_first_copy(self):
 		proposed = {"fields": [dict(f) for f in self.LIVE["fields"]] + [{"fieldname": "phone", "reqd": 1}]}
-		tools.merge_into_live_fields(self.LIVE, proposed)
+		library("docu_lib_schema.py").merge_into_live_fields(self.LIVE, proposed)
 		self.assertEqual([f["fieldname"] for f in proposed["fields"]], ["phone", "contact_section", "email"])
 		self.assertEqual(proposed["fields"][0]["reqd"], 1)
 
@@ -318,7 +338,7 @@ class TestMergeIntoLiveFields(FrappeTestCase):
 				*[dict(f) for f in self.LIVE["fields"][1:]],
 			]
 		}
-		tools.merge_into_live_fields(self.LIVE, proposed)
+		library("docu_lib_schema.py").merge_into_live_fields(self.LIVE, proposed)
 		self.assertEqual([f["fieldname"] for f in proposed["fields"]], ["phone", "contact_section", "email"])
 		self.assertEqual(proposed["fields"][0]["options"], "Phone")
 
@@ -330,5 +350,5 @@ class TestMergeIntoLiveFields(FrappeTestCase):
 				{"fieldname": "mobile", "label": "Mobile", "fieldtype": "Data"},
 			]
 		}
-		tools.merge_into_live_fields(self.LIVE, proposed)
+		library("docu_lib_schema.py").merge_into_live_fields(self.LIVE, proposed)
 		self.assertEqual(len(proposed["fields"]), 5)

@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """A request for a step the sub-process already has is answered with what is there, never with an Apply card."""
 
+from processa.tests.library import library
 import ast
 import json
 from types import SimpleNamespace
@@ -9,7 +10,9 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_replies import describe_changes, no_change_reply, similar_steps
+describe_changes = library("prosally_lib_replies.py").describe_changes
+no_change_reply = library("prosally_lib_replies.py").no_change_reply
+similar_steps = library("prosally_lib_stage_replies.py").similar_steps
 from processa.processa_engine.agent_runtime.turn_state import clear_turn, get_turn, set_turn
 from processa.patches.v1_0 import prosally_says_what_is_already_there as already_patch
 

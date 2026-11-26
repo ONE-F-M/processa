@@ -6,6 +6,7 @@ Run with:
 """
 
 from __future__ import annotations
+from processa.tests.library import library
 
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -14,7 +15,6 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from processa.ai_agent_memory import budget as B
-from processa.ai_agent_registry.definitions.prosally import helpers
 from processa.processa_engine.dispatch import ai_agent as D
 from processa.patches.v1_0 import prosally_memory_follows_agent_configuration as config_patch
 
@@ -25,11 +25,11 @@ DRAWN = {"intent": "BPMN_GENERATED", "response": "Drew it."}
 
 class TestRecallFollowsTheConfiguration(FrappeTestCase):
 	def _recall(self, fields):
-		with patch.object(helpers, "prosally_config", return_value={"name": "CFG"}), patch.object(helpers, "_memory_fields", return_value=fields
-		), patch.object(helpers, "process_for_diagram", return_value="Zz Process"), patch(
+		with patch.object(library("prosally_lib_context.py"), "prosally_config", return_value={"name": "CFG"}), patch.object(library("prosally_lib_context.py"), "_memory_fields", return_value=fields
+		), patch.object(library("prosally_lib_context.py"), "process_for_diagram", return_value="Zz Process"), patch(
 			"processa.ai_agent_memory.tools.memory_search", return_value=[{"content": "a note"}]
 		) as search:
-			return helpers.recall_process_memory("Zz Process - v1"), search
+			return library("prosally_lib_context.py").recall_process_memory("Zz Process - v1"), search
 
 	def test_long_term_memory_disabled_recalls_nothing(self):
 		recalled, search = self._recall({"long_term_memory": "Disabled", "memory_write_mode": "distilled"})
@@ -55,9 +55,9 @@ class TestRecallFollowsTheConfiguration(FrappeTestCase):
 class TestWriteFollowsTheConfiguration(FrappeTestCase):
 	def _queue(self, fields):
 		cfg = {"name": "CFG", "ai_model": "agent-model", "ai_provider": "p"}
-		with patch.object(helpers, "prosally_config", return_value=cfg), patch.object(helpers, "_memory_fields", return_value=fields
+		with patch.object(library("prosally_lib_context.py"), "prosally_config", return_value=cfg), patch.object(library("prosally_lib_context.py"), "_memory_fields", return_value=fields
 		), patch.object(frappe, "enqueue") as enqueue:
-			helpers.queue_process_memory(TURN, DRAWN)
+			library("prosally_lib_context.py").queue_process_memory(TURN, DRAWN)
 		return enqueue
 
 	def test_distilled_writes_queue(self):

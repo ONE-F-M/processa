@@ -1,13 +1,14 @@
 # Copyright (c) 2026, one-fm and contributors
 # For license information, please see license.txt
 
+from processa.tests.library import library
 from itertools import pairwise
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import compile_ir
-from processa.ai_agent_registry.definitions.prosally.tools_properties import describe_task_config
+compile_ir = library("prosally_lib_layout.py").compile_ir
+describe_task_config = library("prosally_lib_map_xml.py").describe_task_config
 from processa.patches.v1_0 import prosally_says_what_it_sets as patch
 
 START = {

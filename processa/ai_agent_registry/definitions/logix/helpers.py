@@ -6,9 +6,7 @@ import re
 import xml.etree.ElementTree as ET
 
 import frappe
-from frappe.model import child_table_fields, default_fields, display_fieldtypes, optional_fields
-from frappe.model.document import Document
-from frappe.utils.safe_exec import SERVER_SCRIPT_FILE_PREFIX
+from frappe.model import child_table_fields, default_fields, optional_fields
 
 from processa.ai_agent_security.code_checks.script_validator import runs_code_on_import
 
@@ -37,45 +35,6 @@ FIELD_QUERIES = {
 	"count": None,
 	"delete": None,
 }
-
-
-def debug_inputs(user_text: str, original_script_content: str, current_script: str) -> dict:
-	"""The script under debug and its newest error; what the person pasted wins over the saved script."""
-	user_text = user_text or ""
-	script_text = _saved_script(current_script) or original_script_content or ""
-	for block in CODE_FENCE.findall(user_text):
-		if TRACEBACK not in block:
-			script_text = block.strip()
-			break
-
-	at = user_text.find(TRACEBACK)
-	last_error = user_text[at:][-ERROR_CHARS:] if at != -1 else _logged_error(current_script)
-	return {"script_text": script_text, "last_error": last_error}
-
-
-def _saved_script(script_name: str) -> str:
-	return (script_name and frappe.db.get_value("Server Script", script_name, "script")) or ""
-
-
-def _logged_error(script_name: str) -> str:
-	"""The newest Error Log raised by this script, whichever path ran it, with when it and the script were saved."""
-	if not script_name:
-		return ""
-	rows = frappe.get_all(
-		"Error Log",
-		or_filters=[
-			["method", "=", ENGINE_ERROR_TITLE.format(script_name)],
-			["method", "=", CHECK_ERROR_TITLE.format(script_name)],
-			["error", "like", f'%{SERVER_SCRIPT_FILE_PREFIX}: {frappe.scrub(script_name)}"%'],
-		],
-		fields=["error", "creation"],
-		order_by="creation desc",
-		limit=1,
-	)
-	if not rows:
-		return ""
-	saved = frappe.db.get_value("Server Script", script_name, "modified")
-	return f"Logged {rows[0].creation}; the script was last saved {saved}.\n{rows[0].error[-ERROR_CHARS:]}"
 
 
 def step_functions(process_model: str | None, current_script: str = "") -> list[dict]:
@@ -186,100 +145,6 @@ def step_function_text(steps: list[dict]) -> str:
 	return "\n".join(lines)
 
 
-def doctype_inputs(user_text: str, process_context: dict | None, current_script: str) -> dict:
-	"""The fields of each DocType the turn is about, and the DocTypes it names that do not exist."""
-	names, missing = _turn_doctypes(user_text or "", process_context or {}, current_script)
-	return {
-		"doctype_fields": {name: field_list(name) for name in names},
-		"missing_doctypes": missing,
-		"doc_doctype": _trigger_doctype(process_context or {}) or _this_doctype(user_text or ""),
-	}
-
-
-def field_findings(code: str, turn: dict) -> list[dict]:
-	"""A finding for each field the script reads or writes that its DocType does not have."""
-	try:
-		tree = ast.parse(code)
-	except SyntaxError:
-		return []
-	lines = code.splitlines()
-	bound = {"doc": turn.get("doc_doctype")} if turn.get("doc_doctype") else {}
-	for node in ast.walk(tree):
-		if not isinstance(node, ast.Assign) or len(node.targets) != 1:
-			continue
-		doctype = _loaded_doctype(node.value)
-		if doctype and isinstance(node.targets[0], ast.Name):
-			bound[node.targets[0].id] = doctype
-
-	findings, seen = [], set()
-	for node in ast.walk(tree):
-		for doctype, field in _used_fields(node, bound):
-			if (doctype, field) in seen:
-				continue
-			seen.add((doctype, field))
-			finding = _field_finding(doctype, field)
-			if finding:
-				findings.append(dict(finding, line=node.lineno, code=lines[node.lineno - 1].strip()))
-	return findings
-
-
-def field_list(doctype: str) -> dict:
-	"""The data fields of a DocType and of each of its child tables."""
-	meta = frappe.get_meta(doctype)
-	return {
-		"fields": [f.fieldname for f in meta.fields if f.fieldtype not in display_fieldtypes],
-		"child_tables": {
-			f.fieldname: {
-				"doctype": f.options,
-				"fields": [
-					c.fieldname
-					for c in frappe.get_meta(f.options).fields
-					if c.fieldtype not in display_fieldtypes
-				],
-			}
-			for f in meta.get_table_fields()
-		},
-	}
-
-
-def _turn_doctypes(user_text: str, process_context: dict, current_script: str) -> tuple[list[str], list[str]]:
-	"""The start event's DocType, the linked script's and those the request names, in that order."""
-	candidates = [_trigger_doctype(process_context)]
-	if current_script:
-		candidates.append(frappe.db.get_value("Server Script", current_script, "reference_doctype"))
-	missing = []
-	for match in NAMED_DOCTYPE.finditer(user_text):
-		words = match.group(1).split()
-		found = next(
-			(" ".join(words[i:]) for i in range(len(words)) if _is_doctype(" ".join(words[i:]))), None
-		)
-		if found:
-			candidates.append(found)
-		elif match.group(2).lower() == "doctype":
-			missing.append(match.group(1))
-	for match in REFERRED_DOCTYPE.finditer(user_text):
-		candidates.append(_leading_doctype(match.group(2).split()))
-	names = []
-	for name in candidates:
-		if not name or name in names:
-			continue
-		if _is_doctype(name):
-			names.append(name)
-		elif name not in missing:
-			missing.append(name)
-	return names[:MAX_DOCTYPES], missing
-
-
-def _this_doctype(user_text: str) -> str | None:
-	"""The DocType the request calls "this X": the record the script task runs on."""
-	for match in REFERRED_DOCTYPE.finditer(user_text):
-		if match.group(1).lower() == "this":
-			found = _leading_doctype(match.group(2).split())
-			if found:
-				return found
-	return None
-
-
 def _leading_doctype(words: list[str]) -> str | None:
 	"""The longest run of leading words that names a DocType."""
 	return next(
@@ -292,35 +157,6 @@ def _trigger_doctype(process_context: dict) -> str | None:
 	return process_id and frappe.db.get_value(
 		"BPMN Process Model", {"process_id": process_id}, "trigger_doctype", order_by="modified desc"
 	)
-
-
-def _loaded_doctype(value) -> str | None:
-	"""The DocType of frappe.get_doc("X", ...), frappe.new_doc("X") or frappe.get_doc({"doctype": "X", ...})."""
-	if not (
-		isinstance(value, ast.Call)
-		and isinstance(value.func, ast.Attribute)
-		and value.func.attr in DOC_LOADERS
-	):
-		return None
-	first = value.args[0] if value.args else None
-	if isinstance(first, ast.Dict):
-		return _dict_doctype(first)
-	return first.value if isinstance(first, ast.Constant) and isinstance(first.value, str) else None
-
-
-def _used_fields(node, bound: dict):
-	"""(DocType, field) pairs a node reads or writes."""
-	owner = node.value.id if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) else None
-	if owner in bound:
-		if not hasattr(Document, node.attr):
-			yield bound[owner], node.attr
-	elif isinstance(node, ast.Dict) and _dict_doctype(node):
-		doctype = _dict_doctype(node)
-		for key in node.keys:
-			if isinstance(key, ast.Constant) and isinstance(key.value, str) and key.value != "doctype":
-				yield doctype, key.value
-	elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-		yield from _called_fields(node, bound)
 
 
 def _called_fields(node: ast.Call, bound: dict):
@@ -372,28 +208,6 @@ def _field_names(node) -> list[str]:
 				names.append(entry.value)
 		return names
 	return []
-
-
-def _field_finding(doctype: str, field: str | None) -> dict | None:
-	"""A finding when the DocType does not exist, or the field is not one of its fields."""
-	if not _is_doctype(doctype):
-		return {
-			"category": "Field check",
-			"name": doctype,
-			"rule": f"{doctype} is not a DocType on this site. Do not guess one; ask which DocType the person means.",
-		}
-	field = (field or "").split(" as ")[0].strip()
-	if not field or field in STANDARD_FIELDS:
-		return None
-	if any(c in field for c in "(*`."):
-		return None
-	if frappe.get_meta(doctype).has_field(field):
-		return None
-	return {
-		"category": "Field check",
-		"name": field,
-		"rule": f"{field} is not a field of {doctype}. Use one of its fields, or ask which field the person means.",
-	}
 
 
 def _is_doctype(name: str) -> bool:

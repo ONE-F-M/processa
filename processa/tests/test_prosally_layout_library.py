@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """The ProsAlly layout helpers moved into 'ProsAlly: Lib Layout', with subprocess approved by the patch."""
 
+from processa.tests.library import library
 import copy
 import json
 from types import SimpleNamespace
@@ -9,7 +10,7 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import tools_pipeline, tools_replies, tools_review
+from processa.ai_agent_registry.definitions.prosally import tools_pipeline
 from processa.ai_agent_security.code_checks.script_gate import collect_script_security_violations
 from processa.ai_agent_security.code_checks.script_validator import runs_code_on_import, validate_script
 from processa.patches.v1_0 import prosally_ir_move_to_library as ir
@@ -198,12 +199,12 @@ class TestProsAllyLayoutLibraryOnTheMap(FrappeTestCase):
 
 	def test_compile_and_relayout_through_import_script(self):
 		ir = json.loads(json.dumps(STEPS))
-		self.assertSame("compile_ir", tools_pipeline.compile_ir, ir)
-		xml = tools_pipeline.compile_ir(json.loads(json.dumps(STEPS)))["xml"]
-		self.assertSame("relayout", tools_review.relayout, xml)
-		self.assertSame("relayout_output", tools_review.relayout_output, xml, "space the steps out")
-		self.assertSame("layout_note", tools_replies.layout_note, xml, xml, "line them up")
-		self.assertSame("layout_note", tools_replies.layout_note, xml, xml, "add a step")
+		self.assertSame("compile_ir", library("prosally_lib_layout.py").compile_ir, ir)
+		xml = library("prosally_lib_layout.py").compile_ir(json.loads(json.dumps(STEPS)))["xml"]
+		self.assertSame("relayout", library("prosally_lib_layout.py").relayout, xml)
+		self.assertSame("relayout_output", library("prosally_lib_layout.py").relayout_output, xml, "space the steps out")
+		self.assertSame("layout_note", library("prosally_lib_layout.py").layout_note, xml, xml, "line them up")
+		self.assertSame("layout_note", library("prosally_lib_layout.py").layout_note, xml, xml, "add a step")
 
 	def test_diagram_edit_through_import_script(self):
 		diagram = _diagram(lanes=True)
@@ -212,4 +213,4 @@ class TestProsAllyLayoutLibraryOnTheMap(FrappeTestCase):
 			"Rename Prepare to Prepare payslip",
 			"Draw a new process",
 		):
-			self.assertSame("diagram_edit_output", tools_review.diagram_edit_output, diagram, text)
+			self.assertSame("diagram_edit_output", library("prosally_lib_layout.py").diagram_edit_output, diagram, text)

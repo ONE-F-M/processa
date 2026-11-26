@@ -9,6 +9,7 @@ from unittest.mock import patch
 from frappe.tests.utils import FrappeTestCase
 
 from processa.patches.v1_0 import lucrusher_scan_counts_and_matching as p
+from processa.tests.library import as_on_site, import_script, library
 from processa.tests.site_scripts import as_deployed
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -56,11 +57,11 @@ def _run_scan(doctypes, hooks):
 	}
 	stored = {}
 	with (
-		patch("processa.ai_agent_registry.definitions.lucrusher.tools.get_codebase_index", return_value=index),
-		patch("processa.ai_agent_registry.definitions.lucrusher.tools.find_whitelisted_methods", return_value=[]),
+		patch.object(library("lucrusher_lib_codebase.py"), "get_codebase_index", return_value=index),
+		patch.object(library("lucrusher_lib_codebase.py"), "find_whitelisted_methods", return_value=[]),
 		patch("processa.processa_engine.agent_runtime.turn_state.update_turn", side_effect=lambda _name, **kw: stored.update(kw)),
 	):
-		exec(as_deployed(script), scope, {})  # noqa: S102 - the patched script text under test
+		exec(as_on_site(as_deployed(script)), {**scope, "import_script": import_script}, {})  # noqa: S102 - the patched script text under test
 	return scope["result"]["codebase_scan"], stored["full_scan"]
 
 

@@ -1,16 +1,21 @@
 # Copyright (c) 2026, one-fm and contributors
 """An existing step becomes an expanded sub-process holding the steps described, and nothing else changes."""
 
+from processa.tests.library import library
 import copy
 import json
 from xml.etree import ElementTree as ET
 
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally.tools_pipeline import compile_ir
-from processa.ai_agent_registry.definitions.prosally.tools_subprocess import asks_to_make_call_activity, convert_step_to_subprocess, find_missing_target, resolve_step, restore_call_activities
-from processa.ai_agent_registry.definitions.prosally.tools_properties import transfer_properties
-from processa.ai_agent_registry.definitions.prosally.tools_review import diagram_edit_output
+compile_ir = library("prosally_lib_layout.py").compile_ir
+asks_to_make_call_activity = library("prosally_lib_replies.py").asks_to_make_call_activity
+convert_step_to_subprocess = library("prosally_lib_map_xml.py").convert_step_to_subprocess
+find_missing_target = library("prosally_lib_map_xml.py").find_missing_target
+resolve_step = library("prosally_lib_map_xml.py").resolve_step
+restore_call_activities = library("prosally_lib_map_xml.py").restore_call_activities
+transfer_properties = library("prosally_lib_map_xml.py").transfer_properties
+diagram_edit_output = library("prosally_lib_layout.py").diagram_edit_output
 from processa.ai_agent_registry.definitions.prosally.validators import validate_bpmn_xml
 from processa.tests.test_prosally_subprocess_scope import STEPS
 

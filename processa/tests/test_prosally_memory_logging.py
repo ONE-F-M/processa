@@ -6,13 +6,13 @@ Run with:
 """
 
 from __future__ import annotations
+from processa.tests.library import library
 
 from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from processa.ai_agent_registry.definitions.prosally import helpers
 from processa.ai_agent_memory import writeback
 
 TURN = {"memory_process": "Zz Process", "user_text": "yes", "memory_notes": [], "chat_history": []}
@@ -27,9 +27,9 @@ def _titles(log_error):
 class TestQueueLogsItsDecision(FrappeTestCase):
 	def _queue(self, turn, agent_result, fields=DISTILLED):
 		cfg = {"name": "CFG", "ai_model": "m", "ai_provider": "p"}
-		with patch.object(helpers, "prosally_config", return_value=cfg), patch.object(helpers, "_memory_fields", return_value=fields
+		with patch.object(library("prosally_lib_context.py"), "prosally_config", return_value=cfg), patch.object(library("prosally_lib_context.py"), "_memory_fields", return_value=fields
 		), patch.object(frappe, "enqueue") as enqueue, patch.object(frappe, "log_error") as log_error:
-			helpers.queue_process_memory(turn, agent_result)
+			library("prosally_lib_context.py").queue_process_memory(turn, agent_result)
 		return enqueue, log_error
 
 	def test_a_queued_write_is_logged(self):

@@ -1,6 +1,7 @@
 # Copyright (c) 2026, one-fm and contributors
 """ProsAlly names whether a process is executable in its confirmation and sets the IR flag when drawing."""
 
+from processa.tests.library import library
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
@@ -32,7 +33,7 @@ class TestExecutableOrNot(FrappeTestCase):
 
 	def test_generator_system_prompt_carries_the_skill(self):
 		from processa.ai_agent_registry.definitions.prosally.helpers import prosally_config
-		from processa.ai_agent_registry.definitions.prosally.tools_prompts import stage_system_prompt
+		stage_system_prompt = library("prosally_lib_map_xml.py").stage_system_prompt
 
 		system = stage_system_prompt(prosally_config(), "process_generator", patch.SKILLS_CONSTANT)
 		self.assertIn("## Skill: " + patch.SKILL, system)
