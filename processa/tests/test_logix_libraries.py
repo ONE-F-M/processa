@@ -181,3 +181,21 @@ class TestLogixLibrariesOnTheMap(FrappeTestCase):
 	def test_read_doctype_sources_through_import_script(self):
 		_replies, sources = self._libraries()
 		self.assertEqual(sources.read_doctype_sources(["ToDo"], 20), read_doctype_sources(["ToDo"], 20))
+
+	def test_a_task_with_nothing_to_approve_gets_no_request(self):
+		frappe.db.set_value("Server Script", SCRIPTS["review_script"], "script", "result = 1\n")
+		frappe.db.delete(
+			"Script Approval Request", {"process_name": "Logix Test", "script_task": "review_script"}
+		)
+		with patch("processa.api.deploy.compile_process_model"):
+			move.execute()
+		self.assertFalse(
+			frappe.db.exists(
+				"Script Approval Request", {"process_name": "Logix Test", "script_task": "review_script"}
+			)
+		)
+		self.assertTrue(
+			frappe.db.exists(
+				"Script Approval Request", {"process_name": "Logix Test", "script_task": "read_doctype_logic"}
+			)
+		)

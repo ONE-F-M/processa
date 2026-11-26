@@ -15,6 +15,8 @@ from frappe.utils import now_datetime
 
 from processa.ai_agent_registry.definitions.prosally.helpers import NS
 from processa.ai_agent_registry.definitions.prosally.tools_subprocess import put_back_libraries
+from processa.ai_agent_security.code_checks.script_gate import script_task_findings
+from processa.ai_agent_security.code_checks.script_validator import NOT_APPROVABLE
 from processa.patches.v1_0.prosally_scope_modify_to_subprocess import with_edits
 
 MODEL_NAME = "Logix \u2013 Script Task Agent"
@@ -153,6 +155,10 @@ def _approve(process: str, task_id: str, server_script: str) -> None:
 		"Script Approval Request",
 		{"process_name": process, "script_task": task_id, "source": "Shipped by patch", "reason": REASON},
 	):
+		return
+	code = frappe.db.get_value("Server Script", server_script, "script") or ""
+	findings = script_task_findings(code, process, task_id, server_script)
+	if all(f["category"] in NOT_APPROVABLE for f in findings):
 		return
 	request = frappe.get_doc(
 		{
