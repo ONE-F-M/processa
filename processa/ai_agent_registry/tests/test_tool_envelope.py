@@ -10,6 +10,7 @@ from frappe.tests.utils import FrappeTestCase
 from processa.ai_agent_registry.definitions.docu import tools as docu_tools
 from processa.ai_agent_registry.definitions.logix import tools as logix_tools
 from processa.ai_agent_registry.definitions.shared import tools as shared_tools
+from processa.ai_agent_registry.definitions.shared import tools_doctypes
 from processa.ai_agent_registry.definitions.shared.helpers import tool_envelope
 
 BROKEN = RuntimeError("database went away")
@@ -36,6 +37,37 @@ CASES = (
 		json.dumps({"error": "Failed to fetch fields for DocType 'ToDo'."}),
 	),
 	(docu_tools.list_doctypes, (frappe, "get_all"), {"search": "To"}, json.dumps([])),
+	(
+		tools_doctypes.check_doctype_exists,
+		(frappe.db, "exists"),
+		{"doctype_name": "ToDo"},
+		{"status": "failure", "exists": False, "message": "Error checking DocType 'ToDo'."},
+	),
+	(
+		tools_doctypes.check_module_exists,
+		(frappe.db, "exists"),
+		{"module_name": "Desk"},
+		{"status": "failure", "exists": False, "message": "Error checking Module 'Desk'."},
+	),
+	(
+		tools_doctypes.check_permission,
+		(frappe, "has_permission"),
+		{"doctype": "ToDo"},
+		{"error": "Failed to check read permission on ToDo."},
+	),
+	(tools_doctypes.get_doctype_list, (frappe, "get_list"), {}, {"error": "Failed to list DocTypes."}),
+	(
+		tools_doctypes.list_available_doctypes,
+		(frappe, "get_list"),
+		{},
+		json.dumps({"error": "Failed to list DocTypes."}),
+	),
+	(
+		tools_doctypes.get_doctype_schema,
+		(frappe, "get_meta"),
+		{"doctype": "ToDo"},
+		json.dumps({"error": "Failed to read the schema of DocType 'ToDo'."}),
+	),
 	(
 		docu_tools.list_roles,
 		(frappe, "get_all"),
