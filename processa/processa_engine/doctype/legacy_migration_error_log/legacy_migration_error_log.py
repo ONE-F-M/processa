@@ -32,6 +32,8 @@ class LegacyMigrationErrorLog(Document):
 			"Timed out",
 			"Error",
 			"No longer open",
+			"Needs attention: no assignee",
+			"Needs attention: status and step differ",
 		]
 		timestamp: DF.Datetime | None
 	# end: auto-generated types

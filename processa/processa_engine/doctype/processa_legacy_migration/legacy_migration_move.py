@@ -12,18 +12,24 @@ from frappe.utils import now_datetime
 from rq.timeouts import JobTimeoutException
 
 from processa.processa_engine import engine as bpmn_engine
-from processa.processa_engine.assignment import add_frappe_assignment, resolve_assignee, split_users
+from processa.processa_engine.assignment import resolve_assignment, split_users
 from processa.processa_engine.audit import apply_bpmn_workflow_state
 from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_replay import (
 	MigrationSkip,
 	replay,
+	state_field,
 )
+from processa.processa_engine.runtime.active_tasks import save_without_version_check, sync_active_tasks
 from processa.processa_engine.runtime.common import log_task, task_bpmn_id
 
 if TYPE_CHECKING:
 	from processa.processa_engine.doctype.bpmn_process_instance.bpmn_process_instance import (
 		BPMNProcessInstance,
 	)
+
+
+# Assignee modes that hand a step to the next person in a list each time they are asked.
+ROTATING_MODES = ("Round Robin", "Load Balancing")
 
 
 def migrate_record(ctx: frappe._dict, old: "BPMNProcessInstance", idx: int) -> bool:
@@ -48,6 +54,7 @@ def migrate_record(ctx: frappe._dict, old: "BPMNProcessInstance", idx: int) -> b
 			)
 		finally:
 			frappe.flags.bpmn_engine_action = previous_flag
+		_check_settled(new, result.new_state)
 	except MigrationSkip as skip:
 		frappe.db.rollback(save_point="plm_record")
 		log_error_row(ctx.plm.name, old, skip.reason, skip.detail, idx)
@@ -86,7 +93,9 @@ def log_error_row(
 def _insert_new_instance(
 	ctx: frappe._dict, old: "BPMNProcessInstance", result: frappe._dict
 ) -> "BPMNProcessInstance":
-	"""The new instance, waiting where the replay stopped, with tasks assigned like the old ones. No email."""
+	"""The new instance, waiting where the replay stopped; a step keeps its person only while the new map names them.
+
+	Other steps open as in a normal request, with ToDo and email; people the record no longer waits on lose theirs."""
 	wf = result.wf
 	old_rows = {}
 	for row in old.active_tasks:
@@ -107,10 +116,12 @@ def _insert_new_instance(
 		}
 	)
 	extensions = ctx.to_spec.get("user_task_extensions", {})
-	to_assign = []
+	new._user_task_extensions = extensions
 	for task in bpmn_engine.get_ready_user_tasks(wf):
 		bpmn_id = task_bpmn_id(task)
 		old_row = old_rows.get(bpmn_id)
+		if not old_row or not _same_assignee(new, task, old_row, extensions.get(bpmn_id, {})):
+			continue
 		row = {
 			"task_id": str(task.id),
 			"task_name": bpmn_engine.get_task_display_name(task),
@@ -121,24 +132,51 @@ def _insert_new_instance(
 			"target_doctype": old.context_doctype,
 			"target_docname": old.context_docname,
 		}
-		if old_row:
-			for field in ("assigned_user", "assigned_role", "reliever_user", "relieved_user"):
-				row[field] = old_row.get(field)
-		else:
-			row["assigned_user"], relief_pairs = resolve_assignee(new, task, extensions)
-			row["relieved_user"] = ",".join(p[0] for p in relief_pairs)
-			row["reliever_user"] = ",".join(p[1] for p in relief_pairs)
-			to_assign.append((row["assigned_user"], row["task_name"]))
+		for field in ("assigned_user", "assigned_role", "reliever_user", "relieved_user"):
+			row[field] = old_row.get(field)
 		new.append("active_tasks", row)
 
 	bpmn_engine.clean_doc_from_wf_data(wf)
 	new.workflow_state = json.dumps(bpmn_engine.serialize_workflow(wf))
 	frappe.only_for(["System Manager", "Process Owner"])
 	new.insert(ignore_permissions=True)  # perms: the migration acts for the process
-	for users, task_name in to_assign:
-		for user in split_users(users):
-			add_frappe_assignment(new, user, task_name)
+	waiting_on = {u for row in old.active_tasks if row.status == "Waiting" for u in split_users(row.assigned_user or "")}
+	sync_active_tasks(new, wf, prev_assigned=waiting_on)
+	save_without_version_check(new)
 	return new
+
+
+def _same_assignee(new: "BPMNProcessInstance", task, old_row, cfg: dict) -> bool:
+	"""Whether the new map gives the step to the person the old instance had it with.
+
+	A rotating step keeps its person, since asking again would move the rotation on."""
+	if cfg.get("assigneeMode") in ROTATING_MODES:
+		return True
+	return resolve_assignment(new, task) == (old_row.assigned_user or "")
+
+
+def _check_settled(new: "BPMNProcessInstance", state: str) -> None:
+	"""Refuse a move that left the record's status off the mapped state, or a step with nobody able to act."""
+	field = state_field(new.context_doctype)
+	actual = frappe.db.get_value(new.context_doctype, new.context_docname, field)
+	if actual != state:
+		raise MigrationSkip(
+			"Needs attention: status and step differ",
+			_("The process waits after {0}, but the record shows {1}.").format(state, actual or _("nothing")),
+		)
+	for row in new.active_tasks:
+		if row.status != "Waiting":
+			continue
+		users = split_users(row.assigned_user or "")
+		active = [u for u in users if frappe.db.get_value("User", u, "enabled")]
+		if not active and not row.assigned_role:
+			raise MigrationSkip(
+				"Needs attention: no assignee",
+				_("Nobody can be assigned {0}: {1}.").format(
+					row.task_name,
+					_("{0} is disabled or missing").format(", ".join(users)) if users else _("the step names no one"),
+				),
+			)
 
 
 def _copy_history(ctx: frappe._dict, old: "BPMNProcessInstance", new: "BPMNProcessInstance") -> None:
