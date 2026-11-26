@@ -29,9 +29,28 @@ from processa.processa_engine.doctype.processa_legacy_migration.test_processa_le
 	migration,
 	old_instance,
 	run_start,
+	straight_xml,
 	with_changes,
 )
 from processa.processa_engine.engine import TaskState
+
+REVIEWER = "_plm_reviewer@example.com"
+DISABLED_REVIEWER = "_plm_disabled_reviewer@example.com"
+
+
+def review_assigned_to(user: str):
+	"""OLD with the Review step assigned to user by name."""
+
+	def xml(pid):
+		drawn = straight_xml(pid, OLD)
+		named = drawn.replace(
+			'id="Task_review" name="Review" spiffworkflow:assigneeMode="DocField"',
+			f'id="Task_review" name="Review" spiffworkflow:assigneeMode="User" spiffworkflow:assigneeUser="{user}"',
+		)
+		assert named != drawn
+		return named
+
+	return xml
 
 
 class TestLegacyMigrationReplay(FrappeTestCase):
@@ -41,6 +60,10 @@ class TestLegacyMigrationReplay(FrappeTestCase):
 		for state in (DRAFT, APPROVED, DONE):
 			frappe.get_doc(
 				{"doctype": "Workflow State", "workflow_state_name": state, "style": "Primary"}
+			).insert()
+		for email, enabled in ((REVIEWER, 1), (DISABLED_REVIEWER, 0)):
+			frappe.get_doc(
+				{"doctype": "User", "email": email, "first_name": "PLM", "enabled": enabled, "send_welcome_email": 0}
 			).insert()
 		cls.old_map = deploy("PLM Rep Old", OLD)
 		deploy("PLM Rep Sub", [("user", "Task_sub", "Sub Review")])
@@ -114,17 +137,16 @@ class TestLegacyMigrationReplay(FrappeTestCase):
 		)
 		self.assertEqual(self._waits(wf), ["Catch_pr"])
 
-	def test_a_user_task_not_waiting_at_that_point_stops_the_replay(self):
+	def test_a_history_the_new_order_cannot_replay_places_the_record_by_its_status(self):
 		nodes = [OLD[0], OLD[3], OLD[1], OLD[2], OLD[4], OLD[5]]
-		self._assert_skip(
-			"Replay stuck", nodes, self.waiting_merge, [(APPROVED, APPROVED)], contains="Review"
-		)
+		wf, last_state = self._replay(nodes, self.waiting_merge, [(APPROVED, APPROVED)])
+		self.assertEqual(self._waits(wf), ["Task_merge"])
+		self.assertEqual(last_state, APPROVED)
 
-	def test_a_message_nothing_waits_for_stops_the_replay(self):
+	def test_a_message_the_new_map_takes_later_places_the_record_by_its_status(self):
 		nodes = [OLD[0], OLD[1], OLD[2], OLD[4], OLD[3], OLD[5]]
-		self._assert_skip(
-			"Replay stuck", nodes, self.waiting_merge, [(APPROVED, APPROVED)], contains=PR_OPENED
-		)
+		wf, _last = self._replay(nodes, self.waiting_merge, [(APPROVED, APPROVED)])
+		self.assertEqual(self._waits(wf), ["Task_merge"])
 
 	def test_a_new_user_task_before_the_wait_point_stops_the_replay(self):
 		nodes = with_changes(OLD, after={"Task_draft": [("user", "Task_new", "New Step")]})
@@ -154,10 +176,19 @@ class TestLegacyMigrationReplay(FrappeTestCase):
 		self.assertEqual(self._waits(wf), ["Task_review"])
 		self.assertFalse(wf.subprocesses)
 
-	def test_a_last_state_other_than_the_mapped_one_is_refused(self):
-		self._assert_skip(
-			"State not reached", OLD, self.waiting_review, [(DRAFT, APPROVED)], contains=APPROVED
-		)
+	def test_a_mapped_state_ahead_moves_the_record_forward_to_the_step_after_it(self):
+		wf, last_state = self._replay(OLD, self.waiting_review, [(DRAFT, APPROVED)])
+		self.assertEqual(self._waits(wf), ["Catch_pr"])
+		self.assertEqual(last_state, APPROVED)
+
+	def test_a_mapped_state_behind_moves_the_record_back_to_the_step_after_it(self):
+		wf, last_state = self._replay(OLD, self.waiting_merge, [(APPROVED, DRAFT)])
+		self.assertEqual(self._waits(wf), ["Task_review"])
+		self.assertEqual(last_state, DRAFT)
+
+	def test_a_mapped_state_no_path_reaches_is_refused(self):
+		nodes = with_changes(OLD, drop="Task_done")
+		self._assert_skip("State not reached", nodes, self.waiting_review, [(DRAFT, DONE)], contains=DONE)
 
 	def test_an_errored_instance_ends_at_the_next_wait_without_an_end_check(self):
 		wf, last_state = self._replay(OLD, self.errored, [(APPROVED, DRAFT)])
@@ -354,6 +385,61 @@ class TestLegacyMigrationReplay(FrappeTestCase):
 		row = frappe.get_doc("Processa Legacy Migration", plm).error_logs[0]
 		self.assertEqual((row.reason, row.old_instance), ("Error", self.waiting_review))
 		self.assertIn("todo update failed", row.error_message)
+
+	def test_a_record_moved_back_opens_the_earlier_step_like_a_normal_request_and_closes_the_old_task(self):
+		record = frappe.db.get_value("BPMN Process Instance", self.waiting_merge, "context_docname")
+		with patch("processa.processa_engine.runtime.active_tasks.notify_task_assignee") as notify:
+			moved, _plm, new = self._migrate(review_assigned_to(REVIEWER), self.waiting_merge, [(APPROVED, DRAFT)])
+		self.assertTrue(moved)
+		self.assertEqual(frappe.db.get_value(DT, record, "workflow_state"), DRAFT)
+		waiting = [r for r in frappe.get_doc("BPMN Process Instance", new).active_tasks if r.status == "Waiting"]
+		self.assertEqual([(r.task_name, r.assigned_user) for r in waiting], [("Review", REVIEWER)])
+		open_todos = frappe.get_all(
+			"ToDo",
+			filters={"reference_type": DT, "reference_name": record, "type": "Process", "status": "Open"},
+			fields=["allocated_to", "description"],
+		)
+		self.assertEqual([t.allocated_to for t in open_todos], [REVIEWER])
+		self.assertIn(new, open_todos[0].description)
+		self.assertEqual([c.args[1:3] for c in notify.call_args_list], [(REVIEWER, "Review")])
+		old = frappe.get_doc("BPMN Process Instance", self.waiting_merge)
+		self.assertNotIn("Waiting", [r.status for r in old.active_tasks])
+
+	def test_a_step_the_new_map_gives_to_someone_else_moves_to_that_person(self):
+		record = frappe.db.get_value("BPMN Process Instance", self.waiting_review, "context_docname")
+		with patch("processa.processa_engine.runtime.active_tasks.notify_task_assignee") as notify:
+			moved, _plm, new = self._migrate(review_assigned_to(REVIEWER), self.waiting_review, [(DRAFT, DRAFT)])
+		self.assertTrue(moved)
+		waiting = [r for r in frappe.get_doc("BPMN Process Instance", new).active_tasks if r.status == "Waiting"]
+		self.assertEqual([(r.task_name, r.assigned_user) for r in waiting], [("Review", REVIEWER)])
+		self.assertEqual(
+			frappe.get_all(
+				"ToDo",
+				filters={"reference_type": DT, "reference_name": record, "type": "Process", "status": "Open"},
+				pluck="allocated_to",
+			),
+			[REVIEWER],
+		)
+		self.assertEqual([c.args[1:3] for c in notify.call_args_list], [(REVIEWER, "Review")])
+
+	def test_a_step_nobody_can_take_is_needs_attention_and_the_record_stays(self):
+		moved, plm, new = self._migrate(review_assigned_to(DISABLED_REVIEWER), self.waiting_merge, [(APPROVED, DRAFT)])
+		self.assertFalse(moved)
+		self.assertIsNone(new)
+		row = frappe.get_doc("Processa Legacy Migration", plm).error_logs[0]
+		self.assertEqual(row.reason, "Needs attention: no assignee")
+		self.assertIn(DISABLED_REVIEWER, row.error_message)
+		self.assertEqual(frappe.db.get_value("BPMN Process Instance", self.waiting_merge, "status"), "Active")
+
+	def test_a_status_that_did_not_follow_the_step_is_needs_attention(self):
+		with patch(
+			"processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_move.apply_bpmn_workflow_state"
+		):
+			moved, plm, _new = self._migrate(OLD, self.waiting_merge, [(APPROVED, DRAFT)])
+		self.assertFalse(moved)
+		row = frappe.get_doc("Processa Legacy Migration", plm).error_logs[0]
+		self.assertEqual(row.reason, "Needs attention: status and step differ")
+		self.assertIn(APPROVED, row.error_message)
 
 	def test_a_refused_replay_logs_its_reason_and_leaves_the_old_instance(self):
 		moved, plm, new = self._migrate(OLD, self.waiting_review, [(APPROVED, APPROVED)])
