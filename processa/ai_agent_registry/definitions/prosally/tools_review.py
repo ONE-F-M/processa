@@ -20,6 +20,7 @@ from processa.ai_agent_registry.definitions.prosally.helpers import (
 	quoted,
 	register_namespaces,
 )
+from processa.ai_agent_registry.definitions.prosally.tools_lint import LINT_NOT_FIXABLE
 from processa.ai_agent_registry.definitions.prosally.tools_operations import (
 	add_subprocess_output,
 	add_workflow_state_output,
@@ -318,6 +319,13 @@ def diagnose_output(xml: str, texts: list, lint_issues: list) -> dict:
 		return {"intent": "CLARIFY", "response": lead + "\n\n" + body + "\n\n" + _("Open the script in Logix to make this change.")}
 	if diagnosis["origin"] == "unknown":
 		return {"intent": "CLARIFY", "response": body + "\n\n" + diagnose_fallback_reply()}
+	rules = {str(finding.get("rule") or "").rsplit("/", 1)[-1] for finding in inputs["lint_findings"]}
+	unfixable = next((rule for rule in sorted(LINT_NOT_FIXABLE) if rule in rules or rule in error_text), None)
+	if unfixable:
+		response = body + "\n\n" + _("I cannot make this fix from the chat, so make it in the editor.")
+		if unfixable in ("no-crossing-edges", "no-overlapping-elements"):
+			response += " " + layout_is_automatic()
+		return {"intent": "CLARIFY", "response": response}
 	return {
 		"intent": "CONFIRM",
 		"action_intent": "MODIFY_EXISTING",
