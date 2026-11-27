@@ -60,7 +60,9 @@ class TestListActionsContract(FrappeTestCase):
 		Each of the three overrides has to hand back to the original, so a doctype that carries a
 		Frappe Workflow and no process implementation behaves exactly as it did before this script.
 		"""
-		source = (Path(frappe.get_app_path("processa")) / "public" / "js" / "bpmn_list_actions.js").read_text()
+		source = (
+			Path(frappe.get_app_path("processa")) / "public" / "js" / "bpmn_list_actions.js"
+		).read_text()
 		self.assertIn("if (!is_processa_doctype(this.doctype)) return items;", source)
 		self.assertIn("return _original_get_workflow_action_menu_items.call(this);", source)
 		self.assertIn("return _original_toggle_workflow_actions.call(this);", source)
