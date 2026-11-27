@@ -53,3 +53,29 @@ class TestListActionsContract(FrappeTestCase):
 		self.assertIn('["Submit", "Cancel", "Delete"]', source)
 		self.assertIn("frappe.boot.processa_doctypes", source)
 		self.assertIn("bpmn_list_actions.js", (app / "hooks.py").read_text())
+
+	def test_list_script_defers_to_frappe_outside_processa(self):
+		"""A DocType Processa does not run keeps Frappe's own menu, workflow items included.
+
+		Each of the three overrides has to hand back to the original, so a doctype that carries a
+		Frappe Workflow and no process implementation behaves exactly as it did before this script.
+		"""
+		source = (
+			Path(frappe.get_app_path("processa")) / "public" / "js" / "bpmn_list_actions.js"
+		).read_text()
+		self.assertIn("if (!is_processa_doctype(this.doctype)) return items;", source)
+		self.assertIn("return _original_get_workflow_action_menu_items.call(this);", source)
+		self.assertIn("return _original_toggle_workflow_actions.call(this);", source)
+
+	def test_controlled_doctypes_need_an_active_model(self):
+		"""The gate the script reads lists only doctypes an active model runs, so a doctype whose
+		model is inactive keeps its native behaviour."""
+		from processa.processa_engine.instances import listing
+
+		rows = [frappe._dict(parent="MODEL-OFF", doctype_name="Note")]
+		with (
+			patch.object(frappe, "get_all", side_effect=[rows, [], []]),
+			patch.object(frappe.cache(), "get_value", return_value=None),
+			patch.object(frappe.cache(), "set_value"),
+		):
+			self.assertEqual(listing.get_processa_controlled_doctypes(), [])
