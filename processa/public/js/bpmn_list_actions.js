@@ -95,7 +95,7 @@
 	}
 
 	/**
-	 * One dialog for the confirmation and the optional comment the action is recorded with.
+	 * The same confirmation the form asks for before a single action, naming what will be skipped.
 	 */
 	function _confirm_and_apply(listview, action, docnames, context) {
 		const blocked = Object.keys(context.blocked || {}).length;
@@ -104,22 +104,10 @@
 			message += " " + __("{0} of them cannot be actioned and will be skipped.", [blocked]);
 		}
 
-		const dialog = new frappe.ui.Dialog({
-			title: __("Confirm {0}", [action]),
-			fields: [
-				{ fieldtype: "HTML", fieldname: "message", options: `<p>${message}</p>` },
-				{ fieldtype: "Small Text", fieldname: "comment", label: __("Comment (optional)") },
-			],
-			primary_action_label: __(action),
-			primary_action: (values) => {
-				dialog.hide();
-				_apply(listview, action, docnames, values.comment);
-			},
-		});
-		dialog.show();
+		frappe.confirm(message, () => _apply(listview, action, docnames));
 	}
 
-	function _apply(listview, action, docnames, comment) {
+	function _apply(listview, action, docnames) {
 		listview.disable_list_update = true;
 		frappe.dom.freeze(__("Applying {0}…", [action]));
 
@@ -128,7 +116,6 @@
 				doctype: listview.doctype,
 				docnames: JSON.stringify(docnames),
 				action: action,
-				comment: comment || null,
 			})
 			.finally(() => {
 				frappe.dom.unfreeze();
