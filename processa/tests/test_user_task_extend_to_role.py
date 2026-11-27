@@ -11,7 +11,7 @@ from processa.processa_engine import assignment
 from processa.processa_engine import engine as bpmn_engine
 from processa.processa_engine.compiler.extensions import extract_user_task_config
 from processa.processa_engine.instances.listing import _instances_pending_on
-from processa.processa_engine.instances.task_actions import _task_authorization
+from processa.processa_engine.instances.task_actions import task_authorization
 from processa.processa_engine.runtime.active_tasks import sync_active_tasks
 from processa.processa_engine.runtime.engine_loop import run_engine
 
@@ -124,9 +124,9 @@ class TestUserTaskExtendedToARole(FrappeTestCase):
 		instance = self._start()
 		row = instance.active_tasks[0]
 
-		self.assertIsNone(_task_authorization(instance, row, HOLDER)[0])
-		self.assertIsNone(_task_authorization(instance, row, ASSIGNEE)[0])
-		self.assertIsNotNone(_task_authorization(instance, row, OUTSIDER)[0])
+		self.assertIsNone(task_authorization(instance, row, HOLDER)[0])
+		self.assertIsNone(task_authorization(instance, row, ASSIGNEE)[0])
+		self.assertIsNotNone(task_authorization(instance, row, OUTSIDER)[0])
 
 	def test_the_instance_is_pending_for_the_role_holder(self):
 		instance = self._start()

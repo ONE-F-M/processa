@@ -38,4 +38,4 @@ def _refusal(user, assigned_user="", assigned_role="", super_user=False, roles=(
 	with patch.object(task_actions, "is_bpmn_super_user", return_value=super_user), patch.object(
 		frappe, "get_roles", return_value=list(roles)
 	):
-		return task_actions._task_authorization(instance, row, user)[0]
+		return task_actions.task_authorization(instance, row, user)[0]
