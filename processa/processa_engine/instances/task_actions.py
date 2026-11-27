@@ -57,7 +57,7 @@ def complete_task(
 
 	current_user = frappe.session.user
 
-	refusal, approved_ctc_name = _task_authorization(instance, active_row, current_user)
+	refusal, approved_ctc_name = task_authorization(instance, active_row, current_user)
 	if refusal:
 		frappe.throw(refusal, frappe.PermissionError)
 
@@ -444,7 +444,7 @@ def get_active_bpmn_tasks(doctype: str, docname: str) -> list:
 						"assigned_user": row.assigned_user or "",
 						"assigned_role": row.assigned_role or "",
 						"other_allowed_users": row.other_allowed_users or "",
-						"can_action": not _task_authorization(instance, row, frappe.session.user)[0],
+						"can_action": not task_authorization(instance, row, frappe.session.user)[0],
 					}
 				)
 
@@ -457,7 +457,7 @@ def get_active_bpmn_tasks(doctype: str, docname: str) -> list:
 	return result
 
 
-def _task_authorization(instance, row, user: str) -> tuple[str | None, str | None]:
+def task_authorization(instance, row, user: str) -> tuple[str | None, str | None]:
 	"""Why ``user`` may not complete this Waiting task, or None; and the approved CTC that lets them.
 	Assignees and their relievers may act, and so may a super user or the holder of an approved Contingency Task Completion."""
 	# Imported lazily: assignment.py pulls in engine.py, which is fragile across SpiffWorkflow versions.
@@ -467,7 +467,8 @@ def _task_authorization(instance, row, user: str) -> tuple[str | None, str | Non
 	assigned_users = split_users(row.assigned_user or "")
 	approved_ctc_name = None
 
-	if assigned_users and user not in task_actors(row) and not super_user:
+	# An assignee needs no reliever lookup, which matters when a bulk selection checks many rows at once.
+	if assigned_users and user not in assigned_users and user not in task_actors(row) and not super_user:
 		if instance.context_doctype and instance.context_docname:
 			from frappe.query_builder import DocType
 

@@ -169,12 +169,12 @@ class TestTaskActors(FrappeTestCase):
 
 class TestRelieverCanActionTheTask(FrappeTestCase):
 	def _refusal(self, user, row):
-		from processa.processa_engine.instances.task_actions import _task_authorization
+		from processa.processa_engine.instances.task_actions import task_authorization
 
 		instance = frappe._dict(context_doctype="", context_docname="")
 		row.assigned_role = ""
 		with patch("processa.processa_engine.instances.task_actions.is_bpmn_super_user", return_value=False):
-			return _task_authorization(instance, row, user)[0]
+			return task_authorization(instance, row, user)[0]
 
 	def test_both_users_of_the_pair_are_let_through(self):
 		with patch(LEAVE_RELIEVER, return_value=None):
