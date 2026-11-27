@@ -15,6 +15,8 @@
 	const NATIVE_ACTIONS = ["Submit", "Cancel", "Delete"];
 	const LABEL_CONTEXT = "Button in list view actions menu";
 	const PROCESSA_ITEM_MARKER = "__processa_bulk_action__";
+	// Beyond this many, the confirmation names the first few and counts the rest.
+	const NAMED_IN_CONFIRM = 5;
 
 	const ListViewProto = frappe.views.ListView.prototype;
 	const _original_get_actions_menu_items = ListViewProto.get_actions_menu_items;
@@ -95,16 +97,32 @@
 	}
 
 	/**
-	 * The same confirmation the form asks for before a single action, naming what will be skipped.
+	 * The same confirmation the form asks for before a single action, naming the records it covers
+	 * and how many of them will be skipped.
 	 */
 	function _confirm_and_apply(listview, action, docnames, context) {
 		const blocked = Object.keys(context.blocked || {}).length;
-		let message = __("Apply {0} to {1} documents?", [action, docnames.length]);
+		let message = __("Apply {0} to {1}?", [action, _record_list(docnames)]);
 		if (blocked) {
 			message += " " + __("{0} of them cannot be actioned and will be skipped.", [blocked]);
 		}
 
 		frappe.confirm(message, () => _apply(listview, action, docnames));
+	}
+
+	/**
+	 * The selected records by name, kept short enough to read in a dialog.
+	 */
+	function _record_list(docnames) {
+		const names = docnames.map((name) => frappe.utils.escape_html(name));
+		if (names.length === 1) return names[0];
+
+		const shown = names.slice(0, NAMED_IN_CONFIRM).join(", ");
+		const rest = names.length - NAMED_IN_CONFIRM;
+		if (rest > 0) {
+			return __("{0} documents ({1} and {2} more)", [names.length, shown, rest]);
+		}
+		return __("{0} documents ({1})", [names.length, shown]);
 	}
 
 	function _apply(listview, action, docnames) {
