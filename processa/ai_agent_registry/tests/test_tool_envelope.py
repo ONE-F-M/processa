@@ -11,6 +11,7 @@ from frappe.tests.utils import FrappeTestCase
 from processa.ai_agent_registry.definitions.docu import tools as docu_tools
 from processa.ai_agent_registry.definitions.logix import tools as logix_tools
 from processa.ai_agent_registry.definitions.shared import tools as shared_tools
+from processa.ai_agent_registry.definitions.shared import tools_reports as reports_tools
 from processa.ai_agent_registry.definitions.shared.helpers import tool_envelope
 
 BROKEN = RuntimeError("database went away")
@@ -48,6 +49,18 @@ CASES = (
 		(docu_tools, "read_doctype_definition"),
 		{"doctype": "ToDo"},
 		json.dumps({"error": "Failed to read DocType 'ToDo'."}),
+	),
+	(
+		reports_tools.list_reports,
+		(frappe, "get_list"),
+		{},
+		{"error": "Failed to list reports."},
+	),
+	(
+		reports_tools.get_report_data,
+		(frappe.db, "exists"),
+		{"report_name": "ToDo"},
+		{"error": "Failed to run report 'ToDo'."},
 	),
 )
 
