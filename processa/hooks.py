@@ -25,7 +25,7 @@ app_include_js = [
 	"/assets/processa/js/one_ai_loader.js",
 	"/assets/processa/js/bpmn_form_actions.js?v=6",
 	"/assets/processa/js/bpmn_list_indicator.js",
-	"/assets/processa/js/bpmn_list_actions.js?v=1",
+	"/assets/processa/js/bpmn_list_actions.js?v=2",
 	"/assets/processa/js/bpmn_cancel_request.js?v=1",
 	# An agent's question appears on the document it is about, whatever
 	# that document is. Loaded for every form rather than bound to one doctype:
