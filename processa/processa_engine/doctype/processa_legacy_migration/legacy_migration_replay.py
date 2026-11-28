@@ -3,12 +3,13 @@
 
 import datetime
 import json
+from collections import Counter
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 import frappe
 from frappe import _
-from frappe.utils import CallbackManager
+from frappe.utils import CallbackManager, cstr, strip_html
 
 from processa.processa_engine import engine as bpmn_engine
 from processa.processa_engine.engine import (
@@ -144,9 +145,9 @@ def replay(ctx: frappe._dict, old: "BPMNProcessInstance") -> frappe._dict:
 
 
 def fast_forward(ctx: frappe._dict, record: frappe._dict) -> frappe._dict:
-	"""Run a record that has no instance forward on the new map, each user task taking its first action and
-	each script's writes undone, until a step sets the record's mapped state. Writes nothing.
-	Returns wf, new_state, last_state and steps, the user tasks it completed."""
+	"""Run a record that has no instance forward on the new map, each user task taking its first action once and
+	each script's writes undone, until a step sets the record's mapped state; a task it comes back to places the
+	record with place_at_state. Writes nothing. Returns wf, new_state, last_state and steps, the tasks it completed."""
 	new_state = _mapped_state(ctx, record)
 	wf = _spec_workflow(ctx.to_spec)
 	wf.script_engine = FastForwardScriptEngine(
@@ -161,6 +162,8 @@ def fast_forward(ctx: frappe._dict, record: frappe._dict) -> frappe._dict:
 
 	progress = {"last_state": None, "seen": set(), "runs": 0}
 	steps = []
+	# bpmn id of each user task completed -> the action taken and the messages its checks showed.
+	completed = {}
 	try:
 		_advance(ctx, wf, progress)
 		while new_state not in progress["seen"]:
@@ -172,20 +175,40 @@ def fast_forward(ctx: frappe._dict, record: frappe._dict) -> frappe._dict:
 						new_state, progress["last_state"]
 					),
 				)
+			name = bpmn_engine.get_task_display_name(task)
+			if task_bpmn_id(task) in completed:
+				action, messages = completed[task_bpmn_id(task)]
+				try:
+					wf = place_at_state(ctx, wf, new_state)
+				except MigrationSkip as skip:
+					raise _came_back(skip, name, action, messages) from skip
+				return frappe._dict(wf=wf, new_state=new_state, last_state=new_state, steps=steps)
 			action = _first_action(ctx, task)
 			task.data["action"] = action
-			steps.append(
-				frappe._dict(
-					task_id=str(task.id),
-					name=bpmn_engine.get_task_display_name(task),
-					data={"action": action},
-				)
-			)
+			steps.append(frappe._dict(task_id=str(task.id), name=name, data={"action": action}))
+			logged = len(frappe.local.message_log)
 			task.run()
 			_advance(ctx, wf, progress)
+			messages = [_message_text(m) for m in frappe.local.message_log[logged:]]
+			completed[task_bpmn_id(task)] = (action, [m for m in messages if m])
 	except WorkflowException as e:
 		raise MigrationSkip("Replay stuck", str(e)) from e
 	return frappe._dict(wf=wf, new_state=new_state, last_state=progress["last_state"], steps=steps)
+
+
+def _message_text(entry) -> str:
+	"""The plain text of one message_log entry."""
+	return strip_html(cstr(entry.get("message"))).strip()
+
+
+def _came_back(skip: MigrationSkip, name: str, action: str, messages: list[str]) -> MigrationSkip:
+	"""The skip with the step that came back, the action taken on it and its last message added."""
+	detail = _("{0} The walk through the new map came back to {1} after taking the action {2} on it.").format(
+		skip.detail, name, action or _("(none)")
+	)
+	if messages:
+		detail += " " + _("The last message its checks showed: {0}").format(messages[-1])
+	return MigrationSkip(skip.reason, detail)
 
 
 def _record_values(record: frappe._dict) -> dict:
@@ -429,12 +452,14 @@ def _advance(ctx, wf, progress) -> None:
 	"""Run engine steps until only waits remain.
 
 	Scripts do nothing; service tasks and call activities complete without running."""
-	while _complete_started(ctx, wf, progress) or _run_next(wf):
+	while _complete_started(ctx, wf, progress) or _run_next(wf, progress):
 		progress["runs"] += 1
 		if progress["runs"] > TASK_RUN_LIMIT:
-			raise MigrationSkip(
-				"Replay stuck", _("The new map ran {0} steps without reaching a wait.").format(TASK_RUN_LIMIT)
-			)
+			detail = _("The new map ran {0} steps without reaching a wait.").format(TASK_RUN_LIMIT)
+			repeated = [name for name, count in progress.get("ran", Counter()).most_common(5) if count > 1]
+			if repeated:
+				detail += " " + _("It kept repeating: {0}.").format(", ".join(repeated))
+			raise MigrationSkip("Replay stuck", detail)
 
 
 def _complete_started(ctx, wf, progress) -> bool:
@@ -454,8 +479,8 @@ def _complete_started(ctx, wf, progress) -> bool:
 	return completed
 
 
-def _run_next(wf) -> bool:
-	"""Run the next ready engine task; True if one ran."""
+def _run_next(wf, progress) -> bool:
+	"""Run the next ready engine task, counting it by display name in progress; True if one ran."""
 	task = wf.get_next_task(state=TaskState.READY, manual=False)
 	if task is None:
 		wf.refresh_waiting_tasks()
@@ -463,6 +488,8 @@ def _run_next(wf) -> bool:
 	if task is None:
 		return False
 	task.run()
+	if task.task_spec.bpmn_id:
+		progress.setdefault("ran", Counter())[bpmn_engine.get_task_display_name(task)] += 1
 	return True
 
 
