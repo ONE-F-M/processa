@@ -17,6 +17,7 @@ from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration
 )
 from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration_replay import (
 	build_context,
+	fast_forward,
 	wait_ids,
 )
 from processa.processa_engine.doctype.processa_legacy_migration.test_legacy_migration import (
@@ -31,6 +32,7 @@ from processa.processa_engine.doctype.processa_legacy_migration.test_processa_le
 	PR_OPENED,
 	definitions,
 	deploy,
+	loop_xml,
 	migration,
 	node,
 	old_instance,
@@ -42,6 +44,59 @@ from processa.processa_engine.engine import restore_workflow
 
 MAPPING = [(DRAFT, DRAFT), (APPROVED, APPROVED)]
 NOBODY = "_plm_edge_nobody@example.com"
+PENDING = "PLM Edge Pending"
+
+
+def returning_xml(pid, actions, script=None):
+	"""Start, Set Draft, user task Draft with actions, then a gateway that can send the flow back to Draft,
+	Set Pending, user task Pending, Set Done, End.
+
+	With a script, it runs before the gateway and the default flow goes back to Draft; the other flow
+	goes on when the script's step_valid is true. Without one, the first action sends the flow back."""
+	task_actions = json.dumps([{"action": a} for a in actions]).replace('"', "&#34;")
+	ask = (
+		'<bpmn:userTask id="Task_ask" name="Draft" spiffworkflow:assigneeMode="DocField" '
+		f'spiffworkflow:targetDoctype="{DT}" spiffworkflow:assigneeDocfield="owner" '
+		f'spiffworkflow:taskActions="{task_actions}">'
+		"<bpmn:incoming>Flow_1</bpmn:incoming><bpmn:incoming>Flow_back</bpmn:incoming>"
+		"<bpmn:outgoing>Flow_2</bpmn:outgoing></bpmn:userTask>"
+	)
+	check = (
+		'<bpmn:scriptTask id="Script_check" name="Check"><bpmn:incoming>Flow_2</bpmn:incoming>'
+		f"<bpmn:outgoing>Flow_3</bpmn:outgoing><bpmn:script>{script}</bpmn:script></bpmn:scriptTask>"
+		'<bpmn:sequenceFlow id="Flow_3" sourceRef="Script_check" targetRef="Gateway_1" />'
+		if script
+		else ""
+	)
+	back_is_default = bool(script)
+	back_condition = "" if back_is_default else "<bpmn:conditionExpression>action == 'Retry'</bpmn:conditionExpression>"
+	ok_condition = "<bpmn:conditionExpression>step_valid</bpmn:conditionExpression>" if script else ""
+	return definitions(
+		pid,
+		'<bpmn:startEvent id="Start_1"><bpmn:outgoing>Flow_0</bpmn:outgoing></bpmn:startEvent>'
+		+ node("state", "Task_draft", DRAFT, "Flow_0", "Flow_1")
+		+ ask
+		+ check
+		+ f'<bpmn:exclusiveGateway id="Gateway_1" default="{"Flow_back" if back_is_default else "Flow_ok"}">'
+		f"<bpmn:incoming>{'Flow_3' if script else 'Flow_2'}</bpmn:incoming>"
+		"<bpmn:outgoing>Flow_back</bpmn:outgoing><bpmn:outgoing>Flow_ok</bpmn:outgoing>"
+		"</bpmn:exclusiveGateway>"
+		+ node("state", "Task_pending", PENDING, "Flow_ok", "Flow_4")
+		+ node("user", "Task_wait", "Pending", "Flow_4", "Flow_5")
+		+ node("state", "Task_done", DONE, "Flow_5", "Flow_6")
+		+ '<bpmn:endEvent id="End_1"><bpmn:incoming>Flow_6</bpmn:incoming></bpmn:endEvent>'
+		'<bpmn:sequenceFlow id="Flow_0" sourceRef="Start_1" targetRef="Task_draft" />'
+		'<bpmn:sequenceFlow id="Flow_1" sourceRef="Task_draft" targetRef="Task_ask" />'
+		'<bpmn:sequenceFlow id="Flow_2" sourceRef="Task_ask" '
+		f'targetRef="{"Script_check" if script else "Gateway_1"}" />'
+		'<bpmn:sequenceFlow id="Flow_back" sourceRef="Gateway_1" targetRef="Task_ask">'
+		f"{back_condition}</bpmn:sequenceFlow>"
+		'<bpmn:sequenceFlow id="Flow_ok" sourceRef="Gateway_1" targetRef="Task_pending">'
+		f"{ok_condition}</bpmn:sequenceFlow>"
+		'<bpmn:sequenceFlow id="Flow_4" sourceRef="Task_pending" targetRef="Task_wait" />'
+		'<bpmn:sequenceFlow id="Flow_5" sourceRef="Task_wait" targetRef="Task_done" />'
+		'<bpmn:sequenceFlow id="Flow_6" sourceRef="Task_done" targetRef="End_1" />',
+	)
 
 
 class TestLegacyMigrationEdgeCases(FrappeTestCase):
@@ -465,3 +520,82 @@ class TestLegacyMigrationEdgeCases(FrappeTestCase):
 		self.assertEqual(
 			frappe.db.count("BPMN Process Instance", {"context_doctype": DT, "context_docname": record}), 1
 		)
+
+	def _returning_map(self, title, actions, script=None):
+		if not frappe.db.exists("Workflow State", PENDING):
+			frappe.get_doc(
+				{"doctype": "Workflow State", "workflow_state_name": PENDING, "style": "Primary"}
+			).insert()
+		return deploy(title, lambda pid: returning_xml(pid, actions, script))
+
+	def _run_on(self, new_map, mapping):
+		name = migration(None, new_map, mapping, status="Queued")
+		_jobs, errors = run_start(name)
+		self.assertEqual(errors, [])
+		return self._plm(name)
+
+	def _walk(self, new_map, state):
+		"""fast_forward for a new record in state, which the map's own mapping row maps to itself."""
+		record = self._unstarted(state)
+		name = migration(None, new_map, [(state, state)], status="Running")
+		ctx = build_context(self._plm(name))
+		return fast_forward(ctx, unstarted_record(DT, record))
+
+	def _waits_of(self, record):
+		workflow_state = frappe.db.get_value("BPMN Process Instance", self._instance_of(record), "workflow_state")
+		return wait_ids(restore_workflow(json.loads(workflow_state)))
+
+	def test_with_no_old_map_a_check_that_sends_the_task_back_ends_at_the_next_wait(self):
+		new_map = self._returning_map("PLM Edge Sends Back", ["Approve"], script="step_valid = False")
+		record = self._unstarted(PENDING)
+		plm = self._run_on(new_map, [(PENDING, PENDING)])
+		self.assertEqual((plm.total_records, plm.migrated_count, plm.status), (1, 1, "Completed"))
+		self.assertEqual(plm.error_logs, [])
+		self.assertEqual(self._waits_of(record), {"Task_wait"})
+		self.assertEqual(frappe.db.get_value(DT, record, "workflow_state"), PENDING)
+
+	def test_with_no_old_map_a_first_action_that_loops_leaves_the_task_by_the_second(self):
+		new_map = self._returning_map("PLM Edge First Loops", ["Retry", "Approve"])
+		record = self._unstarted(PENDING)
+		plm = self._run_on(new_map, [(PENDING, PENDING)])
+		self.assertEqual((plm.total_records, plm.migrated_count, plm.status), (1, 1, "Completed"))
+		self.assertEqual(self._waits_of(record), {"Task_wait"})
+		self.assertEqual(frappe.db.get_value(DT, record, "workflow_state"), PENDING)
+
+	def test_with_no_old_map_a_record_mapped_to_draft_stops_at_the_draft_task_without_an_action(self):
+		new_map = self._returning_map("PLM Edge Stops At Draft", ["Approve"], script="step_valid = False")
+		result = self._walk(new_map, DRAFT)
+		self.assertEqual(result.steps, [])
+		self.assertEqual(result.last_state, DRAFT)
+		self.assertEqual(wait_ids(result.wf), {"Task_ask"})
+
+	def test_with_no_old_map_a_state_no_step_reaches_names_the_step_that_came_back_and_its_action(self):
+		script = 'frappe.msgprint("Phone number is missing")\nstep_valid = False'
+		new_map = self._returning_map("PLM Edge Unreachable", ["Approve"], script=script)
+		record = self._unstarted(DONE)
+		plm = self._run_on(new_map, [(DONE, DONE)])
+		self.assertEqual((plm.total_records, plm.migrated_count, plm.status), (1, 0, "Failed"))
+		rows = [r for r in plm.error_logs if r.document_name == record]
+		self.assertEqual([r.reason for r in rows], ["State not reached"])
+		self.assertIn("came back to Draft after taking the action Approve", rows[0].error_message)
+		self.assertIn("Phone number is missing", rows[0].error_message)
+		self.assertIsNone(self._instance_of(record))
+
+	def test_with_no_old_map_an_engine_loop_with_no_wait_names_the_step_it_repeats(self):
+		record = self._unstarted(DRAFT)
+		plm = self._run_on(deploy("PLM Edge Engine Loop", loop_xml), [(DRAFT, DRAFT)])
+		rows = [r for r in plm.error_logs if r.document_name == record]
+		self.assertEqual([r.reason for r in rows], ["Replay stuck"])
+		self.assertIn("without reaching a wait", rows[0].error_message)
+		self.assertIn(f"Set {DRAFT}", rows[0].error_message)
+		self.assertIsNone(self._instance_of(record))
+
+	def test_with_no_old_map_no_record_takes_the_same_action_on_the_same_step_twice(self):
+		sends_back = self._returning_map("PLM Edge Once Back", ["Approve"], script="step_valid = False")
+		first_loops = self._returning_map("PLM Edge Once Loops", ["Retry", "Approve"])
+		for new_map, expected in ((sends_back, [("Draft", "Approve")]), (first_loops, [("Draft", "Retry")])):
+			result = self._walk(new_map, PENDING)
+			taken = [(s.name, s.data["action"]) for s in result.steps]
+			self.assertEqual(taken, expected)
+			self.assertEqual(result.last_state, PENDING)
+			self.assertEqual(wait_ids(result.wf), {"Task_wait"})
