@@ -781,3 +781,20 @@ class TestLegacyMigrationReplay(FrappeTestCase):
 			"processa.processa_engine.doctype.processa_legacy_migration.legacy_migration.fail_stalled_migrations",
 			frappe.get_hooks("scheduler_events")["hourly"],
 		)
+
+
+class TestLegacyMigrationNotAttempted(FrappeTestCase):
+	"""The schema and limit a batch needs to say a record was never tried; no map or record fixtures."""
+
+	def test_an_error_log_row_can_say_not_attempted(self):
+		options = frappe.get_meta("Legacy Migration Error Log").get_field("reason").options.split("\n")
+		self.assertIn("Not Attempted", options)
+		self.assertIn("Timed out", options)
+
+	def test_the_migration_counts_not_attempted_records_and_says_why_it_stopped(self):
+		meta = frappe.get_meta("Processa Legacy Migration")
+		self.assertEqual(meta.get_field("not_attempted_count").fieldtype, "Int")
+		self.assertEqual(meta.get_field("stop_reason").fieldtype, "Small Text")
+
+	def test_a_batch_stops_starting_records_well_before_its_job_times_out(self):
+		self.assertEqual(getattr(legacy_migration, "BATCH_STOP_SECONDS", None), 450)
