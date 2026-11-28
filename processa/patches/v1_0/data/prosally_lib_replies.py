@@ -387,10 +387,15 @@ def format_removal_warning(removed_elements: list) -> str:
 	return "\n".join(lines)
 
 
-def describe_changes(previous_xml: str, xml: str) -> str:
-	"""What a modify added, removed and renamed on the diagram, as plain lines; says so when nothing changed."""
+def describe_changes(previous_xml: str, xml: str, operations: list | None = None) -> str:
+	"""What a modify added, removed and renamed on the diagram, as plain lines; says so when nothing changed.
+
+	With operations, the lines are the operations that were applied, not a comparison of the two diagrams."""
 	from collections import Counter
 
+	if operations:
+		lines = _operation_lines(previous_xml, operations)
+		return "\n\n" + frappe._("What changed:") + "\n" + "\n".join("- " + line for line in lines)
 	before = element_names(previous_xml)
 	after = element_names(xml)
 	lines = []
@@ -422,6 +427,113 @@ def describe_changes(previous_xml: str, xml: str) -> str:
 			"I could not find any change on the diagram. Check that your request was applied."
 		)
 	return "\n\n" + frappe._("What changed:") + "\n" + "\n".join("- " + line for line in lines)
+
+
+def _kind_words():
+	return {
+		"task": frappe._("a plain task"),
+		"userTask": frappe._("a user task"),
+		"serviceTask": frappe._("a service task"),
+		"scriptTask": frappe._("a script task"),
+		"manualTask": frappe._("a manual task"),
+		"businessRuleTask": frappe._("a business rule task"),
+		"callActivity": frappe._("a call activity"),
+		"exclusiveGateway": frappe._("an exclusive gateway"),
+		"parallelGateway": frappe._("a parallel gateway"),
+		"inclusiveGateway": frappe._("an inclusive gateway"),
+		"startEvent": frappe._("a start event"),
+		"endEvent": frappe._("an end event"),
+		"intermediateCatchEvent": frappe._("a catch event"),
+		"intermediateThrowEvent": frappe._("a throw event"),
+	}
+
+
+def _operation_lines(previous_xml: str, operations: list) -> list[str]:
+	"""One plain line per applied operation, naming steps, paths and lanes as the diagram shows them."""
+	ends, defaults, lane_of, lanes = _flow_facts(previous_xml)
+	known = {**element_names(previous_xml), **{lane: ("lane", name) for lane, name in lanes.items()}}
+	words = _kind_words()
+
+	def label(element_id):
+		kind, name = known.get(element_id, ("", element_id))
+		if kind == "lane":
+			return frappe._("the lane {0}").format(quoted(name))
+		return _element_label(kind, name)
+
+	def path(flow_id):
+		source, target = ends.get(flow_id, ("", ""))
+		return frappe._("the path from {0} to {1}").format(
+			quoted(known.get(source, ("", source))[1] or source),
+			quoted(known.get(target, ("", target))[1] or target),
+		)
+
+	lines = []
+	for operation in operations:
+		op, target = operation.get("op"), operation.get("id")
+		kind = operation.get("type")
+		if op == "add" and kind == "sequenceFlow":
+			known[target] = (kind, operation.get("name") or "")
+			ends[target] = (operation.get("from"), operation.get("to"))
+			lines.append(frappe._("Added {0}.").format(path(target)))
+		elif op == "add":
+			known[target] = (kind, operation.get("name") or "")
+			lines.append(frappe._("Added {0}.").format(label(target)))
+		elif op == "remove":
+			lines.append(frappe._("Removed {0}.").format(path(target) if target in ends else label(target)))
+		elif op == "rename":
+			lines.append(
+				frappe._("Renamed {0} to {1}.").format(
+					path(target) if target in ends else label(target), quoted(operation.get("name") or "")
+				)
+			)
+			known[target] = (known.get(target, ("", ""))[0], operation.get("name") or "")
+		elif op == "reconnect":
+			was = path(target)
+			ends[target] = (operation.get("from") or ends[target][0], operation.get("to") or ends[target][1])
+			lines.append(frappe._("Rerouted {0}: it is now {1}.").format(was, path(target)))
+		elif op == "retype" and known.get(target, ("", ""))[0] == kind:
+			lines.append(
+				frappe._("No change: {0} was already {1}.").format(label(target), words.get(kind, kind))
+			)
+		elif op == "retype":
+			lines.append(frappe._("Changed {0} to {1}.").format(label(target), words.get(kind, kind)))
+			known[target] = (kind, known.get(target, ("", ""))[1])
+		elif op == "move" and lane_of.get(target) == operation.get("lane"):
+			lines.append(
+				frappe._("No change: {0} was already in {1}.").format(
+					label(target), label(operation.get("lane"))
+				)
+			)
+		elif op == "move":
+			lines.append(frappe._("Moved {0} to {1}.").format(label(target), label(operation.get("lane"))))
+			lane_of[target] = operation.get("lane")
+		elif op == "set_condition" and operation.get("default") and target in defaults:
+			lines.append(frappe._("No change: {0} was already the default path.").format(path(target)))
+		elif op == "set_condition" and operation.get("default"):
+			lines.append(frappe._("Made {0} the default path.").format(path(target)))
+			defaults.add(target)
+		elif op == "set_condition":
+			lines.append(
+				frappe._("Set the condition on {0} to: {1}").format(path(target), operation.get("condition"))
+			)
+	return lines
+
+
+def _flow_facts(xml: str) -> tuple[dict, set, dict, dict]:
+	"""Flow ends, default flow ids, each step's lane id, and each lane's name, as xml draws them."""
+	import re
+
+	ends, lane_of, lanes = {}, {}, {}
+	for attrs in re.findall(r"<bpmn:sequenceFlow\s([^>]*?)/?>", xml or ""):
+		values = dict(re.findall(r'(\w+)="([^"]*)"', attrs))
+		ends[values.get("id")] = (values.get("sourceRef"), values.get("targetRef"))
+	defaults = set(re.findall(r'\bdefault="([^"]+)"', xml or ""))
+	for attrs, body in re.findall(r"<bpmn:lane\s([^>]*)>(.*?)</bpmn:lane>", xml or "", re.S):
+		values = dict(re.findall(r'(\w+)="([^"]*)"', attrs))
+		lanes[values.get("id")] = values.get("name") or values.get("id")
+		for step in re.findall(r"<bpmn:flowNodeRef>([^<]+)</bpmn:flowNodeRef>", body):
+			lane_of[step.strip()] = values.get("id")
+	return ends, defaults, lane_of, lanes
 
 
 def _changed_kinds(before: dict, after: dict) -> list[str]:
