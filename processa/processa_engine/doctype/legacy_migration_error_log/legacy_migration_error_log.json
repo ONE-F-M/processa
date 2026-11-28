@@ -48,7 +48,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Reason",
-   "options": "\nSub-process running\nPast a new step\nWaiting at removed step\nAlready on new map\nNo state mapping\nReplay stuck\nState not reached\nTimed out\nError\nNo longer open",
+   "options": "\nSub-process running\nPast a new step\nWaiting at removed step\nAlready on new map\nNo state mapping\nReplay stuck\nState not reached\nTimed out\nError\nNo longer open\nNeeds attention: no assignee\nNeeds attention: status and step differ",
    "read_only": 1
   },
   {

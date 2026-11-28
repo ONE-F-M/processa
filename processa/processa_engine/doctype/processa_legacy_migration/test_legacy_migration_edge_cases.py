@@ -19,6 +19,9 @@ from processa.processa_engine.doctype.processa_legacy_migration.legacy_migration
 	build_context,
 	wait_ids,
 )
+from processa.processa_engine.doctype.processa_legacy_migration.test_legacy_migration import (
+	review_assigned_to,
+)
 from processa.processa_engine.doctype.processa_legacy_migration.test_processa_legacy_migration import (
 	APPROVED,
 	DONE,
@@ -256,6 +259,21 @@ class TestLegacyMigrationEdgeCases(FrappeTestCase):
 		)
 		self.assertEqual(json.loads(log[0].data), {"action": "Approve", "migration": plm.name})
 		self.assertEqual(frappe.db.get_value(DT, record, "workflow_state"), APPROVED)
+
+	def test_with_no_old_map_a_step_nobody_can_take_is_needs_attention_and_nothing_starts(self):
+		disabled = "_plm_edge_disabled@example.com"
+		frappe.get_doc(
+			{"doctype": "User", "email": disabled, "first_name": "plm", "send_welcome_email": 0, "enabled": 0}
+		).insert()
+		unassignable = deploy("PLM Edge Unassignable", review_assigned_to(disabled))
+		record = self._unstarted(DRAFT)
+		name = migration(None, unassignable, [(DRAFT, DRAFT)], status="Queued")
+		_jobs, errors = run_start(name)
+		self.assertEqual(errors, [])
+		rows = [r for r in self._plm(name).error_logs if r.document_name == record]
+		self.assertEqual([r.reason for r in rows], ["Needs attention: no assignee"])
+		self.assertIn(disabled, rows[0].error_message)
+		self.assertIsNone(self._instance_of(record))
 
 	def test_with_no_old_map_a_state_the_new_map_cannot_reach_is_logged_and_nothing_starts(self):
 		record = self._unstarted(DONE)

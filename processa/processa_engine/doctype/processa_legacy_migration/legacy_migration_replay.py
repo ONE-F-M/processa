@@ -36,6 +36,9 @@ if TYPE_CHECKING:
 
 # Engine steps one replay may run; a loop the history cannot leave hits it.
 TASK_RUN_LIMIT = 500
+# How many user tasks, and how many tries, a move forward to the mapped state may take.
+FORWARD_STEPS = 6
+FORWARD_TRIES = 200
 OPEN_INSTANCE_STATUSES = ("Active", "Errored")
 
 
@@ -114,9 +117,20 @@ def replay(ctx: frappe._dict, old: "BPMNProcessInstance") -> frappe._dict:
 			_apply(ctx, wf, step, progress)
 	except WorkflowException as e:
 		# A gateway condition that cannot evaluate on the copied data.
-		raise MigrationSkip("Replay stuck", str(e)) from e
+		skip = MigrationSkip("Replay stuck", str(e))
+		if old.status != "Active":
+			raise skip from e
+		return _placed(ctx, wf, old_wf, new_state, skip)
+	except MigrationSkip as skip:
+		# The status, not the path the history took, says where an open record waits.
+		if old.status != "Active" or skip.reason not in ("Replay stuck", "Past a new step"):
+			raise
+		return _placed(ctx, wf, old_wf, new_state, skip)
 
-	if old.status == "Active":
+	if old.status == "Active" and progress["last_state"] != new_state:
+		wf = place_at_state(ctx, wf, new_state)
+		progress["last_state"] = new_state
+	elif old.status == "Active":
 		_check_no_new_step(ctx, wf)
 		new_waits = wait_ids(wf)
 		if new_waits != old_waits:
@@ -125,11 +139,6 @@ def replay(ctx: frappe._dict, old: "BPMNProcessInstance") -> frappe._dict:
 				_("The new map waits at {0}, the old instance at {1}.").format(
 					", ".join(sorted(new_waits)), ", ".join(sorted(old_waits))
 				),
-			)
-		if progress["last_state"] != new_state:
-			raise MigrationSkip(
-				"State not reached",
-				_("The replay last set {0}, not the mapped {1}.").format(progress["last_state"], new_state),
 			)
 	return frappe._dict(wf=wf, old_wf=old_wf, new_state=new_state, last_state=progress["last_state"])
 
@@ -196,6 +205,122 @@ def _first_action(ctx: frappe._dict, task) -> str:
 	raw = ctx.to_spec.get("user_task_extensions", {}).get(task_bpmn_id(task), {}).get("taskActions", "")
 	actions = [a.get("action", "") for a in parse_task_actions_json(raw) if isinstance(a, dict)]
 	return next((a for a in actions if a), "")
+
+
+def _placed(ctx, wf, old_wf, new_state, skip) -> frappe._dict:
+	"""The replay result with wf placed at new_state; the history's own refusal when no placement works."""
+	try:
+		wf = place_at_state(ctx, wf, new_state)
+	except MigrationSkip:
+		raise skip from None
+	return frappe._dict(wf=wf, old_wf=old_wf, new_state=new_state, last_state=new_state)
+
+
+def place_at_state(ctx: frappe._dict, wf: BpmnWorkflow, state: str) -> BpmnWorkflow:
+	"""The workflow waiting at the steps after the one that sets state: back to where it last set it, else forward."""
+	back = _back_to_state(ctx, wf, state)
+	if back is not None:
+		return back
+	ahead = _forward_to_state(ctx, wf, state) or _start_at_state(ctx, wf, state)
+	if ahead is None:
+		raise MigrationSkip(
+			"State not reached",
+			_("No path through the new map's steps sets {0} from where the record is.").format(state),
+		)
+	return ahead
+
+
+def _back_to_state(ctx: frappe._dict, wf: BpmnWorkflow, state: str) -> BpmnWorkflow | None:
+	"""A copy of wf run again from the step that last set state, when it has set it before."""
+	setters = {bpmn_id for bpmn_id, value in ctx.set_states.items() if value == state}
+	done = [t for t in wf.get_tasks(state=TaskState.COMPLETED) if task_bpmn_id(t) in setters]
+	if not done:
+		return None
+	trial = _copy(wf)
+	progress = {"last_state": None, "seen": set(), "runs": 0}
+	if not _ran(
+		ctx,
+		trial,
+		progress,
+		lambda: trial.reset_from_task_id(max(done, key=lambda t: t.last_state_change).id),
+	):
+		return None
+	return trial if progress["last_state"] == state else None
+
+
+def _forward_to_state(ctx: frappe._dict, wf: BpmnWorkflow, state: str) -> BpmnWorkflow | None:
+	"""A copy of wf moved on through its waiting user tasks, one action at a time, until a step sets state."""
+	actions = {
+		bpmn_id: [
+			a.get("action") for a in parse_task_actions_json(cfg.get("taskActions", "")) if a.get("action")
+		]
+		for bpmn_id, cfg in ctx.to_spec.get("user_task_extensions", {}).items()
+	}
+	frontier, tries = [(wf, 0)], 0
+	while frontier:
+		current, depth = frontier.pop(0)
+		for task in bpmn_engine.get_ready_user_tasks(current):
+			for action in actions.get(task_bpmn_id(task)) or [None]:
+				tries += 1
+				if tries > FORWARD_TRIES:
+					return None
+				trial = _copy(current)
+				step = trial.get_task_from_id(task.id)
+				if action:
+					step.data["action"] = action
+				progress = {"last_state": None, "seen": set(), "runs": 0}
+				if not _ran(ctx, trial, progress, step.run):
+					continue
+				if progress["last_state"] == state:
+					return trial
+				if depth + 1 < FORWARD_STEPS:
+					frontier.append((trial, depth + 1))
+	return None
+
+
+def _start_at_state(ctx: frappe._dict, wf: BpmnWorkflow, state: str) -> BpmnWorkflow | None:
+	"""A copy of wf with every open step cancelled and the step that sets state run, then on to the next waits.
+
+	For a status no path through the map reaches, such as one behind a script's decision. Top-level steps only."""
+	trial = _copy(wf)
+	setters = [b for b, value in ctx.set_states.items() if value == state and b in trial.spec.task_specs]
+	open_tasks = trial.get_tasks(state=TaskState.READY | TaskState.WAITING)
+	anchor = next((t for t in open_tasks if t.workflow is trial and t.parent is not None), None)
+	if not setters or anchor is None:
+		return None
+	parent, data = anchor.parent, dict(anchor.data)
+	for task in open_tasks:
+		task.cancel()
+	# Added as a future task and predicted, so the steps after it exist when it completes.
+	start = parent._add_child(trial.spec.task_specs[setters[0]], TaskState.FUTURE)
+	start.data = data
+	progress = {"last_state": None, "seen": set(), "runs": 0}
+
+	def ready():
+		start.task_spec._predict(start, mask=TaskState.PREDICTED_MASK | TaskState.FUTURE)
+		start._ready()
+
+	if not _ran(ctx, trial, progress, ready):
+		return None
+	if progress["last_state"] != state or not wait_ids(trial):
+		return None
+	return trial
+
+
+def _ran(ctx, wf, progress, first) -> bool:
+	"""Whether first() and the engine steps after it ran; a gateway that cannot decide means no placement this way."""
+	try:
+		first()
+		_advance(ctx, wf, progress)
+	except (WorkflowException, MigrationSkip):
+		return False
+	return True
+
+
+def _copy(wf: BpmnWorkflow) -> BpmnWorkflow:
+	copied = bpmn_engine.restore_workflow(bpmn_engine.serialize_workflow(wf))
+	copied.script_engine = wf.script_engine
+	return copied
 
 
 def check_instance(ctx: frappe._dict, old: "BPMNProcessInstance") -> tuple[BpmnWorkflow, set[str], str]:
