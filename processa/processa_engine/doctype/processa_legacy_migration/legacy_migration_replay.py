@@ -238,7 +238,12 @@ def _back_to_state(ctx: frappe._dict, wf: BpmnWorkflow, state: str) -> BpmnWorkf
 		return None
 	trial = _copy(wf)
 	progress = {"last_state": None, "seen": set(), "runs": 0}
-	if not _ran(ctx, trial, progress, lambda: trial.reset_from_task_id(max(done, key=lambda t: t.last_state_change).id)):
+	if not _ran(
+		ctx,
+		trial,
+		progress,
+		lambda: trial.reset_from_task_id(max(done, key=lambda t: t.last_state_change).id),
+	):
 		return None
 	return trial if progress["last_state"] == state else None
 
@@ -246,7 +251,9 @@ def _back_to_state(ctx: frappe._dict, wf: BpmnWorkflow, state: str) -> BpmnWorkf
 def _forward_to_state(ctx: frappe._dict, wf: BpmnWorkflow, state: str) -> BpmnWorkflow | None:
 	"""A copy of wf moved on through its waiting user tasks, one action at a time, until a step sets state."""
 	actions = {
-		bpmn_id: [a.get("action") for a in parse_task_actions_json(cfg.get("taskActions", "")) if a.get("action")]
+		bpmn_id: [
+			a.get("action") for a in parse_task_actions_json(cfg.get("taskActions", "")) if a.get("action")
+		]
 		for bpmn_id, cfg in ctx.to_spec.get("user_task_extensions", {}).items()
 	}
 	frontier, tries = [(wf, 0)], 0

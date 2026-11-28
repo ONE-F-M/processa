@@ -63,7 +63,13 @@ class TestLegacyMigrationReplay(FrappeTestCase):
 			).insert()
 		for email, enabled in ((REVIEWER, 1), (DISABLED_REVIEWER, 0)):
 			frappe.get_doc(
-				{"doctype": "User", "email": email, "first_name": "PLM", "enabled": enabled, "send_welcome_email": 0}
+				{
+					"doctype": "User",
+					"email": email,
+					"first_name": "PLM",
+					"enabled": enabled,
+					"send_welcome_email": 0,
+				}
 			).insert()
 		cls.old_map = deploy("PLM Rep Old", OLD)
 		deploy("PLM Rep Sub", [("user", "Task_sub", "Sub Review")])
@@ -389,10 +395,14 @@ class TestLegacyMigrationReplay(FrappeTestCase):
 	def test_a_record_moved_back_opens_the_earlier_step_like_a_normal_request_and_closes_the_old_task(self):
 		record = frappe.db.get_value("BPMN Process Instance", self.waiting_merge, "context_docname")
 		with patch("processa.processa_engine.runtime.active_tasks.notify_task_assignee") as notify:
-			moved, _plm, new = self._migrate(review_assigned_to(REVIEWER), self.waiting_merge, [(APPROVED, DRAFT)])
+			moved, _plm, new = self._migrate(
+				review_assigned_to(REVIEWER), self.waiting_merge, [(APPROVED, DRAFT)]
+			)
 		self.assertTrue(moved)
 		self.assertEqual(frappe.db.get_value(DT, record, "workflow_state"), DRAFT)
-		waiting = [r for r in frappe.get_doc("BPMN Process Instance", new).active_tasks if r.status == "Waiting"]
+		waiting = [
+			r for r in frappe.get_doc("BPMN Process Instance", new).active_tasks if r.status == "Waiting"
+		]
 		self.assertEqual([(r.task_name, r.assigned_user) for r in waiting], [("Review", REVIEWER)])
 		open_todos = frappe.get_all(
 			"ToDo",
@@ -408,9 +418,13 @@ class TestLegacyMigrationReplay(FrappeTestCase):
 	def test_a_step_the_new_map_gives_to_someone_else_moves_to_that_person(self):
 		record = frappe.db.get_value("BPMN Process Instance", self.waiting_review, "context_docname")
 		with patch("processa.processa_engine.runtime.active_tasks.notify_task_assignee") as notify:
-			moved, _plm, new = self._migrate(review_assigned_to(REVIEWER), self.waiting_review, [(DRAFT, DRAFT)])
+			moved, _plm, new = self._migrate(
+				review_assigned_to(REVIEWER), self.waiting_review, [(DRAFT, DRAFT)]
+			)
 		self.assertTrue(moved)
-		waiting = [r for r in frappe.get_doc("BPMN Process Instance", new).active_tasks if r.status == "Waiting"]
+		waiting = [
+			r for r in frappe.get_doc("BPMN Process Instance", new).active_tasks if r.status == "Waiting"
+		]
 		self.assertEqual([(r.task_name, r.assigned_user) for r in waiting], [("Review", REVIEWER)])
 		self.assertEqual(
 			frappe.get_all(
@@ -423,7 +437,9 @@ class TestLegacyMigrationReplay(FrappeTestCase):
 		self.assertEqual([c.args[1:3] for c in notify.call_args_list], [(REVIEWER, "Review")])
 
 	def test_a_step_nobody_can_take_is_needs_attention_and_the_record_stays(self):
-		moved, plm, new = self._migrate(review_assigned_to(DISABLED_REVIEWER), self.waiting_merge, [(APPROVED, DRAFT)])
+		moved, plm, new = self._migrate(
+			review_assigned_to(DISABLED_REVIEWER), self.waiting_merge, [(APPROVED, DRAFT)]
+		)
 		self.assertFalse(moved)
 		self.assertIsNone(new)
 		row = frappe.get_doc("Processa Legacy Migration", plm).error_logs[0]
