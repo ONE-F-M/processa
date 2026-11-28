@@ -2,6 +2,7 @@
 """Moving a record to a new map: where the replay ends, every reason it stops, and the instance swap."""
 
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import frappe
@@ -544,10 +545,103 @@ class TestLegacyMigrationReplay(FrappeTestCase):
 		plm = self._plm_row(name)
 		first_batch = jobs[0][1]["instance_names"]
 		self.assertIsInstance(errors[0], JobTimeoutException)
+		self.assertEqual([r.old_instance for r in plm.error_logs if r.reason == "Timed out"], first_batch[:1])
 		self.assertEqual(
-			sorted(r.old_instance for r in plm.error_logs if r.reason == "Timed out"), sorted(first_batch)
+			sorted(r.old_instance for r in plm.error_logs if r.reason == "Not Attempted"),
+			sorted(first_batch[1:]),
 		)
-		self.assertEqual((plm.migrated_count, plm.failed_count, plm.batches_done), (2, 2, 2))
+		self.assertEqual((plm.migrated_count, plm.failed_count, plm.batches_done), (2, 1, 2))
+		self.assertEqual(plm.get("not_attempted_count"), 1)
+
+	def test_a_timeout_fails_only_the_record_running_and_the_untried_one_is_not_attempted(self):
+		name = self._batch_plm(deploy("PLM Rep Batch", OLD), [(DRAFT, DRAFT), (APPROVED, APPROVED)])
+		real, calls = legacy_migration.migrate_record, []
+
+		def migrate(ctx, old, idx):
+			calls.append(old.name)
+			if len(calls) == 2:
+				raise JobTimeoutException("Task exceeded maximum timeout value (600 seconds)")
+			return real(ctx, old, idx)
+
+		with (
+			patch.object(legacy_migration, "BATCH_SIZE", 3),
+			patch.object(legacy_migration, "migrate_record", side_effect=migrate),
+		):
+			jobs, errors = self._start(name)
+		plm = self._plm_row(name)
+		moved, running, untried = jobs[0][1]["instance_names"]
+		self.assertIsInstance(errors[0], JobTimeoutException)
+		rows = {r.old_instance: r for r in plm.error_logs}
+		self.assertEqual(rows[running].reason, "Timed out")
+		self.assertEqual(rows[untried].reason, "Not Attempted")
+		self.assertEqual(
+			rows[untried].error_message, "The batch ran out of time before reaching this record."
+		)
+		self.assertNotIn(moved, rows)
+		self.assertEqual(frappe.db.get_value("BPMN Process Instance", moved, "status"), "Cancelled")
+		self.assertEqual(frappe.db.get_value("BPMN Process Instance", untried, "status"), "Active")
+		# The second batch's one record moves, so 2 moved in all.
+		self.assertEqual((plm.migrated_count, plm.failed_count), (2, 1))
+		self.assertEqual(plm.get("not_attempted_count"), 1)
+		self.assertEqual(plm.get("stop_reason"), "The batch ran out of time.")
+
+	def _run_out_of_time_after_the_first_record(self, name):
+		"""Run the one batch of a PLM with BATCH_STOP_SECONDS 0 and a clock that has spent the budget only
+		once a record has been migrated: the first read starts the batch, the clock stands one second
+		earlier until a record is done, then reaches the start again. Returns the job and its errors."""
+		real, calls, reads = legacy_migration.migrate_record, [], []
+
+		def migrate(ctx, old, idx):
+			calls.append(old.name)
+			return real(ctx, old, idx)
+
+		def monotonic():
+			reads.append(1)
+			return 1.0 if len(reads) == 1 or calls else 0.0
+
+		with (
+			patch.object(legacy_migration, "BATCH_SIZE", 4),
+			patch.object(legacy_migration, "BATCH_STOP_SECONDS", 0, create=True),
+			patch.object(legacy_migration, "time", SimpleNamespace(monotonic=monotonic), create=True),
+			patch.object(legacy_migration, "migrate_record", side_effect=migrate),
+		):
+			jobs, errors = self._start(name)
+		self.assertEqual(calls, jobs[0][1]["instance_names"][:1])
+		return jobs[0][1]["instance_names"], errors
+
+	def test_a_batch_that_has_spent_its_time_budget_stops_before_the_next_record(self):
+		name = self._batch_plm(deploy("PLM Rep Batch", OLD), [(DRAFT, DRAFT), (APPROVED, APPROVED)])
+		instance_names, errors = self._run_out_of_time_after_the_first_record(name)
+		plm = self._plm_row(name)
+		self.assertEqual(errors, [])
+		self.assertEqual(
+			[(r.old_instance, r.reason, r.error_message) for r in plm.error_logs],
+			[
+				(n, "Not Attempted", "The batch stopped early to stay inside its time limit.")
+				for n in instance_names[1:]
+			],
+		)
+		self.assertEqual((plm.migrated_count, plm.failed_count), (1, 0))
+		self.assertEqual(plm.get("not_attempted_count"), 3)
+		self.assertEqual(plm.get("stop_reason"), "The batch stopped early to stay inside its time limit.")
+		self.assertEqual(plm.status, "Completed")
+
+	def test_a_second_run_picks_up_the_records_a_run_did_not_attempt_and_not_the_moved_one(self):
+		name = self._batch_plm(deploy("PLM Rep Batch", OLD), [(DRAFT, DRAFT), (APPROVED, APPROVED)])
+		instance_names, _errors = self._run_out_of_time_after_the_first_record(name)
+		self.assertEqual(
+			sorted(legacy_migration.records_to_move(self._plm_row(name))), sorted(instance_names[1:])
+		)
+
+	def test_start_resets_the_not_attempted_count_and_the_stop_reason(self):
+		name = self._batch_plm(deploy("PLM Rep Batch", OLD), [(DRAFT, DRAFT), (APPROVED, APPROVED)])
+		frappe.db.set_value(
+			"Processa Legacy Migration", name, {"not_attempted_count": 5, "stop_reason": "An old run."}
+		)
+		self._start(name, run_jobs=False)
+		plm = self._plm_row(name)
+		self.assertEqual(plm.get("not_attempted_count"), 0)
+		self.assertFalse(plm.get("stop_reason"))
 
 	def test_a_batch_that_fails_before_its_records_logs_each_with_reason_error(self):
 		name = self._batch_plm(deploy("PLM Rep Batch", OLD), [(DRAFT, DRAFT), (APPROVED, APPROVED)])
@@ -654,9 +748,15 @@ class TestLegacyMigrationReplay(FrappeTestCase):
 		frappe.db.set_value("BPMN Process Instance", self.waiting_pr, "status", "Completed")
 		enqueued = self._check_stalled(jobs_alive=False)
 		plm = self._plm_row(name)
-		timed_out = sorted(r.old_instance for r in plm.error_logs if r.reason == "Timed out")
-		self.assertEqual(timed_out, sorted([self.waiting_merge, self.errored]))
-		self.assertEqual((plm.failed_count, plm.status), (3, "Failed"))
+		not_attempted = sorted(r.old_instance for r in plm.error_logs if r.reason == "Not Attempted")
+		self.assertEqual(not_attempted, sorted([self.waiting_merge, self.errored]))
+		self.assertFalse([r for r in plm.error_logs if r.reason == "Timed out"])
+		# Only the record the earlier batch failed counts as failed; the two never reached do not.
+		self.assertEqual((plm.failed_count, plm.status), (1, "Failed"))
+		self.assertEqual(plm.get("not_attempted_count"), 2)
+		self.assertEqual(
+			plm.get("stop_reason"), "The run's background job stopped before these records were reached."
+		)
 		self.assertTrue(plm.completed_at)
 		checked = {c.args[0] for c in enqueued.call_args_list if f"::{name}::" in c.args[0]}
 		self.assertEqual(checked, {f"plm::{name}::start", f"plm::{name}::1", f"plm::{name}::2"})
