@@ -20,7 +20,9 @@
   "column_break_prog",
   "migrated_count",
   "failed_count",
+  "not_attempted_count",
   "batches_done",
+  "stop_reason",
   "section_timing",
   "started_at",
   "run_by",
@@ -131,9 +133,22 @@
   },
   {
    "default": "0",
+   "fieldname": "not_attempted_count",
+   "fieldtype": "Int",
+   "label": "Not Attempted",
+   "read_only": 1
+  },
+  {
+   "default": "0",
    "fieldname": "batches_done",
    "fieldtype": "Int",
    "label": "Batches Done",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stop_reason",
+   "fieldtype": "Small Text",
+   "label": "Stopped Early Because",
    "read_only": 1
   },
   {
@@ -179,7 +194,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-24 12:00:00.000000",
+ "modified": "2026-12-01 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Processa Engine",
  "name": "Processa Legacy Migration",

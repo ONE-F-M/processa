@@ -31,10 +31,12 @@ class ProcessaLegacyMigration(Document):
 		failed_count: DF.Int
 		from_model: DF.Link | None
 		migrated_count: DF.Int
+		not_attempted_count: DF.Int
 		run_by: DF.Link | None
 		started_at: DF.Datetime | None
 		state_map: DF.Table[LegacyMigrationStateMap]
 		status: DF.Literal["Draft", "Queued", "Running", "Completed", "Failed"]
+		stop_reason: DF.SmallText | None
 		target_doctype: DF.Link
 		to_model: DF.Link
 		total_batches: DF.Int

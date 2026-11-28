@@ -30,6 +30,7 @@ class LegacyMigrationErrorLog(Document):
 			"Replay stuck",
 			"State not reached",
 			"Timed out",
+			"Not Attempted",
 			"Error",
 			"No longer open",
 			"Needs attention: no assignee",
