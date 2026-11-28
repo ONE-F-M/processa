@@ -2,6 +2,7 @@
 """Processa Legacy Migration runs: setup checks, the background batches, the hourly check and the finish."""
 
 import json
+import time
 from collections import Counter
 from typing import TYPE_CHECKING
 
@@ -32,6 +33,8 @@ if TYPE_CHECKING:
 	)
 
 BATCH_SIZE = 25
+# Seconds a batch may run before it stops starting new records; its job times out at 600.
+BATCH_STOP_SECONDS = 450
 FINISHED_MESSAGE = "processa:legacy_migration:finished"
 
 
@@ -74,6 +77,8 @@ def _queue_batches(migration_name: str) -> None:
 			"batches_done": 0,
 			"migrated_count": 0,
 			"failed_count": 0,
+			"not_attempted_count": 0,
+			"stop_reason": "",
 		}
 	)
 	if not batches:
@@ -94,13 +99,22 @@ def _queue_batches(migration_name: str) -> None:
 
 
 def run_batch(migration_name: str, instance_names: list[str], first_idx: int = 1) -> None:
-	"""Move one batch, committing after each record; a timeout or failure logs every record it did not move.
-	A record's Error Log row gets idx first_idx plus its place in the batch, so batches never share one."""
-	moved = failed = reached = 0
+	"""Move one batch, committing after each record; records it never reached are logged as Not Attempted.
+	A timeout fails only the running record, any other error fails the rest. Error Log row idx is
+	first_idx plus the record's place in the batch, so batches never share one."""
+	moved = failed = not_attempted = reached = 0
+	began = time.monotonic()
 	try:
 		ctx = build_context(frappe.get_doc("Processa Legacy Migration", migration_name))
 		frappe.only_for(["System Manager", "Process Owner"])
 		for name in instance_names:
+			if time.monotonic() - began >= BATCH_STOP_SECONDS:
+				reason = _("The batch stopped early to stay inside its time limit.")
+				not_attempted += _log_unmoved(
+					migration_name, instance_names[reached:], "Not Attempted", reason, first_idx + reached
+				)
+				frappe.db.set_value("Processa Legacy Migration", migration_name, "stop_reason", reason)
+				break
 			if _migrate_by_name(ctx, name, first_idx + reached):
 				moved += 1
 			else:
@@ -110,13 +124,31 @@ def run_batch(migration_name: str, instance_names: list[str], first_idx: int = 1
 	except Exception as e:
 		frappe.db.rollback()
 		if isinstance(e, JobTimeoutException):
-			reason, detail = "Timed out", _("The batch ran out of time.")
+			failed += _log_unmoved(
+				migration_name,
+				instance_names[reached : reached + 1],
+				"Timed out",
+				_("The batch ran out of time."),
+				first_idx + reached,
+			)
+			not_attempted += _log_unmoved(
+				migration_name,
+				instance_names[reached + 1 :],
+				"Not Attempted",
+				_("The batch ran out of time before reaching this record."),
+				first_idx + reached + 1,
+			)
+			frappe.db.set_value(
+				"Processa Legacy Migration", migration_name, "stop_reason", _("The batch ran out of time.")
+			)
 		else:
-			reason, detail = "Error", frappe.get_traceback(with_context=False)
-		failed += _log_unmoved(migration_name, instance_names[reached:], reason, detail, first_idx + reached)
-		_count_batch(migration_name, moved, failed)
+			detail = frappe.get_traceback(with_context=False)
+			failed += _log_unmoved(
+				migration_name, instance_names[reached:], "Error", detail, first_idx + reached
+			)
+		_count_batch(migration_name, moved, failed, not_attempted)
 		raise
-	_count_batch(migration_name, moved, failed)
+	_count_batch(migration_name, moved, failed, not_attempted)
 
 
 def _migrate_by_name(ctx: frappe._dict, name: str, idx: int) -> bool:
@@ -168,10 +200,18 @@ def _fail_if_stalled(name: str) -> None:
 
 	logged = {row.old_instance if plm.from_model else row.document_name for row in plm.error_logs}
 	unhandled = [name for name in records_to_move(plm) if name not in logged]
-	detail = _("The run's background job stopped before this record moved.")
+	detail = _("The run's background job stopped before this record was reached.")
 	next_idx = max((row.idx for row in plm.error_logs), default=0) + 1
-	failed = _log_unmoved(name, unhandled, "Timed out", detail, next_idx)
-	frappe.db.set_value("Processa Legacy Migration", name, "failed_count", plm.failed_count + failed)
+	not_attempted = _log_unmoved(name, unhandled, "Not Attempted", detail, next_idx)
+	if not_attempted:
+		frappe.db.set_value(
+			"Processa Legacy Migration",
+			name,
+			{
+				"not_attempted_count": plm.not_attempted_count + not_attempted,
+				"stop_reason": _("The run's background job stopped before these records were reached."),
+			},
+		)
 	finish(name)
 
 
@@ -188,6 +228,8 @@ def _log_unmoved(
 ) -> int:
 	"""An Error Log row for each instance, or record when there is no old map, a batch did not move,
 	deleted ones included; returns how many."""
+	if not instance_names:
+		return 0
 	from_model, target_doctype = frappe.db.get_value(
 		"Processa Legacy Migration", migration_name, ["from_model", "target_doctype"]
 	)
@@ -208,7 +250,7 @@ def _log_unmoved(
 	return len(instance_names)
 
 
-def _count_batch(migration_name: str, moved: int, failed: int) -> None:
+def _count_batch(migration_name: str, moved: int, failed: int, not_attempted: int = 0) -> None:
 	"""Add one batch's counts in a single update and commit them; the batch that ends the run calls finish.
 
 	The counts commit before finish, so a finish that fails leaves the run for the hourly check to finish."""
@@ -217,13 +259,22 @@ def _count_batch(migration_name: str, moved: int, failed: int) -> None:
 		frappe.qb.update(plm_table)
 		.set(plm_table.migrated_count, plm_table.migrated_count + moved)
 		.set(plm_table.failed_count, plm_table.failed_count + failed)
+		.set(plm_table.not_attempted_count, plm_table.not_attempted_count + not_attempted)
 		.set(plm_table.batches_done, plm_table.batches_done + 1)
 		.where(plm_table.name == migration_name)
 	).run()
 	plm = frappe.db.get_value(
 		"Processa Legacy Migration",
 		migration_name,
-		["migrated_count", "failed_count", "total_records", "batches_done", "total_batches", "run_by"],
+		[
+			"migrated_count",
+			"failed_count",
+			"not_attempted_count",
+			"total_records",
+			"batches_done",
+			"total_batches",
+			"run_by",
+		],
 		as_dict=True,
 	)
 	frappe.publish_realtime(
@@ -232,6 +283,7 @@ def _count_batch(migration_name: str, moved: int, failed: int) -> None:
 			"migration_name": migration_name,
 			"migrated": plm.migrated_count,
 			"failed": plm.failed_count,
+			"not_attempted": plm.not_attempted_count,
 			"total": plm.total_records,
 			"batches_done": plm.batches_done,
 			"total_batches": plm.total_batches,
