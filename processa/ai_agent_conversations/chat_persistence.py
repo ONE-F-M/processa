@@ -7,8 +7,10 @@ Ephemeral session state (not conversation history) stays in Redis.
 """
 
 import json
+import re
 
 import frappe
+from frappe.desk.doctype.tag.tag import DocTags
 
 
 # ── Conversation management ────────────────────────────────────────────────────
@@ -164,6 +166,93 @@ def _save_message(
 	frappe.db.commit()
 
 	return msg_doc.name
+
+
+# Repeated replies
+
+REPEAT_TAG = "repeat_reply"
+REPEAT_ASK = re.compile(
+	r"\b(?:say|tell me|repeat|show me)\s+(?:that|it|this)\b"
+	r"|\brepeat (?:yourself|your (?:last |previous )?(?:answer|reply|message))\b"
+	r"|\b(?:again|once more|one more time)\s*[?.!]*$"
+	r"|\bcome again\b",
+	re.IGNORECASE,
+)
+ASK_PREVIEW_CHARS = 120
+
+
+def guard_repeated_reply(doc, method=None):
+	"""before_insert on a Bot Chat Message: a reply the same as the last one says what is missing instead.
+
+	The run that produced it is tagged repeat_reply. A user who asked for a repeat gets the repeat."""
+	if doc.message_type != "Bot" or not doc.conversation:
+		return
+	rows = frappe.get_all(
+		"Chat Message",
+		filters={"conversation": doc.conversation, "message_type": ["in", ["User", "Bot"]]},
+		fields=["message_type", "text", "metadata", "creation"],
+		order_by="creation desc",
+		limit_page_length=2,
+	)
+	if len(rows) < 2 or rows[0].message_type != "User" or rows[1].message_type != "Bot":
+		return
+	asked, previous = rows
+	if REPEAT_ASK.search((asked.text or "").strip()):
+		return
+	meta = dict(_parsed_metadata(doc.metadata))
+	previous_meta = _parsed_metadata(previous.metadata)
+	repeated = previous_meta.get(REPEAT_TAG) or {}
+	if _reply_key(doc.text, meta) != _reply_key(repeated.get("text") or previous.text, previous_meta):
+		return
+	_replace_repeat(doc, meta, asked.text, again=bool(repeated))
+	_tag_turn_run(doc.conversation, asked.creation)
+
+
+def _replace_repeat(doc, meta: dict, asked_text: str, again: bool) -> None:
+	"""Swap the reply text for what is missing, keeping the original text in the metadata."""
+	ask = " ".join((asked_text or "").split())
+	ask = ask if len(ask) <= ASK_PREVIEW_CHARS else ask[:ASK_PREVIEW_CHARS].rsplit(" ", 1)[0] + "..."
+	if again:
+		text = frappe._(
+			'I still cannot do "{0}" with what I have. Give me the detail I am missing, for example the '
+			"step, field or record it is about, or ask for something different."
+		).format(ask)
+	else:
+		text = frappe._(
+			'I cannot do "{0}" with what I have, so my answer would be the same as my last one. Tell me '
+			"what is missing, for example the step, field or record it is about, or ask for something different."
+		).format(ask)
+	meta[REPEAT_TAG] = {"text": doc.text}
+	if isinstance(meta.get("agent_result"), dict) and "response" in meta["agent_result"]:
+		meta["agent_result"]["response"] = text
+	doc.text = text
+	doc.metadata = json.dumps(meta, default=str)
+
+
+def _reply_key(text: str, meta: dict) -> tuple:
+	"""What makes two replies the same: their words, and everything they carry besides the words."""
+	payload = dict(meta["agent_result"]) if isinstance(meta.get("agent_result"), dict) else {}
+	payload.pop("response", None)
+	return " ".join((text or "").split()).lower(), json.dumps(payload, sort_keys=True, default=str)
+
+
+def _tag_turn_run(conversation: str, turn_started) -> None:
+	"""Tag repeat_reply on the run of the conversation's live instance that answered this turn."""
+	instance = frappe.db.get_value(
+		"BPMN Process Instance",
+		{"context_doctype": "Chat Conversation", "context_docname": conversation, "status": "Active"},
+		"name",
+	)
+	if not instance:
+		return
+	run = frappe.db.get_value(
+		"AI Agent Run",
+		{"instance": instance, "creation": [">=", turn_started]},
+		"name",
+		order_by="creation desc",
+	)
+	if run:
+		DocTags("AI Agent Run").add(run, REPEAT_TAG)
 
 
 # ── History loading ────────────────────────────────────────────────────────────

@@ -1,3 +1,5 @@
+import json
+
 import frappe
 from frappe.tests.utils import FrappeTestCase
 from processa.ai_agent_conversations.chat_persistence import (
@@ -71,3 +73,64 @@ class TestChatPersistence(FrappeTestCase):
             agent_mode="ProsAlly", title="check this <bpmn:task id=\"T1\"/>", user="Administrator", commit=False
         )
         self.assertEqual(frappe.db.get_value("Chat Conversation", name, "title"), "check this")
+
+
+class TestRepeatedReplies(FrappeTestCase):
+    def setUp(self):
+        frappe.set_user("Administrator")
+        self.conversation = create_conversation("ProsAlly", "repeat probe", "Administrator", commit=False)
+
+    def _turn(self, asked, reply, metadata=None):
+        save_user_message(self.conversation, asked)
+        name = save_bot_message(self.conversation, reply, metadata=metadata)
+        return frappe.db.get_value("Chat Message", name, ["text", "metadata"], as_dict=True)
+
+    def test_the_same_reply_twice_says_what_is_missing_instead(self):
+        self._turn("Draw my leave process", "Tell me a bit more about the process.")
+        second = self._turn("Draw my leave process", "Tell me a bit more about the process.")
+
+        self.assertIn('I cannot do "Draw my leave process" with what I have', second.text)
+        self.assertEqual(
+            json.loads(second.metadata)["repeat_reply"]["text"], "Tell me a bit more about the process."
+        )
+
+    def test_a_third_time_says_still(self):
+        for _ in range(2):
+            self._turn("Draw my leave process", "Tell me a bit more about the process.")
+        third = self._turn("Draw my leave process", "Tell me a bit more about the process.")
+
+        self.assertIn('I still cannot do "Draw my leave process"', third.text)
+
+    def test_a_requested_repeat_is_kept(self):
+        self._turn("What is the rule?", "Leave needs a manager's approval.")
+        again = self._turn("Can you say that again?", "Leave needs a manager's approval.")
+
+        self.assertEqual(again.text, "Leave needs a manager's approval.")
+
+    def test_the_same_words_with_a_new_diagram_are_kept(self):
+        self._turn("Add a step", "I've updated the process.", {"agent_result": {"bpmn_xml": "<a/>"}})
+        second = self._turn("Add another", "I've updated the process.", {"agent_result": {"bpmn_xml": "<b/>"}})
+
+        self.assertEqual(second.text, "I've updated the process.")
+
+    def test_the_run_that_repeated_is_tagged(self):
+        instance = frappe.new_doc("BPMN Process Instance")
+        instance.context_doctype = "Chat Conversation"
+        instance.context_docname = self.conversation
+        instance.status = "Active"
+        instance.db_insert()
+        self._turn("Draw my leave process", "Tell me a bit more about the process.")
+        save_user_message(self.conversation, "Draw my leave process")
+        run = frappe.get_doc(
+            {
+                "doctype": "AI Agent Run",
+                "instance": instance.name,
+                "bpmn_id": "run_prosally_agent",
+                "status": "Success",
+                "started_at": frappe.utils.now_datetime(),
+            }
+        ).insert()
+
+        save_bot_message(self.conversation, "Tell me a bit more about the process.")
+
+        self.assertIn("repeat_reply", frappe.db.get_value("AI Agent Run", run.name, "_user_tags") or "")

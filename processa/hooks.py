@@ -170,6 +170,8 @@ doc_events = {
 			# reads it back from there, so screening only the in-flight string would
 			# be undone by the stored row.
 			"processa.ai_agent_security.screening.output_screening.screen_chat_response",
+			# Runs after screening, so the reply is compared with the last one as both are stored.
+			"processa.ai_agent_conversations.chat_persistence.guard_repeated_reply",
 		],
 		"after_insert": [
 			# The count and turn-boundary compaction triggers. after_insert, not

@@ -21,7 +21,7 @@
 
 		<main class="flex-1 p-6 overflow-auto space-y-6">
 			<!-- Counts, with Rated shown as X of Y plus its rated share. No satisfaction score. -->
-			<div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+			<div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
 				<div
 					v-for="c in overviewCards"
 					:key="c.key"
@@ -256,6 +256,13 @@ const overviewCards = computed(() => {
 		},
 		{ key: "reviewed", label: "Reviewed", value: fmt.format(o.reviewed ?? 0), border: "border-indigo-500" },
 		{ key: "converted", label: "Became tests", value: fmt.format(o.converted ?? 0), border: "border-green-500" },
+		{
+			key: "repeated",
+			label: "Repeated replies",
+			value: fmt.format(o.repeated_replies ?? 0),
+			hint: "replaced before they were sent",
+			border: "border-gray-400",
+		},
 	];
 });
 
