@@ -99,12 +99,9 @@ def _queue_batches(migration_name: str) -> None:
 
 
 def run_batch(migration_name: str, instance_names: list[str], first_idx: int = 1) -> None:
-	"""Move one batch, committing after each record, and log every record it did not move.
-
-	Once the batch has run BATCH_STOP_SECONDS it starts no new record: the rest are logged Not Attempted.
-	A timeout fails only the record that was running; the rest are Not Attempted. Any other error fails
-	the record and every one after it. A record's Error Log row gets idx first_idx plus its place in
-	the batch, so batches never share one."""
+	"""Move one batch, committing after each record; records it never reached are logged as Not Attempted.
+	A timeout fails only the running record, any other error fails the rest. Error Log row idx is
+	first_idx plus the record's place in the batch, so batches never share one."""
 	moved = failed = not_attempted = reached = 0
 	began = time.monotonic()
 	try:
@@ -127,7 +124,6 @@ def run_batch(migration_name: str, instance_names: list[str], first_idx: int = 1
 	except Exception as e:
 		frappe.db.rollback()
 		if isinstance(e, JobTimeoutException):
-			# Only the record that was running timed out; the ones after it were never started.
 			failed += _log_unmoved(
 				migration_name,
 				instance_names[reached : reached + 1],
@@ -212,7 +208,7 @@ def _fail_if_stalled(name: str) -> None:
 			"Processa Legacy Migration",
 			name,
 			{
-				"not_attempted_count": (plm.get("not_attempted_count") or 0) + not_attempted,
+				"not_attempted_count": plm.not_attempted_count + not_attempted,
 				"stop_reason": _("The run's background job stopped before these records were reached."),
 			},
 		)
