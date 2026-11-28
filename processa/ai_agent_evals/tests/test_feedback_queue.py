@@ -206,6 +206,24 @@ class TestTheCounts(QueueFixture):
 		self.assertNotIn("satisfaction", o)
 		self.assertNotIn("score", o)
 
+	def test_runs_that_repeated_their_reply_are_counted_per_agent(self):
+		agent = frappe.get_all("AI Agent Configuration", pluck="name", limit=1)
+		if not agent:
+			self.skipTest("no agent configuration on this site")
+		before = evals.get_feedback_overview(agent=agent[0])["repeated_replies"]
+		run = frappe.get_doc(
+			{
+				"doctype": "AI Agent Run",
+				"agent_configuration": agent[0],
+				"bpmn_id": "run_agent",
+				"status": "Success",
+				"started_at": frappe.utils.now_datetime(),
+			}
+		).insert()
+		frappe.db.set_value("AI Agent Run", run.name, "_user_tags", ",repeat_reply", update_modified=False)
+
+		self.assertEqual(evals.get_feedback_overview(agent=agent[0])["repeated_replies"], before + 1)
+
 	def test_the_queue_count_follows_the_triage(self):
 		feedback.rate_response(self.r1.name, "Negative")
 		before = evals.get_feedback_overview()["awaiting_review"]

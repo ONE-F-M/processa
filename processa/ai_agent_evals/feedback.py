@@ -4,6 +4,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
+from processa.ai_agent_conversations.chat_persistence import REPEAT_TAG
+
 _FEEDBACK_FIELDS = [
 	"name",
 	"rating",
@@ -226,9 +228,18 @@ def get_feedback_overview(from_date: str = None, to_date: str = None, agent: str
 		reply_filters["conversation"] = ["in", conversations or [""]]
 	total_replies = frappe.db.count("Chat Message", reply_filters)
 
+	# Runs whose reply repeated the one before it and was replaced; same window and agent as the ratings.
+	run_filters = {"_user_tags": ["like", f"%{REPEAT_TAG}%"]}
+	if "creation" in reply_filters:
+		run_filters["creation"] = reply_filters["creation"]
+	if agent:
+		run_filters["agent_configuration"] = agent
+	repeated_replies = frappe.db.count("AI Agent Run", run_filters)
+
 	negative = [r for r in rated if r["rating"] == "Negative"]
 	return {
 		"total_replies": total_replies,
+		"repeated_replies": repeated_replies,
 		"total_rated": len(rated),
 		"positive": len(rated) - len(negative),
 		"negative": len(negative),
