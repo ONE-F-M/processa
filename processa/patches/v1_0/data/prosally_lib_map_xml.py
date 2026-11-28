@@ -554,8 +554,17 @@ def overwrite_warning(xml: str) -> str:
 	return summarize_configured_elements(configured)
 
 
-def transfer_properties(old_xml: str, new_xml: str, skip_ids: tuple = ()) -> tuple:
-	"""Copy configuration from old_xml onto the same ids in new_xml, except skip_ids; return (merged_xml, removed)."""
+def transfer_properties(old_xml: str, new_xml: str, skip_ids: tuple = (), positions: bool = False) -> tuple:
+	"""Copy configuration from old_xml onto the same ids in new_xml, except skip_ids; return (merged_xml, removed).
+
+	With positions, every shape and line old_xml also draws goes back where it was."""
+	merged_xml, removed = _transfer_configuration(old_xml, new_xml, skip_ids)
+	if positions and (old_xml or "").strip() and (merged_xml or "").strip():
+		merged_xml = keep_positions(old_xml, merged_xml) or merged_xml
+	return merged_xml, removed
+
+
+def _transfer_configuration(old_xml: str, new_xml: str, skip_ids: tuple) -> tuple:
 	import re
 	from xml.etree import ElementTree as ET
 
@@ -951,7 +960,8 @@ def xml_to_ir(xml: str) -> dict | None:
 	from xml.etree import ElementTree as ET
 
 	bpmn = "{" + _ns()["bpmn"] + "}"
-	process = next(iter(ET.fromstring(xml).iter(bpmn + "process")), None)
+	root = ET.fromstring(xml)
+	process = next(iter(root.iter(bpmn + "process")), None)
 	if process is None:
 		return None
 	lane_of = {}
@@ -963,6 +973,7 @@ def xml_to_ir(xml: str) -> dict | None:
 
 	def scope(parent):
 		nodes, flows = [], []
+		defaults = {elem.get("default") for elem in parent if elem.get("default")}
 		for elem in parent:
 			tag = elem.tag.removeprefix(bpmn)
 			if tag in _ir_node_types():
@@ -984,7 +995,7 @@ def xml_to_ir(xml: str) -> dict | None:
 				body = elem.find(bpmn + "conditionExpression")
 				if body is not None and body.text:
 					flow["condition"] = body.text
-				if parent.get("default") == elem.get("id"):
+				if elem.get("id") in defaults:
 					flow["default"] = True
 				flows.append(flow)
 			elif tag not in _ir_skipped_tags():
@@ -995,7 +1006,9 @@ def xml_to_ir(xml: str) -> dict | None:
 	if body is None:
 		return None
 	kind = {} if process.get("isExecutable", "false").strip().lower() == "true" else {"executable": False}
-	return {"name": process.get("name") or "", "lanes": lanes, **kind, **body}
+	pool = next((p for p in root.iter(bpmn + "participant") if p.get("processRef") == process.get("id")), None)
+	name = process.get("name") or (pool.get("name") if pool is not None else "") or ""
+	return {"name": name, "lanes": lanes, **kind, **body}
 
 
 def spec_items(text: str) -> list[str]:
@@ -1883,4 +1896,419 @@ def _validate_process(xml_string: str, nested: bool = False) -> dict:
 	return {
 		"valid": len(violations) == 0,
 		"violations": violations,
+	}
+
+
+def keep_positions(old_xml: str, new_xml: str) -> str | None:
+	"""new_xml with every shape and line old_xml also draws put back where it was, and the rest placed around them.
+
+	None when the lanes changed or a moved step has no clear place, so the caller keeps the fresh layout."""
+	if any(f'xmlns:{prefix}="{_ns()[prefix]}"' not in old_xml for prefix in ("bpmndi", "dc", "di")):
+		return None
+	old, new = _drawing(old_xml), _drawing(new_xml)
+	if old is None or new is None:
+		return None
+	if old["lanes"] != new["lanes"] or set(old["shapes"]) - set(old["bodies"]):
+		return None
+	moved = {
+		node
+		for node in new["nodes"]
+		if node not in old["shapes"] or old["lane_of"].get(node) != new["lane_of"].get(node)
+	}
+	redrawn = {
+		flow
+		for flow, ends in new["flows"].items()
+		if flow not in old["edges"] or old["flows"].get(flow) != ends or set(ends) & moved
+	}
+	placed = {key: box for key, box in old["shapes"].items() if key not in moved}
+	lines = [_points(old["bodies"][flow]) for flow in sorted(old["edges"] - redrawn) if flow in old["bodies"]]
+	labels = [
+		box for key, body in old["bodies"].items() if key not in moved | redrawn for box in _label_boxes(body)
+	]
+	borders = [old["shapes"][key] for key in old["lanes"]]
+	if not _place_steps(moved, placed, new, old, lines, labels, borders):
+		return None
+	edges = _edge_bodies(redrawn, placed, new, old, (lines, labels, borders), new_xml)
+	if edges is None:
+		return None
+	kept = {**old["bodies"], **{key: _bounds_text(placed[key]) for key in moved}, **edges}
+	_widen_lanes(kept, old, max((placed[key][0] + placed[key][2] for key in moved), default=0) + _step_gap())
+	pool = next(iter(old["pools"]), None)
+
+	def place(match):
+		key = pool if match["id"] in new["pools"] and pool else match["id"]
+		body = kept.get(key)
+		return match[0] if body is None else match["open"] + body + match["close"]
+
+	return _di_element().sub(place, new_xml)
+
+
+def _edge_bodies(
+	redrawn: set, placed: dict, new: dict, old: dict, obstacles: tuple, new_xml: str
+) -> dict | None:
+	"""{flow id: waypoints and label} for every redrawn arrow, routed together; None when one has no clear route."""
+	from xml.etree import ElementTree as ET
+
+	lines, labels, borders = obstacles
+	containers = set(old["lanes"]) | set(old["pools"])
+	options = {}
+	for flow in sorted(redrawn):
+		ends = new["flows"][flow]
+		source, target = (placed.get(end) for end in ends)
+		if source is None or target is None:
+			return None
+		steps = [box for key, box in placed.items() if key not in containers and key not in ends]
+		options[flow] = _route_options(source, target, steps, lines, labels, borders)
+		if not options[flow]:
+			return None
+	bpmn = "{" + _ns()["bpmn"] + "}"
+	names = {
+		f.get("id"): f.get("name")
+		for f in ET.fromstring(new_xml).iter(bpmn + "sequenceFlow")
+		if f.get("name")
+	}
+	bodies = {}
+	for flow, points in _pick_routes(options).items():
+		bodies[flow] = "".join(f'<di:waypoint x="{x:g}" y="{y:g}" />' for x, y in points)
+		if names.get(flow):
+			box = _label_box(points, names[flow], borders)
+			bodies[flow] += "<bpmndi:BPMNLabel>" + _bounds_text(box) + "</bpmndi:BPMNLabel>"
+	return bodies
+
+
+def _widen_lanes(kept: dict, old: dict, edge: float) -> None:
+	"""Stretch, in place, every lane and pool body in kept whose right side ends before edge."""
+	for key in old["lanes"] | old["pools"]:
+		x, y, width, height = old["shapes"][key]
+		if x + width < edge:
+			stretched = _bounds_text((x, y, edge - x, height)).removesuffix(" />")
+			kept[key] = _bounds_pattern().sub(stretched, kept[key], count=1)
+
+
+def _pairs(points: list) -> list:
+	"""Each point with the one after it."""
+	return [(points[i], points[i + 1]) for i in range(len(points) - 1)]
+
+
+def _step_gap():
+	return 60
+
+
+def _line_margin():
+	return 10
+
+
+def _crossing_cost():
+	return 100
+
+
+def _di_element():
+	import re
+
+	return re.compile(
+		r'(?P<open><(?P<tag>bpmndi:BPMN(?:Shape|Edge))\b[^>]*?\bbpmnElement="(?P<id>[^"]+)"[^>]*>)(?P<body>.*?)(?P<close></(?P=tag)>)',
+		re.S,
+	)
+
+
+def _bounds_pattern():
+	import re
+
+	return re.compile(
+		r'<dc:Bounds\s+x="(-?[\d.]+)"\s+y="(-?[\d.]+)"\s+width="(-?[\d.]+)"\s+height="(-?[\d.]+)"'
+	)
+
+
+def _place_steps(
+	moved: set, placed: dict, new: dict, old: dict, lines: list, labels: list, borders: list
+) -> bool:
+	"""Give each moved step a clear box beside a step it is joined to, in its own lane; False when one has none."""
+	containers = set(old["lanes"]) | set(old["pools"])
+	waiting = set(moved)
+	for _round in range(len(moved)):
+		node = next(
+			(
+				n
+				for n in sorted(waiting)
+				if any((a in placed and b == n) or (a == n and b in placed) for a, b in new["flows"].values())
+			),
+			None,
+		)
+		if node is None:
+			return False
+		before = [a for a, b in new["flows"].values() if b == node and a in placed]
+		after = [b for a, b in new["flows"].values() if a == node and b in placed]
+		width, height = new["shapes"][node][2:]
+		band = old["shapes"].get(new["lane_of"].get(node))
+		spots = []
+		for anchor, ahead in [(placed[x], True) for x in before[:1]] + [
+			(placed[x], False) for x in after[:1]
+		]:
+			x = anchor[0] + anchor[2] + _step_gap() if ahead else anchor[0] - _step_gap() - width
+			y = (band[1] + band[3] / 2 if band else anchor[1] + anchor[3] / 2) - height / 2
+			box = _free_box((x, y, width, height), band, placed, containers, lines, labels)
+			if box is not None:
+				spots.append(box)
+		if not spots:
+			return False
+
+		def cost(box):
+			steps = [b for key, b in placed.items() if key not in containers]
+			total = 0
+			for other in [placed[x] for x in before] + [placed[x] for x in after]:
+				pair = (other, box) if other in [placed[x] for x in before] else (box, other)
+				options = _route_options(
+					pair[0], pair[1], [b for b in steps if b not in pair], lines, labels, borders
+				)
+				total += min(options)[0] if options else 10 * _crossing_cost()
+			return total
+
+		placed[node] = min(spots, key=cost)
+		waiting.discard(node)
+	return True
+
+
+def _free_box(
+	box: tuple, band: tuple | None, placed: dict, containers: set, lines: list, labels: list
+) -> tuple | None:
+	"""box, or the nearest spot below, above or to the right of it that touches no step, line or label and stays in its lane."""
+	x, y, width, height = box
+	steps = [b for key, b in placed.items() if key not in containers] + labels
+	margin = _line_margin()
+	for across in range(12):
+		for down in (0, 1, -1, 2, -2):
+			spot = (x + across * (width + _step_gap()), y + down * (height + _step_gap() / 3), width, height)
+			inside = band is None or (band[1] <= spot[1] and spot[1] + height <= band[1] + band[3])
+			padded = (spot[0] - margin, spot[1] - margin, width + 2 * margin, height + 2 * margin)
+			if (
+				inside
+				and not any(_overlap(spot, other) for other in steps)
+				and not any(_through(a, b, padded) for points in lines for a, b in _pairs(points))
+			):
+				return spot
+	return None
+
+
+def _route_options(
+	source: tuple, target: tuple, steps: list, lines: list, labels: list, borders: list = ()
+) -> list:
+	"""(cost, points) for each route from source to target that runs through no step, its own ends included."""
+	options = []
+	for route in _routes(source, target):
+		segments = list(_pairs(route))
+		if any(_through(a, b, box) for a, b in segments for box in steps):
+			continue
+		if any(_through(a, b, source) for a, b in segments[1:]) or any(
+			_through(a, b, target) for a, b in segments[:-1]
+		):
+			continue
+		crossings = sum(
+			_crosses(a, b, c, d) for a, b in segments for points in lines for c, d in _pairs(points)
+		)
+		covered = sum(any(_through(a, b, box) for a, b in segments) for box in labels)
+		along = sum(_along_border(a, b, lane) for a, b in segments for lane in borders)
+		options.append(((crossings + along) * _crossing_cost() + covered * 10 + len(route), route))
+	return options
+
+
+def _pick_routes(options: dict) -> dict:
+	"""The route for each flow whose costs, plus the crossings between the chosen routes, add up the least."""
+	flows = sorted(options)
+	choices = [[]]
+	for flow in flows:
+		if len(choices) * len(options[flow]) > 5000:
+			# ponytail: past 5000 combinations each flow takes its own cheapest route, which can cross another new one.
+			return {flow: min(options[flow])[1] for flow in flows}
+		choices = [[*choice, option] for choice in choices for option in options[flow]]
+
+	def cost(choice):
+		total = sum(c for c, _route in choice)
+		for i, (_cost, first) in enumerate(choice):
+			for _other, second in choice[i + 1 :]:
+				total += _crossing_cost() * sum(
+					_crosses(a, b, c, d) for a, b in _pairs(first) for c, d in _pairs(second)
+				)
+		return total
+
+	best = min(choices, key=cost)
+	return {flow: route for flow, (_cost, route) in zip(flows, best, strict=True)}
+
+
+def _routes(source: tuple, target: tuple) -> list:
+	"""Every way an arrow is drawn from source to target, fewest bends first."""
+	sx, sy, sw, sh = source
+	tx, ty, tw, th = target
+	scx, scy, tcx, tcy = sx + sw / 2, sy + sh / 2, tx + tw / 2, ty + th / 2
+	routes = []
+	if max(sx, tx) < min(sx + sw, tx + tw):
+		shared_x = (max(sx, tx) + min(sx + sw, tx + tw)) / 2
+		routes.append(
+			[(shared_x, sy), (shared_x, ty + th)] if ty < sy else [(shared_x, sy + sh), (shared_x, ty)]
+		)
+	if max(sy, ty) < min(sy + sh, ty + th):
+		shared_y = (max(sy, ty) + min(sy + sh, ty + th)) / 2
+		routes.append(
+			[(sx + sw, shared_y), (tx, shared_y)] if tx > sx else [(sx, shared_y), (tx + tw, shared_y)]
+		)
+	side_x = sx + sw if tcx > scx else sx
+	routes.append([(side_x, scy), (tcx, scy), (tcx, ty if tcy > scy else ty + th)])
+	routes.append([(scx, sy + sh if tcy > scy else sy), (scx, tcy), (tx if tcx > scx else tx + tw, tcy)])
+	routes += [
+		_line(source, target),
+		_around(source, target, above=True),
+		_around(source, target, above=False),
+	]
+	right = max(sx + sw, tx + tw) + _step_gap() / 2
+	left = min(sx, tx) - _step_gap() / 2
+	routes.append([(sx + sw, scy), (right, scy), (right, tcy), (tx + tw, tcy)])
+	routes.append([(sx, scy), (left, scy), (left, tcy), (tx, tcy)])
+	return routes
+
+
+def _line(source: tuple, target: tuple) -> list:
+	"""The points of an arrow from source to target: left to right when target is ahead, else under both."""
+	sx, sy, sw, sh = source
+	tx, ty, tw, th = target
+	start, end = (sx + sw, sy + sh / 2), (tx, ty + th / 2)
+	if tx >= sx + sw:
+		if start[1] == end[1]:
+			return [start, end]
+		middle = (start[0] + end[0]) / 2
+		return [start, (middle, start[1]), (middle, end[1]), end]
+	below = max(sy + sh, ty + th) + _step_gap() / 2
+	return [(sx + sw / 2, sy + sh), (sx + sw / 2, below), (tx + tw / 2, below), (tx + tw / 2, ty + th)]
+
+
+def _around(source: tuple, target: tuple, above: bool) -> list:
+	"""An arrow that leaves source from its top (or bottom), runs past both boxes, and enters target the same side."""
+	sx, sy, sw, sh = source
+	tx, ty, tw, th = target
+	if above:
+		level = min(sy, ty) - _step_gap() / 2
+		return [(sx + sw / 2, sy), (sx + sw / 2, level), (tx + tw / 2, level), (tx + tw / 2, ty)]
+	level = max(sy + sh, ty + th) + _step_gap() / 2
+	return [(sx + sw / 2, sy + sh), (sx + sw / 2, level), (tx + tw / 2, level), (tx + tw / 2, ty + th)]
+
+
+def _along_border(a: tuple, b: tuple, lane: tuple) -> bool:
+	"""Whether a level segment runs on, or within a few points of, the top or bottom edge of lane."""
+	x, y, width, height = lane
+	if a[1] != b[1] or max(a[0], b[0]) <= x or min(a[0], b[0]) >= x + width:
+		return False
+	return any(abs(a[1] - edge) < _line_margin() for edge in (y, y + height))
+
+
+def _through(a: tuple, b: tuple, box: tuple) -> bool:
+	"""Whether the segment a-b enters the inside of box; exact for level and upright segments."""
+	# ponytail: a slanted segment is judged by its bounding box, which can report a clash that is not there.
+	x, y, width, height = box
+	return (
+		min(a[0], b[0]) < x + width
+		and max(a[0], b[0]) > x
+		and min(a[1], b[1]) < y + height
+		and max(a[1], b[1]) > y
+	)
+
+
+def _crosses(a: tuple, b: tuple, c: tuple, d: tuple) -> bool:
+	"""Whether segment a-b crosses c-d, or runs along it; meeting only at an end point does not count."""
+
+	def side(p, q, r):
+		value = (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+		return (value > 0) - (value < 0)
+
+	turns = side(a, b, c), side(a, b, d), side(c, d, a), side(c, d, b)
+	if turns[0] * turns[1] < 0 and turns[2] * turns[3] < 0:
+		return True
+	for along, across in ((0, 1), (1, 0)):
+		level = (
+			a[across] == b[across] and c[across] == d[across] and abs(a[across] - c[across]) < _line_margin()
+		)
+		low, high = sorted((a[along], b[along]))
+		other_low, other_high = sorted((c[along], d[along]))
+		if level and min(high, other_high) - max(low, other_low) > 0:
+			return True
+	return False
+
+
+def _overlap(a: tuple, b: tuple) -> bool:
+	"""Whether two boxes touch; a box that holds the other whole is its container, not a clash."""
+	holds = b[0] <= a[0] and b[1] <= a[1] and a[0] + a[2] <= b[0] + b[2] and a[1] + a[3] <= b[1] + b[3]
+	apart = a[0] + a[2] <= b[0] or b[0] + b[2] <= a[0] or a[1] + a[3] <= b[1] or b[1] + b[3] <= a[1]
+	return not holds and not apart
+
+
+def _label_box(points: list, name: str, lanes: list) -> tuple:
+	"""A box for an arrow's name under its longest level segment, or left of its longest upright one, off lane borders."""
+	a, b = max(_pairs(points), key=lambda s: abs(s[0][0] - s[1][0]) + abs(s[0][1] - s[1][1]))
+	width = max(30, 6 * len(name))
+	if a[1] == b[1]:
+		return ((a[0] + b[0]) / 2 - width / 2, a[1] + 4, width, 14)
+	low, high = sorted((a[1], b[1]))
+	borders = {edge for lane in lanes for edge in (lane[1], lane[1] + lane[3])}
+	for shift in (0, 20, -20, 40, -40):
+		y = (low + high) / 2 - 7 + shift
+		if low <= y and y + 14 <= high and not any(y < edge < y + 14 for edge in borders):
+			return (a[0] - width - 6, y, width, 14)
+	return (a[0] - width - 6, (low + high) / 2 - 7, width, 14)
+
+
+def _points(body: str) -> list:
+	import re
+
+	return [
+		(float(x), float(y))
+		for x, y in re.findall(r'<di:waypoint\s+x="(-?[\d.]+)"\s+y="(-?[\d.]+)"\s*/>', body)
+	]
+
+
+def _label_boxes(body: str) -> list:
+	import re
+
+	return [
+		tuple(float(v) for v in m)
+		for m in re.findall(
+			r'<bpmndi:BPMNLabel\b[^>]*>\s*<dc:Bounds\s+x="(-?[\d.]+)"\s+y="(-?[\d.]+)"\s+width="(-?[\d.]+)"\s+height="(-?[\d.]+)"',
+			body,
+		)
+	]
+
+
+def _bounds_text(box: tuple) -> str:
+	return '<dc:Bounds x="{:g}" y="{:g}" width="{:g}" height="{:g}" />'.format(*box)
+
+
+def _drawing(xml: str) -> dict | None:
+	"""What xml draws: shape boxes, edge and shape bodies, flow ends, each step's lane, lanes and pools; None without a drawing."""
+	from xml.etree import ElementTree as ET
+
+	bpmn, bpmndi, dc = ("{" + _ns()[prefix] + "}" for prefix in ("bpmn", "bpmndi", "dc"))
+	root = ET.fromstring(xml)
+	shapes, edges = {}, set()
+	for shape in root.iter(bpmndi + "BPMNShape"):
+		bounds = shape.find(dc + "Bounds")
+		if bounds is None:
+			return None
+		shapes[shape.get("bpmnElement")] = tuple(float(bounds.get(k)) for k in ("x", "y", "width", "height"))
+	for edge in root.iter(bpmndi + "BPMNEdge"):
+		edges.add(edge.get("bpmnElement"))
+	if not shapes:
+		return None
+	lane_of = {
+		(ref.text or "").strip(): lane.get("id")
+		for lane in root.iter(bpmn + "lane")
+		for ref in lane.findall(bpmn + "flowNodeRef")
+	}
+	flows = {f.get("id"): (f.get("sourceRef"), f.get("targetRef")) for f in root.iter(bpmn + "sequenceFlow")}
+	lanes = {lane.get("id") for lane in root.iter(bpmn + "lane")}
+	pools = {pool.get("id") for pool in root.iter(bpmn + "participant")}
+	return {
+		"shapes": shapes,
+		"edges": edges,
+		"bodies": {m["id"]: m["body"] for m in _di_element().finditer(xml)},
+		"flows": flows,
+		"lane_of": lane_of,
+		"lanes": lanes,
+		"pools": pools,
+		"nodes": set(shapes) - lanes - pools,
 	}

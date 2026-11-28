@@ -24,6 +24,10 @@ def _ir_node_types():
 	)
 
 
+def _none_task_sources():
+	return frozenset({"userTask", "serviceTask", "scriptTask", "manualTask", "businessRuleTask"})
+
+
 def _rule_hints():
 	return {
 		"task-type": (
@@ -160,12 +164,22 @@ def apply_operations(ir: dict, operations: list) -> tuple[dict | None, str]:
 
 
 def _apply(ir: dict, operation: dict) -> str:
-	handler = {"add": _add, "remove": _remove, "rename": _rename, "reconnect": _reconnect}.get(
-		operation.get("op")
-	)
+	handler = _operations().get(operation.get("op"))
 	if handler is None:
-		return frappe._("it is not one of add, remove, rename or reconnect")
+		return frappe._("it is not one of {0}").format(", ".join(_operations()))
 	return handler(ir, operation)
+
+
+def _operations() -> dict:
+	return {
+		"add": _add,
+		"remove": _remove,
+		"rename": _rename,
+		"reconnect": _reconnect,
+		"retype": _retype,
+		"move": _move,
+		"set_condition": _set_condition,
+	}
 
 
 def _add(ir: dict, operation: dict) -> str:
@@ -245,6 +259,58 @@ def _reconnect(ir: dict, operation: dict) -> str:
 	if ends:
 		return ends
 	flow["from"], flow["to"] = source, target
+	return ""
+
+
+def _retype(ir: dict, operation: dict) -> str:
+	node = _by_id(ir["nodes"], operation.get("id"))
+	if not node:
+		return frappe._("there is no step with the id {0}").format(operation.get("id"))
+	kind = operation.get("type")
+	if kind not in _ir_node_types():
+		return frappe._("{0} is not a kind of step the diagram can hold").format(kind)
+	if "subProcess" in (kind, node["type"]):
+		return frappe._(
+			"a sub-process holds steps of its own, so it cannot be changed to or from another kind"
+		)
+	if ir.get("executable") is False and kind in _none_task_sources():
+		return frappe._(
+			"this process is non-executable, so its tasks stay plain tasks. Make the process executable first"
+		)
+	node["type"] = kind
+	return ""
+
+
+def _move(ir: dict, operation: dict) -> str:
+	node = _by_id(ir["nodes"], operation.get("id"))
+	if not node:
+		return frappe._("there is no step with the id {0}").format(operation.get("id"))
+	if not ir["lanes"]:
+		return frappe._("the diagram has no lanes, so the step cannot move to one")
+	if not _by_id(ir["lanes"], operation.get("lane")):
+		return frappe._("{0} is not one of the diagram's lanes: {1}").format(
+			operation.get("lane"), ", ".join(lane["id"] for lane in ir["lanes"])
+		)
+	node["lane"] = operation["lane"]
+	return ""
+
+
+def _set_condition(ir: dict, operation: dict) -> str:
+	flow = _by_id(ir["flows"], operation.get("id"))
+	if not flow:
+		return frappe._("there is no arrow with the id {0}").format(operation.get("id"))
+	if operation.get("default"):
+		for other in ir["flows"]:
+			if other["from"] == flow["from"]:
+				other.pop("default", None)
+		flow["default"] = True
+		flow.pop("condition", None)
+		return ""
+	condition = str(operation.get("condition") or "").strip()
+	if not condition:
+		return frappe._("the condition is empty")
+	flow["condition"] = condition
+	flow.pop("default", None)
 	return ""
 
 

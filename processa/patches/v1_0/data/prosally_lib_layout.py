@@ -877,7 +877,8 @@ def xml_to_ir(xml: str) -> dict | None:
 	from xml.etree import ElementTree as ET
 
 	bpmn = "{" + _ns()["bpmn"] + "}"
-	process = next(iter(ET.fromstring(xml).iter(bpmn + "process")), None)
+	root = ET.fromstring(xml)
+	process = next(iter(root.iter(bpmn + "process")), None)
 	if process is None:
 		return None
 	lane_of = {}
@@ -889,6 +890,7 @@ def xml_to_ir(xml: str) -> dict | None:
 
 	def scope(parent):
 		nodes, flows = [], []
+		defaults = {elem.get("default") for elem in parent if elem.get("default")}
 		for elem in parent:
 			tag = elem.tag.removeprefix(bpmn)
 			if tag in _ir_node_types():
@@ -910,7 +912,7 @@ def xml_to_ir(xml: str) -> dict | None:
 				body = elem.find(bpmn + "conditionExpression")
 				if body is not None and body.text:
 					flow["condition"] = body.text
-				if parent.get("default") == elem.get("id"):
+				if elem.get("id") in defaults:
 					flow["default"] = True
 				flows.append(flow)
 			elif tag not in _ir_skipped_tags():
@@ -921,7 +923,11 @@ def xml_to_ir(xml: str) -> dict | None:
 	if body is None:
 		return None
 	kind = {} if process.get("isExecutable", "false").strip().lower() == "true" else {"executable": False}
-	return {"name": process.get("name") or "", "lanes": lanes, **kind, **body}
+	pool = next(
+		(p for p in root.iter(bpmn + "participant") if p.get("processRef") == process.get("id")), None
+	)
+	name = process.get("name") or (pool.get("name") if pool is not None else "") or ""
+	return {"name": name, "lanes": lanes, **kind, **body}
 
 
 def relayout(xml: str) -> tuple[str | None, str]:
