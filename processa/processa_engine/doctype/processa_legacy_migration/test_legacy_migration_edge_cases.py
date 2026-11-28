@@ -69,7 +69,9 @@ def returning_xml(pid, actions, script=None):
 		else ""
 	)
 	back_is_default = bool(script)
-	back_condition = "" if back_is_default else "<bpmn:conditionExpression>action == 'Retry'</bpmn:conditionExpression>"
+	back_condition = (
+		"" if back_is_default else "<bpmn:conditionExpression>action == 'Retry'</bpmn:conditionExpression>"
+	)
 	ok_condition = "<bpmn:conditionExpression>step_valid</bpmn:conditionExpression>" if script else ""
 	return definitions(
 		pid,
@@ -542,7 +544,9 @@ class TestLegacyMigrationEdgeCases(FrappeTestCase):
 		return fast_forward(ctx, unstarted_record(DT, record))
 
 	def _waits_of(self, record):
-		workflow_state = frappe.db.get_value("BPMN Process Instance", self._instance_of(record), "workflow_state")
+		workflow_state = frappe.db.get_value(
+			"BPMN Process Instance", self._instance_of(record), "workflow_state"
+		)
 		return wait_ids(restore_workflow(json.loads(workflow_state)))
 
 	def test_with_no_old_map_a_check_that_sends_the_task_back_ends_at_the_next_wait(self):

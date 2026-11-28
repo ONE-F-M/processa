@@ -3,14 +3,13 @@
 
 import datetime
 import json
-import re
 from collections import Counter
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 import frappe
 from frappe import _
-from frappe.utils import CallbackManager
+from frappe.utils import CallbackManager, cstr, strip_html
 
 from processa.processa_engine import engine as bpmn_engine
 from processa.processa_engine.engine import (
@@ -146,10 +145,9 @@ def replay(ctx: frappe._dict, old: "BPMNProcessInstance") -> frappe._dict:
 
 
 def fast_forward(ctx: frappe._dict, record: frappe._dict) -> frappe._dict:
-	"""Run a record that has no instance forward on the new map, each user task taking its first action and
-	each script's writes undone, until a step sets the record's mapped state. Writes nothing.
-	A user task it comes back to after completing it is not taken again: the record is placed with place_at_state.
-	Returns wf, new_state, last_state and steps, the user tasks it completed."""
+	"""Run a record that has no instance forward on the new map, each user task taking its first action once and
+	each script's writes undone, until a step sets the record's mapped state; a task it comes back to places the
+	record with place_at_state. Writes nothing. Returns wf, new_state, last_state and steps, the tasks it completed."""
 	new_state = _mapped_state(ctx, record)
 	wf = _spec_workflow(ctx.to_spec)
 	wf.script_engine = FastForwardScriptEngine(
@@ -179,12 +177,11 @@ def fast_forward(ctx: frappe._dict, record: frappe._dict) -> frappe._dict:
 				)
 			name = bpmn_engine.get_task_display_name(task)
 			if task_bpmn_id(task) in completed:
-				# Taking its first action again would only go round again.
 				action, messages = completed[task_bpmn_id(task)]
 				try:
 					wf = place_at_state(ctx, wf, new_state)
 				except MigrationSkip as skip:
-					raise _came_back(skip, name, action, messages) from None
+					raise _came_back(skip, name, action, messages) from skip
 				return frappe._dict(wf=wf, new_state=new_state, last_state=new_state, steps=steps)
 			action = _first_action(ctx, task)
 			task.data["action"] = action
@@ -200,14 +197,8 @@ def fast_forward(ctx: frappe._dict, record: frappe._dict) -> frappe._dict:
 
 
 def _message_text(entry) -> str:
-	"""The plain text of one message_log entry, which is a JSON string or a dict."""
-	if isinstance(entry, str):
-		try:
-			entry = json.loads(entry)
-		except ValueError:
-			pass
-	text = entry.get("message") if isinstance(entry, dict) else entry
-	return re.sub(r"<[^>]+>", "", str(text or "")).strip()
+	"""The plain text of one message_log entry."""
+	return strip_html(cstr(entry.get("message"))).strip()
 
 
 def _came_back(skip: MigrationSkip, name: str, action: str, messages: list[str]) -> MigrationSkip:
